@@ -629,6 +629,10 @@ mod witness_tests {
         storage
             .insert_consensus_data(5, stored.iter(), [&sealed(0, 0)].into_iter())
             .unwrap();
+        fixture_over(dir, storage, chunk_blocks)
+    }
+
+    fn fixture_over(dir: tempfile::TempDir, storage: Storage, chunk_blocks: u64) -> Fixture {
         let (provider, rpc, requests) = recording_provider();
         let book = AddressBook {
             app: APP,
@@ -792,6 +796,36 @@ mod witness_tests {
         assert!(f.reader.tick(&f.chain).await.unwrap());
         assert_eq!(f.log_queries(), [address(CONSENSUS)]);
         assert_eq!(f.stored(), (10, totals(2, 1)));
+    }
+
+    /// The numbering still runs without input logs, so a seal whose bound
+    /// is not the stored count is refused.
+    #[tokio::test]
+    async fn a_skipped_input_query_still_checks_the_seal_bound() {
+        let mut f = fixture(2, 1_000);
+        f.head(10, 2, 1);
+        f.seals(&[(1, 3)]);
+
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert!(
+            error.to_string().contains("seals at input 3"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(f.stored(), (5, totals(2, 0)), "nothing is committed");
+    }
+
+    /// A fresh directory holds no sealed epoch, so even a chain that shows
+    /// nothing past epoch 0 is scanned for epoch 0's seal.
+    #[tokio::test]
+    async fn a_fresh_directory_scans_for_epoch_zero() {
+        let (dir, storage) = crate::storage::sql::test_helper::setup_storage();
+        let mut f = fixture_over(dir, storage, 1_000);
+        f.head(10, 0, 0);
+        f.seals(&[(0, 0)]);
+
+        assert!(f.reader.tick(&f.chain).await.unwrap());
+        assert_eq!(f.log_queries(), [address(CONSENSUS)]);
+        assert_eq!(f.stored(), (10, totals(0, 0)));
     }
 
     #[tokio::test]
