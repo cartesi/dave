@@ -17,7 +17,7 @@ use alloy::{
 use alloy_chains::NamedChain;
 use alloy_transport::{TransportError, layers::RetryBackoffLayer};
 use anyhow::{Context, Result, anyhow, ensure};
-use log::{debug, error, trace, warn};
+use log::{debug, error, info, trace, warn};
 use std::{fs, str::FromStr, time::Duration};
 
 /// Errors name the flag and add no key material: a key parse error may
@@ -198,14 +198,15 @@ pub(crate) fn gas_limit_for(estimate: u64) -> u64 {
 ///
 /// Nonces come from the account's mined count at the `latest` block,
 /// fees are the fresh market quote at every submission, gas limits come
-/// from an estimate at `latest`, and the
-/// mempool (or block builder) stays the sole authority on duplicates
-/// and replacements: "already known" and "replacement underpriced"
-/// are benign verdicts, and a stale nonce means inclusion advanced
-/// past the plan and the next tick replans. The lane holds no mutable
-/// state - callers re-derive and resubmit their complete intent every
-/// tick, so anything a
-/// lost response could forget is rebuilt from observation.
+/// from an estimate at `latest`, and the mempool (or block builder) stays
+/// the sole authority on duplicates and replacements: "already known" and
+/// "replacement underpriced" are benign verdicts, and a stale nonce means
+/// inclusion advanced past the plan and the next tick replans. A slot
+/// turned down on price is signed once more with its tip raised to the
+/// quote's max fee ([`replacement_fees`]), which displaces any pending
+/// transaction the base fee has outrun. The lane holds no mutable state -
+/// callers re-derive and resubmit their complete intent every tick, so
+/// anything a lost response could forget is rebuilt from observation.
 ///
 /// Submissions flow from the epoch manager's serial loop. Mutable
 /// access makes that single-owner constraint explicit: two waves
@@ -291,50 +292,23 @@ impl TransactionLane {
                 request.set_gas_limit(gas);
             }
             let (raw, tx_hash) = self
-                .sign(request, nonce, fees)
+                .sign(request.clone(), nonce, fees)
                 .await
                 .with_context(|| format!("failed to sign {label} transaction"))?;
-            let verdict = match self.submit_provider.send_raw_transaction(&raw).await {
-                Ok(_pending) => {
-                    debug!(
-                        "submitted {label} transaction {tx_hash} at nonce {nonce} \
-                         with max fee {} and priority fee {}",
-                        fees.max_fee_per_gas, fees.max_priority_fee_per_gas
-                    );
-                    SendVerdict::Submitted
+            let sent = self.submit_provider.send_raw_transaction(&raw).await;
+            let (tx_hash, verdict) = match sent {
+                Err(error)
+                    if replacement_fees(fees) != fees
+                        && matches!(
+                            classify_submission_error(&error),
+                            SubmissionErrorKind::ReplacementUnderpriced
+                                | SubmissionErrorKind::Underpriced
+                        ) =>
+                {
+                    self.outbid(&label, request, nonce, fees, (tx_hash, error))
+                        .await
                 }
-                Err(error) => match classify_submission_error(&error) {
-                    SubmissionErrorKind::AlreadyKnown => {
-                        trace!("{label} transaction {tx_hash} is already pending at nonce {nonce}");
-                        SendVerdict::AlreadyKnown
-                    }
-                    SubmissionErrorKind::ReplacementUnderpriced => {
-                        trace!(
-                            "{label} at nonce {nonce} waits: the pending transaction \
-                             is priced above the current quote"
-                        );
-                        SendVerdict::Underpriced
-                    }
-                    SubmissionErrorKind::NonceTooLow => {
-                        trace!(
-                            "{label} at nonce {nonce} is stale: inclusion advanced; \
-                             the next tick replans"
-                        );
-                        SendVerdict::Stale
-                    }
-                    SubmissionErrorKind::Other => {
-                        // Loud on purpose: a persistent rejection here (an
-                        // underfunded signer; a full pool or a minimum-tip
-                        // policy, either of which a client may word as a
-                        // bare "transaction underpriced") stalls the whole
-                        // nonce tail while dispute clocks run.
-                        error!(
-                            "failed to submit {label} transaction {tx_hash} \
-                             at nonce {nonce}: {error}"
-                        );
-                        SendVerdict::Failed
-                    }
-                },
+                sent => (tx_hash, judge(&label, nonce, tx_hash, fees, sent.map(drop))),
             };
             reports.push(SendReport {
                 label,
@@ -366,6 +340,53 @@ impl TransactionLane {
                 Some(FALLBACK_GAS_LIMIT)
             }
         }
+    }
+
+    /// The one retry of a slot the pool turned down on price, at the
+    /// quote's max fee with the tip raised to it ([`replacement_fees`]).
+    /// Its verdict and hash replace the first attempt's; a retry that
+    /// cannot be signed keeps them.
+    async fn outbid(
+        &self,
+        label: &str,
+        request: TransactionRequest,
+        nonce: u64,
+        quote: Eip1559Estimation,
+        (first_hash, first_error): (B256, TransportError),
+    ) -> (B256, SendVerdict) {
+        let fees = replacement_fees(quote);
+        let (raw, tx_hash) = match self.sign(request, nonce, fees).await {
+            Ok(signed) => signed,
+            Err(error) => {
+                warn!(
+                    "{label} at nonce {nonce}: its retry at the max tip cannot be signed: {error:#}"
+                );
+                let verdict = judge(label, nonce, first_hash, quote, Err(first_error));
+                return (first_hash, verdict);
+            }
+        };
+        let sent = self.submit_provider.send_raw_transaction(&raw).await;
+        if sent.is_ok() {
+            let quoted = format!(
+                "quoted max fee {} and priority fee {}",
+                quote.max_fee_per_gas, quote.max_priority_fee_per_gas
+            );
+            if classify_submission_error(&first_error) == SubmissionErrorKind::Underpriced {
+                // Visible on purpose: a full pool or a minimum tip above the
+                // quote costs the max fee on every send.
+                warn!(
+                    "{label} at nonce {nonce} was turned down at the quote ({first_error}) \
+                     and sent with its priority fee raised to the max fee ({quoted})"
+                );
+            } else {
+                info!(
+                    "{label} at nonce {nonce} replaces a pending transaction the quote \
+                     could not: priority fee raised to the max fee {} ({quoted})",
+                    fees.max_fee_per_gas
+                );
+            }
+        }
+        (tx_hash, judge(label, nonce, tx_hash, fees, sent.map(drop)))
     }
 
     fn validate(&self, label: &str, request: &TransactionRequest) -> Result<()> {
@@ -435,9 +456,9 @@ pub struct SendReport {
 
 /// The pool's verdict on one send. Everything short of `Failed` is a
 /// healthy lane: submitted and pending, an identical transaction
-/// already pending, a higher-priced pending transaction worth waiting
-/// out, or a plan built on an observation inclusion already advanced
-/// past.
+/// already pending, a pending transaction that outbids even the max-tip
+/// retry and so is includable at the current base fee, or a plan built
+/// on an observation inclusion already advanced past.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SendVerdict {
     Submitted,
@@ -455,7 +476,74 @@ enum SubmissionErrorKind {
     AlreadyKnown,
     NonceTooLow,
     ReplacementUnderpriced,
+    /// Turned down on price, not as a replacement: a full pool (geth's
+    /// bare "transaction underpriced") or a minimum tip (the same words on
+    /// geth 1.13 and erigon). It takes the max-tip retry, then fails.
+    Underpriced,
     Other,
+}
+
+/// The pool's answer to one send, logged at the level it deserves.
+fn judge(
+    label: &str,
+    nonce: u64,
+    tx_hash: B256,
+    fees: Eip1559Estimation,
+    sent: Result<(), TransportError>,
+) -> SendVerdict {
+    let error = match sent {
+        Ok(()) => {
+            debug!(
+                "submitted {label} transaction {tx_hash} at nonce {nonce} \
+                 with max fee {} and priority fee {}",
+                fees.max_fee_per_gas, fees.max_priority_fee_per_gas
+            );
+            return SendVerdict::Submitted;
+        }
+        Err(error) => error,
+    };
+    match classify_submission_error(&error) {
+        SubmissionErrorKind::AlreadyKnown => {
+            trace!("{label} transaction {tx_hash} is already pending at nonce {nonce}");
+            SendVerdict::AlreadyKnown
+        }
+        SubmissionErrorKind::ReplacementUnderpriced => {
+            trace!(
+                "{label} at nonce {nonce} waits: the pending transaction \
+                 outbids the quote's max fee, so it is includable"
+            );
+            SendVerdict::Underpriced
+        }
+        SubmissionErrorKind::NonceTooLow => {
+            trace!(
+                "{label} at nonce {nonce} is stale: inclusion advanced; \
+                 the next tick replans"
+            );
+            SendVerdict::Stale
+        }
+        SubmissionErrorKind::Underpriced | SubmissionErrorKind::Other => {
+            // Loud on purpose: a persistent rejection here (an underfunded
+            // signer, or a full pool or minimum tip that outbids even the
+            // max-tip retry) stalls the whole nonce tail while dispute
+            // clocks run.
+            error!("failed to submit {label} transaction {tx_hash} at nonce {nonce}: {error}");
+            SendVerdict::Failed
+        }
+    }
+}
+
+/// The fees of the one retry a slot turned down on price gets: the quote's
+/// max fee, with the tip raised to it. geth replaces a pending transaction
+/// only on 10% more of both fees. One the base fee has outrun has both
+/// below the next base fee, at most 1.125 times the latest, while the
+/// quote's max fee is twice the latest, so the retry displaces it. A
+/// pending transaction that survives the retry has a fee cap above
+/// 1.8 times the latest base fee, so it is includable and is waited out.
+fn replacement_fees(quote: Eip1559Estimation) -> Eip1559Estimation {
+    Eip1559Estimation {
+        max_fee_per_gas: quote.max_fee_per_gas,
+        max_priority_fee_per_gas: quote.max_fee_per_gas,
+    }
 }
 
 fn normalize_fees(mut fees: Eip1559Estimation) -> Eip1559Estimation {
@@ -492,6 +580,8 @@ fn classify_submission_error(error: &TransportError) -> SubmissionErrorKind {
         || message.contains("fee too low to replace")
     {
         SubmissionErrorKind::ReplacementUnderpriced
+    } else if message.contains("transaction underpriced") {
+        SubmissionErrorKind::Underpriced
     } else {
         SubmissionErrorKind::Other
     }
@@ -504,11 +594,12 @@ mod tests {
         consensus::Transaction,
         network::TransactionBuilder,
         node_bindings::Anvil,
-        primitives::Bytes,
-        providers::{ProviderBuilder, ext::AnvilApi},
+        primitives::{Bytes, U64},
+        providers::{ProviderBuilder, ext::AnvilApi, utils::eip1559_default_estimator},
         rpc::json_rpc::ErrorPayload,
-        rpc::types::TransactionRequest,
+        rpc::types::{Block, FeeHistory, TransactionRequest},
         signers::Signer,
+        transports::mock::Asserter,
     };
 
     #[test]
@@ -534,6 +625,149 @@ mod tests {
         // without the cap keeps the headroom.
         assert_eq!(gas_limit_for(20_000_000), 30_000_000);
         assert_eq!(gas_limit_for(u64::MAX), u64::MAX);
+    }
+
+    /// geth's replacement rule (legacypool list.go): both fees strictly
+    /// higher and at least 10% higher.
+    fn replaces(new: Eip1559Estimation, old: Eip1559Estimation) -> bool {
+        let bumped = |new: u128, old: u128| new > old && new * 100 >= old * 110;
+        bumped(new.max_fee_per_gas, old.max_fee_per_gas)
+            && bumped(new.max_priority_fee_per_gas, old.max_priority_fee_per_gas)
+    }
+
+    #[test]
+    fn a_max_tip_retry_displaces_what_the_base_fee_outran() {
+        const GWEI: u128 = 1_000_000_000;
+        for base in [7, GWEI, 100 * GWEI] {
+            for tip in [1, 2 * GWEI] {
+                let quote = eip1559_default_estimator(base, &[vec![tip]]);
+                let retry = replacement_fees(quote);
+                // The next block's base fee is at most 1.125 times the latest.
+                let next_base = base * 9 / 8;
+                let both = |fee| Eip1559Estimation {
+                    max_fee_per_gas: fee,
+                    max_priority_fee_per_gas: fee,
+                };
+
+                // Outrun, with the tip at its cap: the retry replaces it.
+                let outrun = both(next_base - 1);
+                assert!(replaces(retry, outrun));
+
+                // Signed at the full quote, a pending transaction survives
+                // the retry, and so does every cap from the boundary up;
+                // all of them are includable.
+                assert!(!replaces(retry, quote));
+                let boundary = retry.max_fee_per_gas * 100 / 110;
+                assert!(replaces(retry, both(boundary)));
+                assert!(!replaces(retry, both(boundary + 1)));
+                assert!(boundary + 1 >= next_base);
+            }
+        }
+        // At a flat market tip the quote alone cannot replace it.
+        let quote = eip1559_default_estimator(100 * GWEI, &[vec![2 * GWEI]]);
+        assert!(!replaces(
+            quote,
+            Eip1559Estimation {
+                max_fee_per_gas: 112 * GWEI,
+                max_priority_fee_per_gas: 112 * GWEI,
+            }
+        ));
+        // A quote whose tip is its max fee has no retry to offer.
+        let flat = Eip1559Estimation {
+            max_fee_per_gas: 5,
+            max_priority_fee_per_gas: 5,
+        };
+        assert_eq!(replacement_fees(flat), flat);
+    }
+
+    /// A lane over mocked endpoints, each answering in call order: `reads`
+    /// the nonce, then the fee history (then the latest block when the
+    /// history has no base fee); `sends` each raw submission.
+    fn mocked_lane() -> (TransactionLane, Asserter, Asserter) {
+        let (reads, sends) = (Asserter::new(), Asserter::new());
+        let provider = |asserter: &Asserter| {
+            ProviderBuilder::new()
+                .disable_recommended_fillers()
+                .connect_mocked_client(asserter.clone())
+                .erased()
+        };
+        let lane = TransactionLane::new(
+            provider(&reads),
+            provider(&sends),
+            1,
+            EthereumWallet::from(PrivateKeySigner::random()),
+        );
+        (lane, reads, sends)
+    }
+
+    fn fee_history(base: u128, tip: u128) -> FeeHistory {
+        FeeHistory {
+            base_fee_per_gas: vec![base, base],
+            gas_used_ratio: vec![0.5],
+            reward: Some(vec![vec![tip]]),
+            oldest_block: 1,
+            ..Default::default()
+        }
+    }
+
+    /// An underpriced slot is signed once more at the max tip, and the
+    /// report carries the retry's verdict and hash. Anvil replaces on a
+    /// higher max fee alone, so only mocked endpoints reach this branch.
+    #[tokio::test]
+    async fn an_underpriced_slot_is_retried_once_at_the_max_tip() -> Result<()> {
+        const GWEI: u128 = 1_000_000_000;
+        let quote = eip1559_default_estimator(10 * GWEI, &[vec![GWEI]]);
+        let replacement = "replacement transaction underpriced";
+        let cases = [
+            (replacement, None, SendVerdict::Submitted),
+            (replacement, Some(replacement), SendVerdict::Underpriced),
+            (
+                replacement,
+                Some("already known"),
+                SendVerdict::AlreadyKnown,
+            ),
+            ("transaction underpriced", None, SendVerdict::Submitted),
+            (
+                "transaction underpriced",
+                Some("transaction underpriced"),
+                SendVerdict::Failed,
+            ),
+        ];
+        for (first, retry, verdict) in cases {
+            let (mut lane, reads, sends) = mocked_lane();
+            reads.push_success(&U64::from(7));
+            reads.push_success(&fee_history(10 * GWEI, GWEI));
+            sends.push_failure_msg(first);
+            match retry {
+                None => sends.push_success(&B256::ZERO),
+                Some(message) => sends.push_failure_msg(message),
+            }
+            let report = lane
+                .submit_wave(vec![("act".to_string(), payment(0x11))])
+                .await?;
+            let (_, max_tip) = lane.sign(payment(0x11), 7, replacement_fees(quote)).await?;
+            assert_eq!(
+                (report[0].nonce, report[0].verdict, report[0].tx_hash),
+                (7, verdict, max_tip),
+                "{first} then {retry:?}"
+            );
+            assert!(reads.read_q().is_empty() && sends.read_q().is_empty());
+        }
+
+        // A quote whose tip is its max fee (a zero base fee) is sent once.
+        let (mut lane, reads, sends) = mocked_lane();
+        let mut block = Block::<alloy::rpc::types::Transaction>::default();
+        block.header.inner.base_fee_per_gas = Some(0);
+        reads.push_success(&U64::from(7));
+        reads.push_success(&fee_history(0, GWEI));
+        reads.push_success(&block);
+        sends.push_failure_msg("replacement transaction underpriced");
+        let report = lane
+            .submit_wave(vec![("act".to_string(), payment(0x11))])
+            .await?;
+        assert_eq!(report[0].verdict, SendVerdict::Underpriced);
+        assert!(reads.read_q().is_empty() && sends.read_q().is_empty());
+        Ok(())
     }
 
     #[test]
@@ -567,17 +801,18 @@ mod tests {
             SubmissionErrorKind::ReplacementUnderpriced
         );
         // Not replacements, so not a pending transaction to wait out: a full
-        // pool (geth's bare message today), a minimum-tip policy (the same
-        // message on geth 1.13 and erigon), and geth's minimum-tip wording.
+        // pool (geth's bare message today) and a minimum-tip policy (the
+        // same message on geth 1.13 and erigon) take the max-tip retry;
+        // geth's current minimum-tip wording is an error.
         assert_eq!(
             classify_submission_error(&error("transaction underpriced")),
-            SubmissionErrorKind::Other
+            SubmissionErrorKind::Underpriced
         );
         assert_eq!(
             classify_submission_error(&error(
                 "transaction underpriced: tip needed 1000000000, tip permitted 1"
             )),
-            SubmissionErrorKind::Other
+            SubmissionErrorKind::Underpriced
         );
         assert_eq!(
             classify_submission_error(&error(

@@ -443,7 +443,24 @@ never makes an admissible call inadmissible; estimation failing other than by
 a revert falls back to 15M. Already-known transactions, underpriced
 replacements, and stale nonces are ordinary retry states; every later tick
 rebuilds intent from fresh observation. The mempool or a separately
-configured revert-protecting endpoint arbitrates races and duplicates. The signer must be
+configured revert-protecting endpoint arbitrates races and duplicates.
+
+A slot the pool turns down on price is signed once more at the quote's max
+fee with the tip raised to it. geth replaces only on 10% more of both fees,
+and the quote's max fee is twice the latest base fee plus the market tip, so
+the retry displaces any pending transaction the base fee has outrun, which a
+fresh quote with a flat market tip could not. A pending transaction that
+survives the retry has a fee cap above 1.8 times the latest base fee, so it is
+includable and is waited out: a changed intent behind it costs at most that
+transaction's inclusion and a paid revert. The retry has costs. A replaced
+slot pays its full max fee, and the excess over the refund price (base fee
+plus 10 gwei, dispute-game.md) is not refunded. A healthy pending transaction
+is replaced too once the quote's max fee has risen 10% since it was signed,
+which ordinary rising congestion does. The retry ignores intent: when a
+transient Hero planning failure shrinks a wave to its recoveries, a recovery
+may displace the pending Hero action at the same nonce for a tick. A full
+pool or a minimum tip (a bare "transaction underpriced") takes the same retry
+with a warning, and logs an error when the retry is refused too. The signer must be
 exclusive to one node instance and funded for the whole pending batch's fee
 envelopes and call values. Nested tournaments require their own join bonds.
 
@@ -485,11 +502,6 @@ Error handling and observability:
    tick, and fails the node harness. A call that passes the estimate and
    then loses a race before inclusion is still paid for; revert protection at
    the submission endpoint may catch that, but the node does not require it.
-   The lane also does not remember a pending transaction's fees: a
-   later, different intent at the same mined nonce may wait until the earlier
-   transaction mines, drops, or becomes replaceable at the fresh market quote.
-   Operation assumes that this happens within the dispute clock budget.
-   Repeated-intent escalation remains pre-mainnet work.
 
 Structure:
 
