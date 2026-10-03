@@ -124,14 +124,16 @@ safety, not hygiene:
   clock path. f371381c did this after a terminal application panicked every
   node at the roll, which would have let a fabricated claim win uncontested.
 
-Apart from the two accepted halts below, chain data reaches no panic on the
-dispute path. Chain-reported coordinates reach the engine only through
-validators that accept everything the contracts produce. The observer checks
-each match against its tournament's descriptor (height, position, alignment,
-cycle) and the Hero's snapshot checks it again; a bisecting match must stand
-above height 1, since advancing opens the children of the node below the
-contested one; a level's base cycle must be aligned to its span, and a
-child's must be its parent's divergence cycle; and every level's stride and
+Apart from the two accepted halts and the trust model below, chain data
+reaches no panic on the dispute path until a wrong epoch has settled: the Hero
+then panics on a root that starts from a state it did not compute, an
+already-defeated protocol. Chain-reported coordinates reach the engine only
+through validators that accept everything the contracts produce. The observer
+checks each match against its tournament's descriptor (height, position,
+alignment, cycle) and the Hero's snapshot checks it again; a bisecting match
+must stand above height 1, since advancing opens the children of the node
+below the contested one; a level's base cycle must be aligned to its span, and
+a child's must be its parent's divergence cycle; and every level's stride and
 height must match the pinned table, which tiles the machine coordinate.
 Nothing checks that the root's base cycle is 0; the trusted factory sets it.
 The observer's standing decoders likewise front its own `expect`s on
