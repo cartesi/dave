@@ -15,12 +15,6 @@ carry no backlog (reviews/README.md).
   the Arbitrum entries now share Ethereum's and Sepolia's addresses, are
   experimental, and the node does not start there. (build-system.md,
   CHANGELOG.md)
-- Operator notes in the node README: a warning that repeats every tick is a
-  stall (rebuild after an input gap), and an error asks for an operator
-  (link the failure policy's log levels); on foreclosure, stop the node once
-  its recoveries finish; an epoch lasts at least the root allowance, plus the
-  staging period unless every sentry agrees. (node-architecture.md,
-  epoch-lifecycle.md)
 
 ## Before the canonical two-level switch (a later PR)
 

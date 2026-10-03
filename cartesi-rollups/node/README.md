@@ -177,3 +177,27 @@ Options:
   -h, --help
           Print help
 ```
+
+## Operator notes
+
+- Read the levels as the failure policy defines them
+  ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
+  an ERROR asks an operator to act; a WARN means the node carries on. A WARN
+  that repeats every tick is a stall to investigate: the node keeps retrying
+  one step while the dispute clocks run.
+- A steady-state tick refuses an incomplete log response before committing
+  and heals on the next tick. During a cold-start catch-up, a chunk that ends
+  before the finalized head is checked for contiguity only, so an input or
+  epoch dropped at its tail surfaces later as an index or epoch error that
+  does not heal: point the node at a complete provider and rebuild the state
+  directory.
+- Every epoch settles no sooner than its root tournament's allowance, plus
+  the application's claim staging period unless every sentry agrees. With the
+  canonical three-level table that allowance is about one week and 85 minutes
+  on mainnets and about 9 hours 25 minutes on testnets.
+- A lost root, a root without a winner, and a won epoch whose final state
+  cannot settle (a terminal application) each log an error every tick: they
+  are the application guardian's to resolve, by foreclosure if need be
+  ([epoch-lifecycle.md](../../docs/epoch-lifecycle.md#consensus-layer-staging-sentries-and-foreclosure)).
+  A foreclosed application settles nothing more: let the node finish
+  recovering its winning bonds, then stop it.
