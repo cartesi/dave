@@ -551,6 +551,27 @@ mod tests {
     }
 
     #[test]
+    fn an_exception_yield_does_not_settle() -> MachineResult<()> {
+        use cartesi_machine::cartesi_machine_sys::CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION;
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        let mut machine = Machine::create(&config, &RuntimeConfig::quiet_console())?;
+
+        // The ordinary terminal app: a manual yield with an exception and,
+        // as libcmt writes it, the payload length in the data field.
+        let htif_tohost = (u64::from(CM_HTIF_DEV_YIELD) << CM_HTIF_DEV_SHIFT)
+            | (u64::from(CM_HTIF_YIELD_CMD_MANUAL) << CM_HTIF_CMD_SHIFT)
+            | (u64::from(CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION) << CM_HTIF_REASON_SHIFT)
+            | 0x20;
+        machine.write_reg(CM_REG_IFLAGS_Y, 1)?;
+        machine.write_reg(CM_REG_HTIF_TOHOST, htif_tohost)?;
+
+        let (_, proof) = machine_validity_proof_for(&mut machine)?;
+        assert!(!proof.settles());
+        Ok(())
+    }
+
+    #[test]
     fn proof_validation_ignores_the_htif_data_field() -> MachineResult<()> {
         let mut config = Machine::default_config()?;
         config.ram.length = 4096;

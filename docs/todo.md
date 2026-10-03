@@ -67,11 +67,9 @@ carry no backlog (reviews/README.md).
   contracts; `read_standings`, where one bad standing fails the whole Hero
   tick; Solid, which keeps a missed finalized log until a restart; bond
   recovery, which runs serially before every wave; the reader's `expect`s on
-  finalized log data; the terminal-application hold, which has no
-  `settles()` test for a `TX_EXCEPTION` yield. A retry loop that should page
-  reuses the epoch manager's consecutive-tick rule (`repeated_reverts`: a
-  warning first, an error on the next tick). (node-architecture.md, failure
-  policy)
+  finalized log data. A retry loop that should page reuses the epoch
+  manager's consecutive-tick rule (`repeated_reverts`: a warning first, an
+  error on the next tick). (node-architecture.md, failure policy)
 - After that audit, prune dispute-path validators that re-check what the
   contracts enforce (P1, bounded by P2: keep the checks whose absence makes a
   lie silent). Before pruning one that guards an engine assert, make the
