@@ -12,7 +12,25 @@ This is distinct from the Solidity and Foundry test architecture under
 in-crate harness (`cartesi-rollups/node/src/harness/`, `just
 test-node-harness`), which drives the node's own workers tick by tick against
 a deterministic anvil and is where lifecycle and dispute scenarios move as the
-e2e suite shrinks (docs/plans/test-strategy-reset.md, item 3).
+e2e suite shrinks.
+
+## What each layer establishes
+
+- Solidity: Foundry only (prt-contract-testing.md). The step tests run a
+  real machine through FFI; no node is involved.
+- The node's computation: correct hashes and proofs, built in time with
+  bounded memory and disk, in two regimes. Eager: the runner executes an
+  open epoch, samples at the root stride, folds window roots and keeps
+  snapshots. Lazy: a dispute positions from snapshots and builds quartets,
+  leaves and proofs. Unit and toy-spec tests, the real-machine
+  differentials and goldens (`tests/engine_machine.rs`) and the work counts
+  cover it; the node-versus-emulator recipe measures time, RSS and disk.
+- The node's workers against a chain: the in-crate anvil harness
+  (`src/harness/`, `just test-node-harness`): the sender, the epoch
+  lifecycle (settle, stage, cleanup, bond recovery), the Hero against
+  adversaries, restarts and timeouts, with the test owning the clock.
+- End to end (this document): only what needs the node as a process, real
+  signals and an independent Lua lineage.
 
 ## Anatomy of a test run
 
@@ -175,7 +193,7 @@ explicit `stress` image belongs to the Rust measurement workflow, not to an
 E2E scenario.
 
 Scenarios (`test/e2e/rollups/scenarios/`), the black-box smoke left after
-the 2026-10-01 cut (docs/plans/test-strategy-reset.md, item 4):
+the 2026-10-01 cut:
 
 - `simple`: the honest node settles a disputed epoch. Its one leaf match
   must end in a STEP proof (`Env.assert_leaf_match_proved`), so the per-PR
@@ -301,6 +319,8 @@ unverified claims - check before relying on them:
 - Epochs at capacity boundaries (max inputs, input at the last stride).
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
 - Multiple honest nodes defending the same epoch concurrently.
+- The devnet's censorship budget is 0, so kill and chaos runs keep no slack:
+  a slow debug build can read as a lost dispute (a lead, unmeasured).
 - (closed 2026-07-25, moved 2026-10-01) Sealed-leaf timeout boundaries from
   the node's side: the harness tests
   `the_longer_clock_wins_a_sealed_leaf_by_timeout` and

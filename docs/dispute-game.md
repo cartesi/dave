@@ -378,6 +378,18 @@ to clock viability: a correct commitment that misses its clock can lose by
 timeout. The strict verb partition also avoids doing an expensive proof after
 the match has already become timeout-resolvable.
 
+Accepted limitation (CF-01 in the
+[2026-09-29 clock refill review](reviews/2026-09-29-prt-clock-refill/REVIEW.md)):
+a leaf proof in flight when the opponent's shorter leaf clock expires reverts,
+and the survivor needs a separate timeout claim. With `d1` the proof's latency
+from the seal and `d2` the claim's latency after it, the survivor is charged
+`max(0, d1 + d2 - G)` and must outlive `d1 + d2`. The adversary chooses how
+often this happens, one Sybil bond each, but not the latencies; with ordinary
+inclusion both land well inside `G`, and stretching them is censorship, which
+`C` budgets. At `C = 0` (devnets) it can decide a match. Letting `winLeafMatch`
+settle as the timeout win the classifier selects was judged not worth revising
+the disjoint verbs.
+
 A non-leaf match resolves when its linked child finishes:
 
 - If the child has a winner within its carryover window, that winner propagates
@@ -810,7 +822,8 @@ finite search discovers and retains clock schedules; it must not be presented
 as that general theorem.
 
 Current Foundry evidence and its remaining gaps live in
-[`prt-contract-testing.md`](prt-contract-testing.md). Cross-client timeout
-alignment and exact-boundary scenarios live in
+[`prt-contract-testing.md`](prt-contract-testing.md). The node's sealed-leaf
+timeout boundaries are tests in its in-crate harness
+(`cartesi-rollups/node/src/harness/`), listed in
 [`test-harness.md`](test-harness.md). The review archive is historical evidence,
 not a hidden backlog.

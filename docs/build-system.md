@@ -52,6 +52,14 @@ source checkout is prepared. `just setup` and `just build` are the supported
 fresh-clone path; `just bind` is enough before raw Cargo when an external
 provider is already available.
 
+Just is the public dependency graph: a recipe stays inline when it is a
+command or a short pipeline, and moves to a script beside its subsystem when
+it branches, loops, retries or checksums. The repository's scripts download
+every pinned artifact through `script/fetch.sh`, which keeps a destination
+that already has the pin and otherwise fetches to a temporary path beside it,
+verifies the SHA-256, and renames it into place (CI's machine-package action
+installs its own release packages).
+
 ## Incremental bind
 
 `just bind` regenerates bindings only when the contract sources or the
@@ -303,6 +311,9 @@ debugging the environment:
   cd explicitly in anything that may run from elsewhere.
 - Piped `tail` buffers until process exit; do not wait on it for
   live progress.
+- macOS ships bash 3.2, where `set -u` fails on an empty array.
+- `forge script` resolves a script path against the working directory,
+  not `--root`.
 
 ## Validation
 

@@ -325,7 +325,8 @@ chain with slower finality must not reuse Ethereum's `T` without checking it.
 s by default), the action's preparation (a leaf proof replays the disputed
 input's prefix, bounded by the per-input compute contract), and inclusion.
 A leaf proof, and the fallback timeout claim when the opponent's expiry
-overtakes it, should land within one `G` of the seal.
+overtakes it, should land within one `G` of the seal (dispute-game.md,
+CF-01).
 
 For one leaf match with current live balances `b1`, `b2` and `h` responses left,
 the safe local wall-time bound is `b1 + b2 + h * G`. It cannot be replaced by one

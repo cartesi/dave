@@ -196,7 +196,10 @@ could succeed and cannot be repaired by a later retry.
    at most one garbage-collection intent (`hero/gc_planner.rs`). Match cleanup
    compares event schedules with the sampled latest block number; child
    cleanup consumes the tournament standing overlay. Deeper work wins, and a
-   cleanup is selected only when that tick has no Hero response.
+   cleanup is selected only when that tick has no Hero response. Cleanup
+   plans eliminations only: the node never propagates a Sybil-versus-Sybil
+   child's winner, which may linger until its carryover window ends (up to
+   `T + 2G` more per child, one Sybil bond each).
 4. A won inner tournament propagates to the parent match; losing the root
    tournament is reported (and should page a human: it means our
    commitment is wrong or we were censored beyond the protocol's bound).

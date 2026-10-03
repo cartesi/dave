@@ -106,8 +106,9 @@ is a local preparation error; no proof action is submitted.
 
 Inside one big cycle, the uarch typically halts long before spending its
 2^20 budget. The remaining slots are padded by repeating the halted state
-hash (`repetitions` in leaf storage), so every big cycle contributes exactly
-2^20 leaves. After the machine yields for the last time in an input
+hash (a run's `repetitions`, held in memory only), so every big cycle
+contributes exactly 2^20 leaves. After the machine yields for the last time
+in an input
 window (or halts), the remaining big cycles idle - but only their
 boundaries repeat the final state. The yield and halt flags gate the
 big machine, not the uarch: stepping the uarch of an idle machine
@@ -277,8 +278,8 @@ one root per big cycle. The node takes the active cycles' roots from the
 emulator's uarch collector (`cm_collect_uarch_cycle_root_hashes` bundled at
 2^20, so each mcycle's entries end with its cycle's root), and an idle
 stretch steps one captured span and repeats its root. The tree is the one
-stepping every span would build. The stepped path stays as the reference
-(plans/two-level-sling.md, D7) and covers one cycle the v0.21 collector gets
+stepping every span would build. The stepped path stays, permanently, as the
+test reference, and in production it covers one cycle the v0.21 collector gets
 wrong: a rejection on the input budget's last cycle keeps the physical root
 instead of the revert root, so that cycle is stepped. That fallback cannot
 cover an input whose first cycle is its budget's last, which takes a delivery
@@ -317,13 +318,24 @@ input before executing the first ustep.
 
 The same leaf sequence is computed independently by:
 
-1. the Rust node (`rollups_machine.rs` for level 0, `cartesi-rollups/node` for
-   dispute levels; its dense leaves come from the emulator's collector, the
-   lineage the CLI shares, and its stepped path, kept as a test reference, is
-   what stays independent of it),
+1. the Rust node (`cartesi-rollups/node`: level 0 eagerly in the machine
+   runner, `Ruler::collect` folded per window in `storage/advance.rs`, and
+   dispute levels lazily in `engine/`; its dense leaves come from the
+   emulator's collector, the lineage the CLI shares, and its stepped path,
+   kept as a test reference, is what stays independent of it),
 2. the Lua client (`prt/client-lua/computation/`), and
 3. implicitly, the on-chain state transition (one leaf transition at a
    time).
+
+Roles: Solidity (`CartesiStateTransition` over `machine/step`) is the
+authority for one transition. The release corpus is immutable conformance
+evidence; the release CLI replays it through the emulator's collectors, so it
+is not independent of the node's bulk path. The node's stepped path, the Lua
+client and the test-only prototype builder are the independent lineages.
+Agreement alone is not evidence (at seam 2 the node and the v0.21.0 CLI once
+agreed and were both wrong): a divergence between any two is settled by
+proving the transition through Solidity, and a golden is regenerated only
+after its differential passes.
 
 Any divergence between (1)/(2) and (3) means an honest node loses a
 dispute it should have won. The e2e tests cross-check (1) against (2)
