@@ -11,7 +11,10 @@ carry no backlog (reviews/README.md).
   testnet. It is a new deployment generation: 2c502f63 changed the
   `TournamentParameters` row and the clone arguments, so this node cannot
   start against earlier contracts. The release notes name the generation,
-  its addresses, geometry and bonds. (build-system.md, CHANGELOG.md)
+  its addresses, geometry and bonds, and say that only Ethereum is supported:
+  the Arbitrum entries now share Ethereum's and Sepolia's addresses, are
+  experimental, and the node does not start there. (build-system.md,
+  CHANGELOG.md)
 - Operator notes in the node README: a warning that repeats every tick is a
   stall (rebuild after an input gap), and an error asks for an operator
   (link the failure policy's log levels); on foreclosure, stop the node once

@@ -118,18 +118,23 @@ contract DeploymentScript is BaseDeploymentScript {
     }
 
     /// @notice Register configured deployment targets.
-    /// @dev Registration is not a protocol-support designation. Ethereum is
-    /// the supported target; other entries are experimental until their time
-    /// coordinate and conversion are validated.
+    /// @dev Registration is not support: Ethereum is the supported target and
+    /// every other entry is experimental (docs/dispute-game.md, Clock model).
+    /// Coordinate: an entry's block time is the interval of what
+    /// `block.number` counts, which on OP Stack chains is the L2 block and on
+    /// Arbitrum chains the parent chain's block, so Arbitrum One and Sepolia
+    /// take Ethereum's and Sepolia's 12 s (and their addresses). Fee: refunds
+    /// price `gasleft` deltas at `tx.gasprice`, so an L2's parent-chain data
+    /// fee is not refunded.
     function _registerChains() internal {
         _registerChain(1, ChainKind.MAINNET, Milliseconds.wrap(12000));
         _registerChain(10, ChainKind.MAINNET, Milliseconds.wrap(2000));
         _registerChain(8453, ChainKind.MAINNET, Milliseconds.wrap(2000));
         _registerChain(13370, ChainKind.DEVNET, Milliseconds.wrap(12000));
         _registerChain(31337, ChainKind.DEVNET, Milliseconds.wrap(12000));
-        _registerChain(42161, ChainKind.MAINNET, Milliseconds.wrap(2500));
+        _registerChain(42161, ChainKind.MAINNET, Milliseconds.wrap(12000));
         _registerChain(84532, ChainKind.TESTNET, Milliseconds.wrap(2000));
-        _registerChain(421614, ChainKind.TESTNET, Milliseconds.wrap(2500));
+        _registerChain(421614, ChainKind.TESTNET, Milliseconds.wrap(12000));
         _registerChain(11155111, ChainKind.TESTNET, Milliseconds.wrap(12000));
         _registerChain(11155420, ChainKind.TESTNET, Milliseconds.wrap(2000));
     }

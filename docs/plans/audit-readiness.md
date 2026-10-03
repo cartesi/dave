@@ -160,7 +160,9 @@ addresses (build-system.md).
 ## Ordering
 
 1. This PR: the node debts and R10, and the docs. The contracts are
-   unchanged since b5e3e4ca, whose calibration 3700a1d5 accepted.
+   unchanged since b5e3e4ca, whose calibration 3700a1d5 accepted; the
+   deployment script registers the Arbitrum entries at the parent chain's
+   12 s, so their addresses now equal Ethereum's and Sepolia's.
 2. A release candidate for the staging pipeline and testnet. It is a new
    generation: 2c502f63 changed the `TournamentParameters` row and the clone
    arguments, so this node cannot start against earlier contracts, and the

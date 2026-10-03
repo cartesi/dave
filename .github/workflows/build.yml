@@ -426,7 +426,7 @@ jobs:
         env:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-contract-artifacts.tar.gz
 
-      - name: Simulate deployment to supported testnets and mainnets
+      - name: Simulate deployment to every registered chain (only Ethereum is supported)
         working-directory: ./cartesi-rollups/contracts
         run: |
           ./script/deploy-testnets.sh

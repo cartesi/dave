@@ -80,4 +80,13 @@ contract DeploymentTest is Test {
     function testEthereumSepoliaClockCalibration() public {
         _assertBudgets(_rowZero(11155111), (8 hours) / (12 seconds));
     }
+
+    // Arbitrum's NUMBER is the parent chain's block number.
+    function testArbitrumOneClockCalibration() public {
+        _assertBudgets(_rowZero(42161), (1 weeks) / (12 seconds));
+    }
+
+    function testArbitrumSepoliaClockCalibration() public {
+        _assertBudgets(_rowZero(421614), (8 hours) / (12 seconds));
+    }
 }

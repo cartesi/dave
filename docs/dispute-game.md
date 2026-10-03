@@ -501,13 +501,29 @@ may eventually eliminate a no-winner child.
 
 The current `Time` library uses `block.number` as its instant. Deployment code
 converts configured wall-clock durations to block counts using a registered
-average block time. Therefore a wall-clock statement is only valid when the
-chain's `block.number` semantics and the registered conversion agree. Ethereum
-is the supported deployment target. Other base chains are experimental unless
-their time coordinate and conversion have been validated explicitly. In
-particular, the current Arbitrum entries are not valid because the EVM
-`NUMBER` opcode exposes the parent-chain block coordinate. See historical
-finding PRT-001 in the
+average block time, the interval of whatever `block.number` counts on that
+chain. Therefore a wall-clock statement is only valid when the chain's
+`block.number` semantics and the registered conversion agree. Registration is
+not support: Ethereum is the supported deployment target, and every other
+registered chain is experimental. Refunds price `gasleft` deltas, so on an L2
+the parent-chain data fee is not refunded.
+
+- OP Stack chains (OP and Base, mainnet and Sepolia) register their 2 s L2
+  block, which `block.number` counts, so the conversion is exact while that
+  block time holds. Deployed budgets are block counts: a network upgrade that
+  shortened the block time would shorten every wall-clock budget. Finality
+  against `T`, fee conformance and sequencer censorship are not validated.
+- Arbitrum One and Arbitrum Sepolia register 12 s: their `NUMBER` opcode
+  returns an estimate of the parent chain's block number (Ethereum's or
+  Sepolia's), so their deployment arguments, and therefore their addresses,
+  equal Ethereum's and Sepolia's. That number moves in sequencer-synced steps
+  that `G` must absorb, and the sequencer can hold it back and let it jump; a
+  jump charges running clocks like censorship, drawing on `C` (Arbitrum's
+  documented behavior, leads to verify). The node cannot start there
+  (node-architecture.md, Process layout). Promotion needs time-conformance
+  evidence (TEST-TIME-001) and node support.
+
+See historical findings PRT-001 and TEST-TIME-001 in the
 [`REVIEW.md`](reviews/2026-07-21-prt-dispute-game/REVIEW.md).
 
 Each commitment clock stores an allowance and a start instant:
