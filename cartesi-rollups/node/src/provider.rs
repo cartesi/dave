@@ -244,7 +244,8 @@ impl TransactionLane {
 
     /// Submit one fully specified call at the base nonce, failing on
     /// a transport or signing error. Pool verdicts short of failure
-    /// stay benign, as in a wave.
+    /// stay benign, as in a wave. Production submits whole waves.
+    #[cfg(test)]
     pub async fn submit(&mut self, label: &str, request: TransactionRequest) -> Result<SendReport> {
         let mut reports = self.submit_wave(vec![(label.to_string(), request)]).await?;
         let report = reports.pop().expect("one request yields one report");
