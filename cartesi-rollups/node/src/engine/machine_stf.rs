@@ -666,8 +666,10 @@ impl DisputeSource<Positioner> {
         self.factory_mut().shutdown = shutdown;
     }
 
-    /// Rulers positioned so far: one per build or recompute that ran
-    /// the machine. Cached and frontier-served nodes take none.
+    /// Machines loaded so far, which moves exactly when a build,
+    /// recompute or proof ran the machine; not one per build, since
+    /// positioning loads again after crossing inputs or skipping a torn
+    /// snapshot. Cached and frontier-served nodes load none.
     pub fn trips(&self) -> usize {
         self.factory().spawned
     }
