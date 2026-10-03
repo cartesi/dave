@@ -378,7 +378,7 @@ The 2026-08-17 five-lane battery exposed two additional scheduling cases:
   ordering across restart. The historical battery result does not validate
   the revised implementation.
 
-Known blind spots, by layer:
+## Known blind spots, by layer
 
 - (current 2026-08-09) The Rust tournament reader's focused suite covers the
   recursively owned `Dispute`, block-grouped local transitions, dynamic child

@@ -94,7 +94,7 @@ Three worker threads share one SQLite database (see
      |
      +-- settlement + recoveries + completion cursor
 
-  machine-runner  ---- leaves, snapshots, window quartets ----> SQLite
+  machine-runner  ---- snapshots, window-root quartets -------> SQLite
 ```
 
 - blockchain-reader (`cartesi-rollups/node/src/blockchain_reader`): polls
@@ -192,8 +192,13 @@ computation cache.
 
 ## Settlement invariant
 
-`EpochManager::plan_stage_tournament_result` asserts that the tournament winner's
-commitment equals the locally computed computation hash. Today a mismatch
-panics the node (see the debts list in `docs/node-architecture.md`); the
-intended semantics is "this is a critical incident: either our node is
-buggy or the protocol was defeated" - it must never be silently ignored.
+Staging is planned only after the local Hero reports the root won. It then
+asserts that the winner's commitment and final state equal the locally
+computed ones, and acceptance asserts the same of the staged final state and
+outputs root; a mismatch there means a node bug or corrupt local state, so it
+panics (node-architecture.md, failure policy). Those reads are taken at latest,
+apart from the Hero's own head; whether a tip reorg between the two can fire
+an assert once without a node bug is a lead. A lost root or a root without a
+winner is an error log every tick and is never staged; a lost root should page
+a human. A won root whose final state does not settle is held with an error
+(the terminal case above).

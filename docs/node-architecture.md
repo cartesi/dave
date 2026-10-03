@@ -19,7 +19,7 @@ runtime (`lib.rs run()`), each owning its own SQLite connection:
 - blockchain-reader (async task): chain logs -> db (inputs, epochs,
   last processed block)
 - machine-runner (spawn_blocking, the blocking lane): db inputs ->
-  machine execution -> db (leaves, snapshots, settlement info)
+  machine execution -> db (window roots, snapshots, settlement info)
 - epoch-manager (async task): db + chain -> settle txs and dispute
   reactions
 
@@ -30,7 +30,9 @@ configured state transition. The node compiles in no tournament geometry: it
 accepts any table that passes `engine::TournamentGeometry`'s validator (the
 root spans the 92-bit machine coordinate, each level tiles one leaf of its
 parent, the leaf level steps single transitions, and the root stride lies
-between one big cycle and one input window), and it refuses to start unless
+between one big cycle and one input window). It does not judge whether a
+table can be built in time (one warning for a leaf taller than its measured
+capacity) and does not pin or check `T`. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
 linked Cartesi Machine library. These checks run before database
 initialization, so an incompatible deployment cannot create or alter local
@@ -52,11 +54,64 @@ interrupt against every handle, turns the first exit into a shutdown
 request, then awaits EVERY remaining handle (dropping one would
 detach its task mid-drain). A worker returning before shutdown was
 requested counts as failure even on Ok: silence is not success.
-Panics surface as JoinErrors and are treated like errors. All three
-workers retry failed ticks with a warning rather than dying -
-transient provider or storage hiccups cost one polling interval;
-invariant violations are asserts and stay fatal through the panic
-path.
+Panics surface as JoinErrors and are treated like errors. How a worker
+fails is the failure policy below.
+
+## Failure policy
+
+The Rust node is the only honest dispute client; the Lua player is an e2e
+adversary. Every honest node runs this code on the same chain, so whatever
+chain data deterministically stops one node stops all of them at the same
+block, and the adversary picks the block. That makes two rules protocol
+safety, not hygiene:
+
+- P1. If an adversary can make the honest node halt or stall
+  deterministically, N honest nodes protect like zero. No check may reject
+  a state or event sequence the contracts can produce, or an input the
+  trusted application can process. This generalizes the tournament fold's
+  rule (Chain ingestion stance, below): the fold rejects only an event it
+  cannot apply without guessing, a sequence the contracts cannot emit, so its
+  rejections fire only on RPC faults, reorged tails and node bugs. On a path
+  the clocks depend on there is no safe way to fail, since holding a dispute
+  step is the stall. Holding is safe only off the clock path: a won root whose
+  final state cannot settle is held with an error log (epoch-lifecycle.md,
+  the terminal application).
+- P2. Spend distrust where a lie would be silent, not where it would fail
+  loudly. Ingestion checks every input's index because a dropped log would
+  silently shift every later commitment. Re-proving contract rules on the
+  dispute path buys little against commission: a fabricated value yields an
+  action the contract rejects, which the lane skips at estimation with a
+  warning. It does nothing against omission or a lying read: a missing
+  finalized log or a false standing can make the Hero wait instead of act,
+  and nothing reverts. The fold keeps the guards that stop it from guessing;
+  tournament-log completeness and truthful pinned reads otherwise stay
+  trusted RPC properties.
+- When the two conflict, split the check: keep a panic only for what
+  corruption alone can reach, and move what chain data can reach off the
+  clock path. f371381c did this after a terminal application panicked every
+  node at the roll, which would have let a fabricated claim win uncontested.
+
+Two input-reachable halts are accepted rather than defended. More than 2^24
+inputs in one epoch: the contracts handle it (they never feed the tail) but
+the node panics, and reaching it takes a flood of about 5e11 gas
+(dimensioning.md); a defect accepted on cost. An input whose computation
+overruns its window: the engine panics rather than invent a transition shape
+(`engine/ruler.rs`); the trusted application and the per-input compute
+contract keep it out of model. P1 also holds only inside the trust model: a
+broken trusted assumption (finalized and complete RPC data, a stable
+parameters provider, a guest that yields through well-formed requests) may
+stop every node at once.
+
+Workers retry a failed tick with a warning that carries the whole error
+chain: a transient provider or storage error costs one polling interval, and
+a warning that repeats tick after tick is a stall to investigate. Two stalls
+need an operator: a log missing from the tail of ingested inputs (rebuild the
+state directory) and one missing from the reader's finalized fold (restart,
+which refolds). Asserts are for states reachable only through a node bug,
+corrupt local state, a broken trusted assumption, or an already-defeated
+protocol; there, stopping loudly is the alarm. A panic stops every worker,
+refunds included (`lib.rs`, `worker_failure`), and a restart re-plans the
+same step.
 
 ## Storage
 
@@ -297,6 +352,21 @@ rebuilds intent from fresh observation. The mempool or a separately configured
 revert-protecting endpoint arbitrates races and duplicates. The signer must be
 exclusive to one node instance and funded for the whole pending batch's fee
 envelopes and call values. Nested tournaments require their own join bonds.
+
+## Performance stance
+
+The node claims only that it adds no work over the emulator's own. Whether
+a geometry fits an application on given hardware is measured with the
+emulator (docs/measurements/constants.md) and sized by the operator; the
+node never refuses to run for performance. CI gates deterministic work
+counts, never time (`engine/spec.rs`: a leaf build runs each ustep once, an
+idle stretch costs one span, folded spans cost no machine work; a join
+replays the disputed input's prefix once for the build and once per stored
+fanout stratum, five times at height 37, within the measured overhead).
+Before releases and hot-path changes, `just measure-node-vs-emulator` times a
+cold join and a deep proof against the emulator on the same host, with peak
+RSS and disk (docs/measurements/node-vs-emulator.md). At runtime the Hero
+logs each action's preparation time, commitment builds included.
 
 ## Known debts
 
