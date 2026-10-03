@@ -377,10 +377,11 @@ prefix (a provider fault or a mixed fork) does not survive it. A finalized
 event that does not fold onto Solid (an omitted log surfacing at the match's
 next event) drops Solid in process, and the next tick takes the same cold
 path; transport, harvest and decode failures keep it and retry the range. An
-omission that still folds, such as a missed advance or join, stays silent, and
-one may surface too late: a missed creation of the Hero's own match, when the
-Hero moves first, fails to fold only at the opponent's timeout deletion. Log
-completeness is a trusted RPC property.
+omission that still folds, such as a missed advance, or a missed join until
+a match pairs it, stays silent, and one may surface too late: a missed
+creation of the Hero's own match, when the Hero moves first, fails to fold
+only at the opponent's timeout deletion. Log completeness is a trusted RPC
+property.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest
