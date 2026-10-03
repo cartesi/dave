@@ -30,7 +30,10 @@ mechanisms (requiring emulator support) are future research, far off.
 Until then the assumption is explicit: the app developer is trusted,
 and trusted specifically to keep input-reachable behavior disputable.
 The developer also authors the template machine, which must carry the
-deployed step's pristine uarch (docs/computation-hash.md).
+deployed step's pristine uarch (docs/computation-hash.md) and yield through
+well-formed requests as libcmt writes them: the off-chain clients classify
+a yield through the emulator's CMIO request, which is stricter than the
+step, so a guest writing its own malformed yield can stop them.
 
 ## The rule
 
@@ -101,7 +104,7 @@ adversary will find it.
 | input span per epoch (2^24) | input flood | anyone, at roughly 5e11 gas per epoch | out of model (economic) |
 | leaf-level dense build within the commitment budget | aggregate | trusted app | average density |
 | root slowdown (level-0 sampling overhead) | aggregate | trusted app | average |
-| positioning through an input's prefix | aggregate | trusted app (per-input compute is an app design contract) | app profile |
+| positioning through an input's prefix | aggregate | trusted app (the per-input compute contract, below) | app profile |
 | which gap / which leaf gets disputed | - | dispute adversary | worst location |
 
 The halt/exception protocol gap found on 2026-07-15 is closed by the
@@ -123,6 +126,34 @@ span followed by reset; they are constant only at big-cycle boundaries and
 coarser samples. Keep contract transition tests for every terminal reason and
 the emulator computation-hash corpus in the release gate. In particular, do
 not infer leaf semantics only from the big-machine run break reason.
+
+## Per-input compute contract
+
+How much computation one input may take is an application design contract,
+like average density: the trusted developer promises it, and nothing below
+the 2^48 coordinate span enforces it. Clocks depend on it because work inside
+one input is replayed, never cached, by three honest actions:
+
+- A root-level response inside an input runs that input from its boundary,
+  sampling at the root stride. The first such response also replays the
+  inputs between the last kept snapshot and the disputed one, up to
+  `--snapshot-gap-inputs - 1` of them (64 by default, chosen by the
+  operator). That work must fit `G`.
+- A join's positioning and a leaf proof replay the disputed input's prefix
+  from its boundary.
+
+Under the two-level table (`[55, 37]`, `G` of five minutes, hardware slack
+2), the hash-cost curve in docs/measurements/constants.md (stress workload,
+measured on v0.20) gives about 3.5 ns per big cycle to run and about 7 ns
+per big cycle sampled at stride 2^37. That puts the contract near 2^34 big
+cycles per input at a gap of 1, and near 2^29 at the default gap of 64,
+where the prefix replay dominates. These are estimates on one workload; a
+v0.21 re-measurement on validator-grade hardware confirms or replaces them.
+Heavy applications lower the gap.
+
+An overrun is charged to the honest clock beyond `G` and draws on `C`: it
+spends censorship tolerance before it loses a dispute. Past the contract, as
+past the other out-of-model bounds, the protocol promises nothing.
 
 ## Base-layer censorship model
 
@@ -283,6 +314,19 @@ most 7 hours 45 minutes, but only action by action. Re-pairing creates a new mat
 response discounts. The configured scalar remains five minutes, or 25 blocks
 on Ethereum.
 
+The honest node builds a child commitment from the latest view but joins
+only from finalized state, so a join lands about `max(build, finality) +
+inclusion` after the seal. `T + G` covers that while finality stays within
+`T` (13 to 19 minutes on Ethereum today). A finality stall behaves like
+censorship and draws on `C`, as does the root join's one finality delay. A
+chain with slower finality must not reuse Ethereum's `T` without checking it.
+
+`G` must also cover the honest node's own latency: one polling interval (30
+s by default), the action's preparation (a leaf proof replays the disputed
+input's prefix, bounded by the per-input compute contract), and inclusion.
+A leaf proof, and the fallback timeout claim when the opponent's expiry
+overtakes it, should land within one `G` of the seal.
+
 For one leaf match with current live balances `b1`, `b2` and `h` responses left,
 the safe local wall-time bound is `b1 + b2 + h * G`. It cannot be replaced by one
 allowance: a reachable equal-allowance schedule takes `2A - 1`, and a third
@@ -333,9 +377,10 @@ output is evidence for a parameter set, not a permanent constant: workloads,
 hardware assumptions, rounding, and the intended level count must travel with
 the generated table. These tools take `T` and root slowdown as inputs and
 derive strides and heights; they do not derive `G`. The node-owned generator
-and its generated planning prose still use the historical grant wording. That
-documentation correction is intentionally coordinated with the separate node
-branch and tracked in [`constants.md`](measurements/constants.md).
+(`src/bin/measure.rs`) still describes `G` as "five minutes of clock per
+height unit", and its checked-in outputs still name `matchEffort`, a symbol
+that no longer exists; `G` is the per-response inclusion budget above. Fix
+the generator's wording and regenerate rather than hand-editing its output.
 
 This timing and geometry process is separate from EVM refund calibration.
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md) owns
