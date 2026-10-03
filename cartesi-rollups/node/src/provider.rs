@@ -292,9 +292,11 @@ impl TransactionLane {
                         SendVerdict::Stale
                     }
                     SubmissionErrorKind::Other => {
-                        // Loud on purpose: a persistent rejection here
-                        // (an underfunded signer above all) stalls the
-                        // whole nonce tail while dispute clocks run.
+                        // Loud on purpose: a persistent rejection here (an
+                        // underfunded signer; a full pool or a minimum-tip
+                        // policy, either of which a client may word as a
+                        // bare "transaction underpriced") stalls the whole
+                        // nonce tail while dispute clocks run.
                         error!(
                             "failed to submit {label} transaction {tx_hash} \
                              at nonce {nonce}: {error}"
@@ -459,7 +461,6 @@ fn classify_submission_error(error: &TransportError) -> SubmissionErrorKind {
     } else if message.contains("replacement transaction underpriced")
         || message.contains("replacement underpriced")
         || message.contains("fee too low to replace")
-        || message.contains("transaction underpriced")
     {
         SubmissionErrorKind::ReplacementUnderpriced
     } else {
@@ -519,6 +520,25 @@ mod tests {
         assert_eq!(
             classify_submission_error(&error("replacement transaction underpriced")),
             SubmissionErrorKind::ReplacementUnderpriced
+        );
+        // Not replacements, so not a pending transaction to wait out: a full
+        // pool (geth's bare message today), a minimum-tip policy (the same
+        // message on geth 1.13 and erigon), and geth's minimum-tip wording.
+        assert_eq!(
+            classify_submission_error(&error("transaction underpriced")),
+            SubmissionErrorKind::Other
+        );
+        assert_eq!(
+            classify_submission_error(&error(
+                "transaction underpriced: tip needed 1000000000, tip permitted 1"
+            )),
+            SubmissionErrorKind::Other
+        );
+        assert_eq!(
+            classify_submission_error(&error(
+                "transaction gas price below minimum: gas tip cap 1, minimum needed 1000000000"
+            )),
+            SubmissionErrorKind::Other
         );
     }
 
