@@ -114,13 +114,14 @@ before the freeze.
    Importing the upstream constant changes the bytecode and the addresses,
    so it rides the next deployment bundle (normally the next generation);
    list it as a known item.
-6. The leaf-proof gas witnesses in CI. `Gas.WIN_LEAF_MATCH = 5,543,000`
-   (`prt/contracts/src/tournament/libs/Gas.sol:35`), the largest allocation,
-   is witnessed only by the 12 full-stack FFI tests in
+6. The leaf-proof gas witnesses in CI: done. `Gas.WIN_LEAF_MATCH =
+   5,543,000` (`prt/contracts/src/tournament/libs/Gas.sol:35`), the largest
+   allocation, is witnessed only by the 12 full-stack FFI tests in
    `cartesi-rollups/contracts/test/gas/PrtLeafProofGasFfi.t.sol` (the
-   maximum input measured 5,040,748). `rollups-contracts::test` excludes
-   `*FfiTest` (`cartesi-rollups/contracts/justfile:28`) and no workflow
-   calls `test-prt-leaf-gas`; 3700a1d5 accepted them by a manual run.
+   maximum input measured 5,040,748), which `rollups-contracts::test`
+   excludes. 3700a1d5 accepted them by a manual run; the `prt-contracts` CI
+   job now runs `just test-prt-gas`, so a change that pushes a leaf proof
+   past its allocation fails CI.
 
 The refill review's release-evidence item ("Remaining assurance work", 3) is
 covered elsewhere: the gas calibration by 3700a1d5, active real-machine

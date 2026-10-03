@@ -32,11 +32,14 @@ jobs:
           version: 0.21.0
           suffix-version: ""
 
-      # This suite needs the PRT dependencies and the real yield image used by
-      # its Lua proof generator. Devnet and echo are E2E inputs.
+      # The state-transition suites need the PRT dependencies and the real
+      # yield image used by their Lua proof generator; the full-stack leaf-proof
+      # gas witnesses also compile the Rollups project. Devnet and echo are E2E
+      # inputs.
       - name: Prepare PRT state-transition inputs
         run: |
           just prt-contracts::install-deps
+          just rollups-contracts::install-deps
           just programs::download-deps
           just programs::build-yield
 
@@ -47,6 +50,10 @@ jobs:
           just prt-contracts::test-disputes
           just prt-contracts::test-stf
           just prt-contracts::test-stf-fuzzy
+
+      - name: PRT refund-gas witnesses (Tournament and full-stack leaf proof)
+        timeout-minutes: 30
+        run: just test-prt-gas
 
   rollups-contracts:
     runs-on: ubuntu-24.04

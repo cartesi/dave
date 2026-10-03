@@ -31,6 +31,7 @@ test:
 
 # validate the retained full-stack PRT leaf-proof gas witnesses
 test-prt-leaf-gas:
+    ../../script/machine-image-fingerprint.sh verify yield
     ./script/test-prt-leaf-gas.sh
 
 # print the reproducibility header and full-stack PRT leaf-proof measurements

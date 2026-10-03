@@ -30,7 +30,8 @@ just prt-contracts::test-stf-fuzzy
 
 `just prt-contracts::test-all` combines the dispute and state-transition gates.
 `just test-prt-gas` runs both the Tournament-only witnesses and the serialized
-full-stack FFI leaf-proof matrix. The witnesses are one-sided: a pass means
+full-stack FFI leaf-proof matrix, and CI runs it in the `prt-contracts` job.
+The witnesses are one-sided: a pass means
 every allocation still covers its witnesses. Moving a constant has stricter
 toolchain and clean-tree requirements; follow
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md). Ordinary Rollups contract tests and coverage

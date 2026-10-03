@@ -79,11 +79,6 @@ carry no backlog (reviews/README.md).
   the pre-audit items below, freeze and audit identity:
   [plans/audit-readiness.md](plans/audit-readiness.md).
   (prt/contracts/AGENTS.md)
-- Run the full-stack leaf-proof gas witnesses
-  (`rollups-contracts::test-prt-leaf-gas`) in CI: `rollups-contracts::test`
-  skips the FFI suites and no workflow calls the recipe; the Tournament-only
-  witnesses already run inside `test-disputes`.
-  (runbooks/prt-refund-gas-calibration.md)
 - Replace the local `CM_MARCHID = 21` in `CartesiStateTransition` with
   solidity-step's constant once a release exports it; it moves deployed
   addresses, so it rides the next deployment bundle (normally the next
