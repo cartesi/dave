@@ -15,10 +15,7 @@ use std::{fmt, iter::Peekable, time::Duration};
 
 use crate::storage::{Epoch, Input, InputId, Storage};
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
-use cartesi_rollups_contracts::{
-    i_application::IApplication,
-    i_input_box::IInputBox::{self, InputAdded},
-};
+use cartesi_rollups_contracts::{i_application::IApplication, i_input_box::IInputBox::InputAdded};
 
 #[derive(Debug, Clone, Copy)]
 pub struct AddressBook {
@@ -37,7 +34,7 @@ pub struct AddressBook {
     /// initial state hash of application
     pub initial_hash: Hash,
 
-    /// earliest block number where contracts exist
+    /// first block that can hold the application's logs
     pub genesis_block_number: u64,
 }
 
@@ -84,35 +81,6 @@ impl AddressBook {
                 format!("failed to query the tournament factory of consensus {consensus}")
             })?;
 
-        let initial_hash = Self::initial_hash(consensus, provider).await?;
-
-        let input_box_created_block: u64 = IInputBox::new(input_box, provider)
-            .getDeploymentBlockNumber()
-            .call()
-            .await
-            .with_context(|| {
-                format!("failed to query the deployment block of input box {input_box}")
-            })?
-            .try_into()
-            .with_context(|| {
-                format!("input box {input_box} reports a deployment block beyond u64")
-            })?;
-
-        Ok(Self {
-            app,
-            consensus,
-            tournament_factory,
-            input_box,
-            genesis_block_number: input_box_created_block,
-            initial_hash,
-        })
-    }
-
-    /// The initial state from epoch 0's EpochSealed, which the consensus
-    /// emits in its own deployment block.
-    pub async fn initial_hash(consensus: Address, provider: &impl Provider) -> Result<Hash> {
-        let consensus_contract = DaveConsensus::new(consensus, provider);
-
         let consensus_created_block: u64 = consensus_contract
             .getDeploymentBlockNumber()
             .call()
@@ -124,13 +92,44 @@ impl AddressBook {
             .with_context(|| {
                 format!("consensus {consensus} reports a deployment block beyond u64")
             })?;
+        debug!("consensus created {consensus_created_block} at {consensus}");
 
-        debug!(
-            "consensus created {} at {}",
-            consensus_created_block, consensus
-        );
+        let initial_hash = Self::initial_hash(consensus, consensus_created_block, provider).await?;
 
-        let sealed_epochs = consensus_contract
+        let app_created_block: u64 = application_contract
+            .getDeploymentBlockNumber()
+            .call()
+            .await
+            .with_context(|| format!("failed to query the deployment block of application {app}"))?
+            .try_into()
+            .with_context(|| format!("application {app} reports a deployment block beyond u64"))?;
+
+        // Genesis is the earlier of the two deployments, not the InputBox's,
+        // which may predate the application by millions of blocks: the
+        // InputBox refuses inputs for an address without code
+        // (ApplicationNotDeployed), and the consensus seals epoch 0 in its
+        // constructor. Either may come first, since the application binds
+        // its consensus at construction or within its deployment block.
+        // Were this ever false, ingestion would meet a first input index or
+        // epoch number other than 0 and refuse it.
+        Ok(Self {
+            app,
+            consensus,
+            tournament_factory,
+            input_box,
+            genesis_block_number: app_created_block.min(consensus_created_block),
+            initial_hash,
+        })
+    }
+
+    /// The initial state from epoch 0's EpochSealed, which the consensus
+    /// emits in its own deployment block.
+    async fn initial_hash(
+        consensus: Address,
+        consensus_created_block: u64,
+        provider: &impl Provider,
+    ) -> Result<Hash> {
+        let sealed_epochs = DaveConsensus::new(consensus, provider)
             .EpochSealed_filter()
             .address(consensus)
             .topic1(B256::ZERO)
@@ -141,7 +140,7 @@ impl AddressBook {
             .context("failed to query the EpochSealed log of epoch 0")?;
         // The deployment block is `block.number`. Where that is not the log
         // block coordinate (Arbitrum reports the parent chain's), the query
-        // looks in the wrong block.
+        // looks in the wrong block, and so would ingestion from genesis.
         let (epoch_zero, _) = sealed_epochs.first().with_context(|| {
             format!(
                 "no EpochSealed for epoch 0 at consensus {consensus}'s deployment block \
@@ -712,6 +711,54 @@ mod blockchain_reader_tests {
                 .unwrap()
                 .slice()
         );
+
+        drop(anvil);
+        Ok(())
+    }
+
+    /// Genesis is the application's deployment block, which holds epoch
+    /// 0's seal, and a directory seeded there ingests that seal.
+    #[tokio::test]
+    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    async fn ingestion_starts_at_the_application_deployment() -> Result<()> {
+        let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
+        let chain = Chain::new(provider.clone(), Vec::new());
+
+        let latest = chain.latest_block_number().await?;
+        let seals = chain
+            .decoded_logs::<EpochSealed>(address_book.consensus, None, 0, latest)
+            .await?;
+        assert_eq!(
+            seals[0].1.block_number,
+            Some(address_book.genesis_block_number)
+        );
+        let input_box_block: u64 = IInputBox::new(address_book.input_box, &provider)
+            .getDeploymentBlockNumber()
+            .call()
+            .await?
+            .try_into()?;
+        assert!(input_box_block < address_book.genesis_block_number);
+
+        let dir = tempfile::tempdir()?;
+        let template = dir.path().join("_template");
+        crate::storage::sql::test_helper::store_template(&template, |_| {});
+        let storage = Storage::initialize(
+            dir.path(),
+            &crate::storage::Template::inspect(&template)?,
+            address_book.genesis_block_number,
+            address_book.app,
+            address_book.consensus,
+            0,
+            &crate::engine::TournamentGeometry::two_level(),
+        )?;
+        let mut reader = BlockchainReader::new(storage, address_book, Duration::ZERO);
+        // finality trails latest by two blocks
+        mine_blocks(&provider, 3).await?;
+        while !reader.tick(&chain).await? {}
+
+        let sealed = reader.storage.last_sealed_epoch()?.map(|e| e.epoch_number);
+        assert_eq!(sealed, Some(0));
+        assert_eq!(reader.storage.total_input_count()?, 1);
 
         drop(anvil);
         Ok(())

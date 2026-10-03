@@ -197,7 +197,10 @@ impl Storage {
             .map_err(anyhow::Error::from)?;
 
         self.write(|tx| {
-            super::ingest::raise_watermark_in(tx, genesis_block_number)?;
+            // The watermark is the last processed block, and genesis itself
+            // may hold logs: epoch 0's seal is in the consensus's deployment
+            // block. Block 0 holds no transactions, so saturating is exact.
+            super::ingest::raise_watermark_in(tx, genesis_block_number.saturating_sub(1))?;
             super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash(), &dest)?;
             super::snapshots::insert_template_machine_in(tx, template.hash())?;
             sling_config::pin(tx, config)?;
@@ -557,5 +560,16 @@ mod tests {
             "unexpected error: {error:#}"
         );
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
+    }
+
+    /// Genesis holds epoch 0's seal, so it is the first block to ingest.
+    #[test]
+    fn seeding_leaves_genesis_to_ingest() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        let state_dir = dir.path().join("state");
+        let mut storage = initialize_at(&state_dir, &template, 100, Address::ZERO, 1).unwrap();
+        assert_eq!(storage.latest_processed_block().unwrap(), 99);
     }
 }

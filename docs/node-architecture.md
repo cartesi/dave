@@ -363,9 +363,16 @@ tick fails before anything is stored. A gap inside the fetched range retries;
 a log missing from the tail of an already ingested range surfaces only at the
 next input and stops ingestion until the state directory is rebuilt.
 
-Ingestion starts at the InputBox's recorded deployment block, and genesis is
-read at the consensus's (Process layout). Both are `block.number` values, read
-as RPC block numbers, which is why the node does not start on Arbitrum.
+Ingestion starts at genesis, the earlier of the application's and the
+consensus's recorded deployment blocks, so a new application on a long-lived
+InputBox skips the InputBox's history. That is sound because the InputBox
+refuses inputs for an address without code, the consensus seals epoch 0 in
+its constructor, and the application binds its consensus only at
+construction or within its deployment block; were it false, the first input
+index or epoch number would not be 0 and ingestion would refuse it. The
+initial hash is read at the consensus's deployment block (Process layout).
+Both are `block.number` values, read as RPC block numbers, which is why the
+node does not start on Arbitrum.
 
 Ingestion commits at most 10,000 finalized blocks at a time, with their
 watermark, so catch-up holds one chunk's inputs in memory and a restart

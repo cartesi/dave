@@ -154,7 +154,7 @@ pub async fn deploy_app(provider: &DynProvider, deploy: &Deploy) -> Result<Addre
     let salt = FixedBytes::default();
 
     let dave_app_factory_contract = IDaveAppFactory::new(dave_app_factory, provider);
-    let (app, consensus) = dave_app_factory_contract
+    let (app, _) = dave_app_factory_contract
         .calculateDaveAppAddress(
             initial_hash.into(),
             claim_staging_period,
@@ -182,14 +182,14 @@ pub async fn deploy_app(provider: &DynProvider, deploy: &Deploy) -> Result<Addre
         .watch()
         .await?;
 
-    Ok(AddressBook {
-        app,
-        consensus,
-        tournament_factory,
-        input_box,
-        genesis_block_number: 0,
-        initial_hash,
-    })
+    // The production discovery, genesis included.
+    let book = AddressBook::new(app, provider).await?;
+    assert_eq!(
+        (book.input_box, book.tournament_factory, book.initial_hash),
+        (input_box, tournament_factory, initial_hash),
+        "the deployed app disagrees with the devnet bundle"
+    );
+    Ok(book)
 }
 
 /// The reader tests' fixture: key 0 deploys and is the only sentry, and
