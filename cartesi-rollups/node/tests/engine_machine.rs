@@ -29,6 +29,7 @@ use cartesi_rollups_prt_node::merkle::{Digest, MerkleProof};
 use cartesi_rollups_prt_node::storage::{
     Epoch, Input as StorageInput, InputId, LeafProof, Storage, Template,
 };
+use cartesi_rollups_prt_node::sync::ShutdownSignal;
 use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
 use std::collections::BTreeMap;
@@ -1086,14 +1087,14 @@ fn reference_cli_goldens_hold() {
     check_fixture("reference_cli.json", serde_json::json!(computed));
 }
 
-/// Runs one sealed epoch through the production runner (advance,
-/// record, commit, roll) at the given snapshot gap.
-fn run_sealed_epoch(
+/// One sealed epoch over `inputs`, ready for the runner at the given
+/// snapshot gap.
+fn sealed_epoch(
     image: &Path,
     inputs: Vec<Vec<u8>>,
     geometry: &TournamentGeometry,
     snapshot_gap: u64,
-) -> tempfile::TempDir {
+) -> (tempfile::TempDir, Storage) {
     let input_count = inputs.len() as u64;
     let (state_dir, mut storage) = initialized_storage_under(image, inputs, geometry);
     let sealed = Epoch {
@@ -1106,11 +1107,71 @@ fn run_sealed_epoch(
         .insert_consensus_data(1, std::iter::empty(), [&sealed].into_iter())
         .unwrap();
     storage.set_snapshot_gap_inputs(snapshot_gap);
-    MachineRunner::new(storage, Duration::ZERO)
+    (state_dir, storage)
+}
+
+fn process_rollup(storage: Storage, shutdown: ShutdownSignal) {
+    MachineRunner::new(storage, Duration::ZERO, shutdown)
         .unwrap()
         .process_rollup()
         .unwrap();
+}
+
+/// Runs one sealed epoch through the production runner (advance,
+/// record, commit, roll) at the given snapshot gap.
+fn run_sealed_epoch(
+    image: &Path,
+    inputs: Vec<Vec<u8>>,
+    geometry: &TournamentGeometry,
+    snapshot_gap: u64,
+) -> tempfile::TempDir {
+    let (state_dir, storage) = sealed_epoch(image, inputs, geometry, snapshot_gap);
+    process_rollup(storage, ShutdownSignal::default());
     state_dir
+}
+
+/// A stop abandons the runner's batch: the runner checks for it before
+/// each input, so a stopped runner commits nothing, and a restarted one
+/// replays the batch and settles exactly as a run that never stopped.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn a_stopped_runner_drops_its_batch_and_a_restart_replays_it() {
+    let image = echo_image();
+    let inputs = runner_epochs()[0].2.clone();
+    let input_count = inputs.len() as u64;
+    let geometry = three_level();
+    let (state_dir, storage) = sealed_epoch(&image, inputs.clone(), &geometry, 3);
+    let stopped = ShutdownSignal::default();
+    stopped.request();
+    process_rollup(storage, stopped);
+
+    let mut check = Storage::new(state_dir.path()).unwrap();
+    for input in 1..=input_count {
+        assert!(
+            check.snapshot_hash(0, input).unwrap().is_none(),
+            "a stopped runner published boundary {input}"
+        );
+    }
+    assert!(check.settlement_info(0).unwrap().is_none());
+
+    process_rollup(
+        Storage::new(state_dir.path()).unwrap(),
+        ShutdownSignal::default(),
+    );
+    let replayed = check
+        .settlement_info(0)
+        .unwrap()
+        .expect("the restarted runner rolled the epoch");
+    let reference = run_sealed_epoch(&image, inputs, &geometry, 3);
+    let reference = Storage::new(reference.path())
+        .unwrap()
+        .settlement_info(0)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (replayed.computation_hash, replayed.final_state),
+        (reference.computation_hash, reference.final_state)
+    );
 }
 
 /// The settled root and final state of one runner epoch, and the root

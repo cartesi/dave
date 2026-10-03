@@ -76,8 +76,8 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         let shutdown = shutdown.clone();
         tokio::task::spawn_blocking(move || {
             let storage = params.storage()?;
-            let mut machine_runner = MachineRunner::new(storage, params.sleep_duration)?;
-            machine_runner.start(shutdown)?;
+            let mut machine_runner = MachineRunner::new(storage, params.sleep_duration, shutdown)?;
+            machine_runner.start()?;
             Ok(())
         })
     };

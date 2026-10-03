@@ -49,6 +49,7 @@ use crate::{
     machine_runner::MachineRunner,
     provider::{SendVerdict, TransactionLane},
     storage::{Storage, Template},
+    sync::ShutdownSignal,
     tournament::EthArenaSender,
 };
 
@@ -543,7 +544,11 @@ impl Node {
         }
         let reader =
             BlockchainReader::new(Storage::new(state_dir.path())?, world.book, Duration::ZERO);
-        let runner = MachineRunner::new(Storage::new(state_dir.path())?, Duration::ZERO)?;
+        let runner = MachineRunner::new(
+            Storage::new(state_dir.path())?,
+            Duration::ZERO,
+            ShutdownSignal::default(),
+        )?;
         let manager = EpochManager::new(
             Arc::new(EthArenaSender::new(world.provider.clone())),
             world.lane(HONEST),

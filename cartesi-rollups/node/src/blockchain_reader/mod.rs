@@ -190,11 +190,16 @@ impl BlockchainReader {
             // re-derived from finalized state, so a provider hiccup
             // costs one polling interval. This worker used to die on
             // the first transient error - the exact failure class the
-            // epoch manager's 2026-07-10 fix addressed.
-            let caught_up = self.tick(&chain).await.unwrap_or_else(|e| {
-                log::warn!("blockchain read failed, retrying next tick: {e:#}");
-                true
-            });
+            // epoch manager's 2026-07-10 fix addressed. A stop drops the
+            // tick in flight, which writes nothing: its one write, the
+            // chunk's commit, is synchronous and follows every await.
+            let caught_up = tokio::select! { biased;
+                _ = shutdown.requested() => break Ok(()),
+                ticked = self.tick(&chain) => ticked.unwrap_or_else(|e| {
+                    log::warn!("blockchain read failed, retrying next tick: {e:#}");
+                    true
+                }),
+            };
 
             // Catch up chunk by chunk without a polling sleep, observing
             // shutdown between chunks.

@@ -51,6 +51,7 @@ fn plan_action(plan: &AdvancePlan, gap: u64) -> PlanAction {
 pub struct MachineRunner {
     storage: Storage,
     sleep_duration: Duration,
+    shutdown: ShutdownSignal,
     structure: Structure,
     /// The pinned root stride: each window is sampled at the level-0
     /// leaf spacing of the deployed tournament.
@@ -58,17 +59,22 @@ pub struct MachineRunner {
 }
 
 impl MachineRunner {
-    pub fn new(storage: Storage, sleep_duration: Duration) -> Result<Self> {
+    pub fn new(
+        storage: Storage,
+        sleep_duration: Duration,
+        shutdown: ShutdownSignal,
+    ) -> Result<Self> {
         let config = storage.sling_config()?;
         Ok(Self {
             storage,
             sleep_duration,
+            shutdown,
             structure: config.structure,
             log2_run_stride: config.geometry.root_stride(),
         })
     }
 
-    pub fn start(&mut self, shutdown: ShutdownSignal) -> Result<()> {
+    pub fn start(&mut self) -> Result<()> {
         loop {
             // A failed pass is retried, not fatal: the advance batch
             // is one transaction and replay absorbs re-execution, so
@@ -81,19 +87,24 @@ impl MachineRunner {
 
             // No publishable batch is ready. An open tail shorter
             // than the snapshot gap deliberately waits here.
-            if shutdown.wait_timeout(self.sleep_duration) {
+            if self.shutdown.wait_timeout(self.sleep_duration) {
                 break Ok(());
             }
         }
     }
 
-    /// One tick: publishes every ready batch and roll, then returns.
+    /// One tick: publishes every ready batch and roll, then returns. A
+    /// stop returns after abandoning the batch in progress.
     pub fn process_rollup(&mut self) -> Result<()> {
         loop {
             let plan = self.storage.advance_plan()?;
             match plan_action(&plan, self.storage.snapshot_gap_inputs()) {
                 PlanAction::Idle => return Ok(()),
-                PlanAction::Advance => self.advance(plan)?,
+                PlanAction::Advance => {
+                    if !self.advance(plan)? {
+                        return Ok(());
+                    }
+                }
                 PlanAction::Roll => {
                     let epoch = plan.epoch;
                     self.storage.roll_epoch()?;
@@ -105,13 +116,23 @@ impl MachineRunner {
 
     /// Executes exactly the inputs selected by one coherent plan.
     /// The plan is either a full open-epoch gap or a sealed epoch's
-    /// final remainder.
-    fn advance(&mut self, plan: AdvancePlan) -> Result<()> {
+    /// final remainder. Returns whether it committed: a stop abandons
+    /// the batch before its next input, dropping it like any error
+    /// return (only transient files go), and a restart replays it.
+    fn advance(&mut self, plan: AdvancePlan) -> Result<bool> {
         assert!(!plan.inputs.is_empty());
         let expected = plan.inputs.len();
         let (mut machine, mut batch) = self.storage.begin_planned_advances(&plan)?;
 
         for input in plan.inputs {
+            if self.shutdown.is_requested() {
+                log::info!(
+                    "stopping: abandoned the batch at input {}:{}",
+                    input.id.epoch_number,
+                    input.id.input_index_in_epoch
+                );
+                return Ok(false);
+            }
             assert_eq!(
                 (machine.epoch(), machine.next_input_index_in_epoch()),
                 (input.id.epoch_number, input.id.input_index_in_epoch),
@@ -164,7 +185,7 @@ impl MachineRunner {
         assert_eq!(batch.len(), expected);
         drop(machine);
         self.storage.commit_advances(batch)?;
-        Ok(())
+        Ok(true)
     }
 }
 
