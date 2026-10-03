@@ -8,8 +8,7 @@ plans directory.
 
 The core architecture is deliberate: a central SQLite database with independent
 worker threads that communicate and synchronize through its transaction
-boundary. The per-epoch side databases retired during the rewrite; remaining
-schema and storage debts are tracked below.
+boundary. The per-epoch side databases retired during the rewrite.
 
 ## Process layout
 
@@ -252,16 +251,16 @@ one process, a crossing never adopts a directory GC is removing. A Hero exists
 only for the completion cursor's epoch `e`, after the runner rolled it, and is
 dropped before the cursor advances, so crossings publish states of `e` only.
 Meanwhile GC deletes epochs below both cursors and the gap rows of the
-runner's later epoch, keeping every row of `e` and every epoch's start. Equal
-machine states occur only on contiguous runs of boundaries: a rejected input
-restores its pre-input root, a terminal machine is a fixed point, the delivery
-at the budget edge or to a halted machine changes the state once and leaves it
-terminal, and mcycle otherwise grows. So a run from `e` to a swept row passes
-through a kept start. A dispute boundary whose directory vanished anyway (only
-external deletion does that) is skipped by positioning and republished by the
-next crossing, unless it vanishes between that lookup and the crossing's
-checkout, which panics. Revisit this if GC may ever sweep rows of a live epoch, or a
-second publisher thread appears.
+runner's later epoch, keeping every row of `e` and every later epoch's start.
+Equal machine states occur only on contiguous runs of boundaries: a rejected
+input restores its pre-input root, a terminal machine is a fixed point, the
+delivery at the budget edge or to a halted machine changes the state once and
+leaves it terminal, and mcycle otherwise grows. So a run from `e` to a swept
+row passes through a kept start. A dispute boundary whose directory vanished
+anyway (only external deletion does that) is skipped by positioning and
+republished by the next crossing, unless it vanishes between that lookup and
+the crossing's checkout, which panics. Revisit this if GC may ever sweep rows
+of a live epoch, or a second publisher thread appears.
 
 The runner captures all three settlement leaves from one final machine root,
 checks their emulator proof metadata and Keccak openings, and verifies that
