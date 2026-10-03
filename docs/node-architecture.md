@@ -247,6 +247,22 @@ both the completion cursor and its newest machine epoch. Neither chain
 progress nor manager catch-up can delete the runner's newest durable boundary;
 startup scratch cleanup uses the same bound.
 
+Directory removal is not serialized with publication, and need not be: with
+one process, a crossing never adopts a directory GC is removing. A Hero exists
+only for the completion cursor's epoch `e`, after the runner rolled it, and is
+dropped before the cursor advances, so crossings publish states of `e` only.
+Meanwhile GC deletes epochs below both cursors and the gap rows of the
+runner's later epoch, keeping every row of `e` and every epoch's start. Equal
+machine states occur only on contiguous runs of boundaries: a rejected input
+restores its pre-input root, a terminal machine is a fixed point, the delivery
+at the budget edge or to a halted machine changes the state once and leaves it
+terminal, and mcycle otherwise grows. So a run from `e` to a swept row passes
+through a kept start. A dispute boundary whose directory vanished anyway (only
+external deletion does that) is skipped by positioning and republished by the
+next crossing, unless it vanishes between that lookup and the crossing's
+checkout, which panics. Revisit this if GC may ever sweep rows of a live epoch, or a
+second publisher thread appears.
+
 The runner captures all three settlement leaves from one final machine root,
 checks their emulator proof metadata and Keccak openings, and verifies that
 root again when publishing the next epoch's initial boundary. Capture does not
@@ -405,15 +421,6 @@ RSS and disk (docs/measurements/node-vs-emulator.md). At runtime the Hero
 logs each action's preparation time, commitment builds included.
 
 ## Known debts
-
-State and storage:
-
-1. Snapshot garbage collection removes directories after the transaction that
-   unreferenced them commits. That removal is not serialized with concurrent
-   reads or content-addressed re-adoption. Current worker-role sequencing is
-   relied upon: if a publisher reused the path after GC unreferenced it but
-   before post-commit removal, it could register the path before GC deleted the
-   directory. Serializing removal with re-adoption is a separate follow-up.
 
 Error handling and observability:
 

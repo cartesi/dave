@@ -860,6 +860,43 @@ mod tests {
         assert!(s.nearest_boundary_at_or_before(6, 100).is_err());
     }
 
+    /// GC never removes a directory a crossing can adopt (the argument is in
+    /// node-architecture.md); one that vanished anyway is skipped by
+    /// positioning and republished by the next crossing.
+    #[test]
+    fn a_vanished_dispute_boundary_is_republished() {
+        let (_handle, mut s) = setup_storage();
+        let template = s.snapshot_dir(0, 0).unwrap().unwrap();
+        let mut machine = cartesi_machine::machine::Machine::load(
+            &template,
+            &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
+        )
+        .unwrap();
+        let start = machine.root_hash().unwrap();
+        s.commit_boundary_machine(7, 0, &start, &mut machine)
+            .unwrap();
+        machine
+            .write_memory(cartesi_machine::constants::ar::RAM_START, &[0xA5])
+            .unwrap();
+        let hash = machine.root_hash().unwrap();
+        let dest = s
+            .commit_boundary_machine(7, 4, &hash, &mut machine)
+            .unwrap();
+
+        std::fs::remove_dir_all(&dest).unwrap();
+        let (floor, _) = s.nearest_boundary_at_or_before(7, 4).unwrap();
+        assert_eq!(floor, InputBoundary(0));
+
+        let republished = s
+            .commit_boundary_machine(7, 4, &hash, &mut machine)
+            .unwrap();
+        assert_eq!(republished, dest);
+        assert!(dest.join("config.json").exists());
+        assert_eq!(s.snapshot_hash(7, 4).unwrap(), Some(hash));
+        let (floor, _) = s.nearest_boundary_at_or_before(7, 4).unwrap();
+        assert_eq!(floor, InputBoundary(4));
+    }
+
     #[test]
     fn gc_previous_advances_keeps_gap_boundaries() {
         let (_handle, mut s) = setup_storage();

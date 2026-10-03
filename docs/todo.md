@@ -76,9 +76,6 @@ carry no backlog (reviews/README.md).
   unmarked cases: `MatchHeightOutOfRange`, which guards `LevelCoords::node`,
   and the `children` expect in `engine/dispute.rs`. (node-architecture.md,
   failure policy)
-- Serialize snapshot GC's directory removal with re-adoption; dispute
-  positioning now publishes from the manager's thread too (debt 1).
-  (node-architecture.md)
 - Structured logging (debt 4). (node-architecture.md)
 - A calibrated operating funding floor (debt 5), and receipt-blind lane
   gaps with escalation of a repeated identical intent (debt 6).
