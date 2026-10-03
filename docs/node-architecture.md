@@ -172,13 +172,14 @@ that should page reuses the epoch manager's consecutive-tick rule
 (`repeated_reverts`: a warning first, an error on the next tick). One stall
 needs an operator: a log missing from the tail of a catch-up chunk (rebuild
 the state directory). A tournament event that does not fold onto the reader's
-finalized prefix drops the prefix, and the next tick refolds from the root's
-creation block as a restart would; an omitted log that still folds is not
-detected (RPC completeness is trusted). Asserts are for states reachable only
-through a node bug, corrupt local state, a broken trusted assumption, or an
-already-defeated protocol; there, stopping loudly is the alarm. A panic stops
-every worker, refunds included (`lib.rs`, `worker_failure`), and a restart
-re-plans the same step.
+finalized prefix, or a phase read on the Hero's path that contradicts it, drops
+the prefix, and the next tick refolds from the root's creation block as a
+restart would; any other omitted log that still folds is not detected (RPC
+completeness is trusted). Asserts are for states reachable only through a node
+bug, corrupt local state, a broken trusted assumption, or an already-defeated
+protocol; there, stopping loudly is the alarm. A panic stops every worker,
+refunds included (`lib.rs`, `worker_failure`), and a restart re-plans the same
+step.
 
 Log levels carry that split. ERROR means an operator must act: a lost or
 winnerless dispute, a won epoch that cannot settle, a rejected submission, a
@@ -424,12 +425,15 @@ read), which costs response-clock time on a long dispute, and a bad finalized
 prefix (a provider fault or a mixed fork) does not survive it. A finalized
 event that does not fold onto Solid (an omitted log surfacing at the match's
 next event) drops Solid in process, and the next tick takes the same cold
-path; transport, harvest and decode failures keep it and retry the range. An
-omission that still folds, such as a missed advance, or a missed join until
-a match pairs it, stays silent, and one may surface too late: a missed
-creation of the Hero's own match, when the Hero moves first, fails to fold
-only at the opponent's timeout deletion. Log completeness is a trusted RPC
-property.
+path; transport, harvest and decode failures keep it and retry the range. A
+missed seal or delegation of an engaged match on the Hero's path still folds,
+but its pinned phase read contradicts the match's folded status and fails the
+Hero's tick, which then drops Solid the same way; a Foam tail that lags its
+head costs one such refold. Any other omission that still folds, such as a
+missed advance, or a missed join until a match pairs it, stays silent, and one
+may surface too late: a missed creation of the Hero's own match, when the Hero
+moves first, fails to fold only at the opponent's timeout deletion. Log
+completeness is a trusted RPC property.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest

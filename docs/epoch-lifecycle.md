@@ -209,10 +209,11 @@ could succeed and cannot be repaired by a later retry.
    commitment is wrong or we were censored beyond the protocol's bound).
 
 The reader retains one in-memory Solid dispute between iterations and persists
-none of it; on restart, or after a finalized event fails to fold onto it, the
-node refolds Solid from the chain, starting at the root tournament's creation
-block. Latest Foam never survives a tick. The main quartet cache
-(`sling_nodes`) and machine snapshots remain the computation cache.
+none of it; on restart, after a finalized event fails to fold onto it, or after
+a phase read on the Hero's path contradicts it, the node refolds Solid from the
+chain, starting at the root tournament's creation block. Latest Foam never
+survives a tick. The main quartet cache (`sling_nodes`) and machine snapshots
+remain the computation cache.
 
 ## Settlement invariant
 

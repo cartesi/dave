@@ -11,7 +11,7 @@ use crate::{
     hero::{
         action::{PreparedArenaAction, prepare},
         context::{EpochAnchors, HeroContext},
-        error::Result,
+        error::{ReactError, Result},
         gc_planner::plan_gc,
         planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, plan_hero},
     },
@@ -183,6 +183,14 @@ impl<AS: ArenaSender> Hero<AS> {
     }
 
     pub async fn tick(&mut self) -> Result<HeroTick> {
+        let ticked = self.plan_tick().await;
+        if let Err(ReactError::Anyhow { source }) = &ticked {
+            self.reader.forget_contradicted_solid(source);
+        }
+        ticked
+    }
+
+    async fn plan_tick(&mut self) -> Result<HeroTick> {
         // The node's share of a response's time runs from reading the chain
         // through commitment builds (context assembly builds the local
         // material) and proving to submission; operators compare it with

@@ -64,6 +64,24 @@ impl StateReader {
             .map(|solid| (solid.head, &solid.dispute))
     }
 
+    /// Drops Solid when `error` holds a pinned phase read that contradicts a
+    /// match's folded status, so the next fetch refolds from the root's
+    /// creation block as a restart would. A missed finalized seal or
+    /// delegation still folds, and Foam extends Solid only past `F`, so
+    /// otherwise every tick would fail the same way. A lagging Foam tail
+    /// costs one refold.
+    pub fn forget_contradicted_solid(&mut self, error: &anyhow::Error) {
+        let contradicted = error.chain().any(|cause| {
+            matches!(
+                cause.downcast_ref::<observer::ObserverError>(),
+                Some(observer::ObserverError::EventPhaseMismatch { .. })
+            )
+        });
+        if contradicted {
+            self.solid = None;
+        }
+    }
+
     /// Returns one disposable Latest observation after advancing Solid.
     pub async fn fetch_from_root(&mut self, root: Address) -> Result<(ChainHead, Dispute)> {
         let finalized = self.chain.finalized_head().await?;
@@ -1200,6 +1218,89 @@ mod tests {
                 range("0x28", "0x2b"),
             ]
         );
+    }
+
+    /// A missed finalized seal still folds, so only the Hero's pinned phase
+    /// read sees it, and its failed tick hands that error back.
+    #[tokio::test]
+    async fn a_phase_contradiction_drops_solid_and_the_next_tick_refolds() {
+        let root = address(1);
+        let finalized = head(41, 0x41);
+        let id = MatchID {
+            commitment_one: digest(10),
+            commitment_two: digest(20),
+        };
+        // The provider omits the match's LeafMatchSealed.
+        let logs = vec![
+            join_log(root, finalized, 0, id.commitment_one),
+            join_log(root, finalized, 1, id.commitment_two),
+            match_created_log(root, finalized, 2, id, 60),
+        ];
+        let (chain, asserter, requests) = recording_chain();
+        let mut reader = StateReader::new(chain.clone(), 40);
+        let cold_fold = || {
+            asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
+            push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
+                &asserter,
+                &descriptor_response(0, TournamentKind::Leaf),
+            );
+            asserter.push_success(&logs);
+            asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
+        };
+        cold_fold();
+        reader.fetch_from_root(root).await.unwrap();
+
+        push_call_response::<bindings::Tournament::classifyMatchTimeoutCall>(
+            &asserter,
+            &bindings::Tournament::classifyMatchTimeoutReturn {
+                actualPhase: 3,
+                outcome: 0,
+                deferredCharge: 0,
+            },
+        );
+        let (solid_head, solid) = reader.solid().unwrap();
+        let match_ = solid.root().match_by_id_hash(&id.hash()).unwrap();
+        let contradiction = observer::read_match(&chain, solid.root(), match_, solid_head)
+            .await
+            .unwrap_err();
+        let as_the_hero_fails = |source| {
+            anyhow::Error::from(crate::hero::context::ContextError::MatchRead {
+                tournament: root,
+                match_id_hash: id.hash(),
+                source,
+            })
+        };
+
+        // Any other failure of the same read keeps Solid.
+        reader.forget_contradicted_solid(&as_the_hero_fails(anyhow!("call timed out")));
+        reader.forget_contradicted_solid(&as_the_hero_fails(
+            observer::ObserverError::ResolvedMatchSelected {
+                match_id_hash: id.hash(),
+            }
+            .into(),
+        ));
+        assert_eq!(reader.solid().unwrap().0, finalized);
+
+        reader.forget_contradicted_solid(&as_the_hero_fails(contradiction));
+        assert!(reader.solid().is_none());
+
+        cold_fold();
+        reader.fetch_from_root(root).await.unwrap();
+        assert!(asserter.read_q().is_empty());
+        let ranges = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request["method"] == "eth_getLogs")
+            .map(|request| {
+                (
+                    request["params"][0]["fromBlock"].clone(),
+                    request["params"][0]["toBlock"].clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let creation = (serde_json::json!("0x28"), serde_json::json!("0x29"));
+        assert_eq!(ranges, vec![creation.clone(), creation]);
     }
 
     #[tokio::test]
