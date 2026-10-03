@@ -1,7 +1,7 @@
 ANVIL_LOAD_PATH := "../../../cartesi-rollups/contracts/state.json"
 DEPLOYMENTS_DIR := "../../../cartesi-rollups/contracts/deployments/31337"
 
-WEB3_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+CARTESI_SLING_AUTH_PRIVATE_KEY := "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
 set positional-arguments
 
@@ -28,7 +28,7 @@ preflight PROGRAM SCENARIO:
 # lanes into swap (the 2026-07-10 battery freezes).
 # run one PRT rollups scenario: just test <program> <scenario>
 test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
-  WEB3_PRIVATE_KEY={{WEB3_PRIVATE_KEY}} \
+  CARTESI_SLING_AUTH_PRIVATE_KEY={{CARTESI_SLING_AUTH_PRIVATE_KEY}} \
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
   TEMPLATE_MACHINE=`realpath "../../../test/programs/$1/machine-image"` \
   TEMPLATE_MACHINE_HASH=`cartesi-machine-stored-hash "../../../test/programs/$1/machine-image"` \

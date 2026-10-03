@@ -53,10 +53,10 @@ path.
 
 ## Storage
 
-Everything lives under `--state-dir`:
+Everything lives under `--data-dir`:
 
 ```
-state_dir/
+data_dir/
   db.sqlite3          main database (WAL mode, busy_timeout 10s)
   snapshots/0x<hash>/ machine snapshots, named by machine root hash
   <epoch_number>/     per-epoch dispute scratch dir
