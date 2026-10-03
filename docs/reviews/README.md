@@ -13,8 +13,8 @@ These records are:
 
 Current behavior belongs in the living documents indexed by
 [`docs/README.md`](../README.md). Unfinished work from a completed review must
-have a living owner, such as a plan, issue, runbook, or current design document.
-Do not use a dated review directory as a hidden backlog.
+have a line in [`docs/todo.md`](../todo.md) or an owner in a current design
+document or runbook. Do not use a dated review directory as a hidden backlog.
 
 ## Reviews
 

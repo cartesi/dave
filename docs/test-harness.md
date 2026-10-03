@@ -428,11 +428,10 @@ constants. Parallel `TEST_INSTANCE` lanes already remove serial
 fixed-port execution from the wall-time model.
 
 Levers: the fast-forward crank (ff=128), TEST_INSTANCE parallel
-isolation, and the loud scenario deadline are done and default. Still
-open: the test-shape constants profile (smaller clock allowances and
-shallower trees would shrink protocol-time fast-forwarding at the
-source; contracts-side gap, the engine's Structure is ready) - its
-urgency dropped once the pinned reader landed.
+isolation, and the loud scenario deadline are done and default. A
+test-shape constants profile (smaller clock allowances and shallower trees)
+would shrink protocol-time fast-forwarding at the source; it is a
+conditional item in [todo.md](todo.md), tied to the two-level switch.
 
 Current tiering: every maintained scenario is on the smoke list, so per-PR CI
 gives each one complete integration path. Yield's unique value is the revert

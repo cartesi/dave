@@ -20,10 +20,10 @@ Procedure, per document:
 3. Fix what drifted. Prefer fixes that cannot rot again: replace counts
    with "see <file> for the current list", link the authoritative file
    instead of restating its contents.
-4. Check status headers: a plan whose own completion criteria are met
-   should be marked frozen per the policy in `docs/README.md`; a
-   "known debts" entry describing code that no longer exists should be
-   marked retired with the date, matching the sibling entries' style.
+4. Check status claims: work a doc calls planned may have landed (check
+   git log); state it in the present tense and delete its line from
+   `docs/todo.md`. A known debt the code no longer has is deleted, not
+   marked.
 5. For invariant-type claims that look wrong, do not silently "fix" the
    doc: the code is the source of truth, but a disagreement may be a
    code bug. Verify deeply, then either fix the doc with evidence or

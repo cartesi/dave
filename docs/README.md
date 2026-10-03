@@ -24,8 +24,8 @@ Reading order for newcomers:
    SQLite boundary, dispute engine, and known-debts inventory.
 7. [test-harness.md](test-harness.md) - the Lua e2e orchestration, the
    cross-implementation oracle, and coverage gaps.
-8. [build-system.md](build-system.md) - setup/build pipeline and open
-   design questions (bindings, emulator dependency).
+8. [build-system.md](build-system.md) - setup/build pipeline, the open
+   bindings question, and the resolved emulator-provider policy.
 
 Related, elsewhere in the repo:
 
@@ -53,19 +53,16 @@ findings and evidence, but they are not current specifications or third-party
 assurance reports. The completed 2026-07 PRT campaign is archived at
 [reviews/2026-07-21-prt-dispute-game/](reviews/2026-07-21-prt-dispute-game/).
 
-Plans: [plans/](plans/) is for active work, not completed campaign history.
-The upgrade ledger is [plans/stf-upgrade.md](plans/stf-upgrade.md); the
-two-level campaign that now orders its remaining phases is
-[plans/two-level-sling.md](plans/two-level-sling.md); the bulk-collector
-qualification evidence is
-[plans/collect-hashes-migration.md](plans/collect-hashes-migration.md).
-[plans/tooling-footguns.md](plans/tooling-footguns.md) is a backlog of
-observed tooling friction.
-[plans/test-strategy-reset.md](plans/test-strategy-reset.md) restates what
-each test layer must establish and orders the move from e2e toward unit
-tests, benchmarks and an anvil harness.
-Completed plans are deleted after stable invariants move into living docs; Git
-and pull-request history preserve the exploration.
+To-do: [todo.md](todo.md) is the one live list of agreed work; each item
+names the living doc that owns its reasoning, and a done item is deleted. A
+campaign too large for a few lines may open a plan under [plans/](plans/),
+linked from todo.md; when it ends, its lasting invariants move into the living
+docs and the plan is deleted. Git and pull-request history preserve the
+exploration. The five earlier campaign plans still under plans/
+(`stf-upgrade`, `two-level-sling`, `collect-hashes-migration`,
+`test-strategy-reset`, `tooling-footguns`) are already folded into the living
+docs and todo.md; they stay only until the code comments that cite them are
+re-pointed, so do not add to them.
 
 Measurements: generated baselines live in [measurements/](measurements/) -
 `measurements.md` and `measurements-stress.md` (`just measure`,

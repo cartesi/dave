@@ -96,6 +96,8 @@ docs/                The knowledge base. Start at docs/README.md.
   argument.
 - `docs/prt-contract-testing.md` - Foundry test ownership and evidence rules.
 - `docs/runbooks/` - maintained operational procedures.
+- `docs/todo.md` - the one live to-do list; each item points at the doc that
+  owns its reasoning.
 - `docs/reviews/` - frozen internal review evidence, not current specifications
   or third-party assurance reports.
 
