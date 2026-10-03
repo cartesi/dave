@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use crate::chain::Chain;
 use crate::sync::ShutdownSignal;
 use alloy::{
+    eips::BlockId,
     hex::ToHexExt,
     primitives::{Address, B256, U256},
     providers::Provider,
@@ -15,7 +16,10 @@ use std::{fmt, iter::Peekable, time::Duration};
 
 use crate::storage::{Epoch, Input, InputId, Storage};
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
-use cartesi_rollups_contracts::{i_application::IApplication, i_input_box::IInputBox::InputAdded};
+use cartesi_rollups_contracts::{
+    i_application::IApplication,
+    i_input_box::IInputBox::{self, InputAdded},
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct AddressBook {
@@ -212,10 +216,11 @@ impl BlockchainReader {
         }
     }
 
-    /// Ingests and commits the next chunk of finalized blocks; true once
-    /// ingestion has reached the finalized head. A chunk end is just another
-    /// cut like the finalized head: the next chunk reseeds its numbering from
-    /// storage, as the next tick does.
+    /// Ingests and commits the next chunk of finalized blocks, or every block
+    /// up to the finalized head when the chain's totals there show nothing
+    /// new; true once ingestion has reached the head. A chunk end is just
+    /// another cut like the finalized head: the next chunk reseeds its
+    /// numbering from storage, as the next tick does.
     pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<bool> {
         let finalized = chain.finalized_block_number().await?;
         let processed = self.storage.latest_processed_block()?;
@@ -223,51 +228,83 @@ impl BlockchainReader {
             return Ok(true);
         }
 
+        let onchain = onchain_totals(chain, self.address_book, finalized).await?;
+        let stored = self.stored_totals()?;
+        if stored == onchain {
+            // Nothing happened since the watermark: one commit to the head,
+            // without a log query, however far behind it is.
+            trace!("no new input or epoch through block {finalized}");
+            self.storage.insert_consensus_data(
+                finalized,
+                std::iter::empty(),
+                std::iter::empty(),
+            )?;
+            return Ok(true);
+        }
+
         let chunk_end = finalized.min(processed.saturating_add(self.chunk_blocks));
-        self.advance(chain, processed, chunk_end).await?;
+        let (inputs, epochs) = self
+            .collect_events(chain, processed, chunk_end, stored, onchain)
+            .await?;
+        // Contiguity cannot see a log missing from the chunk's tail. The
+        // totals can, but only at the head: checking an earlier chunk end
+        // would need the archive state of a historical block.
+        if chunk_end == finalized {
+            let ingested = Totals {
+                inputs: stored.inputs + inputs.len() as u64,
+                last_sealed_epoch: epochs
+                    .last()
+                    .map(|epoch| epoch.epoch_number)
+                    .or(stored.last_sealed_epoch),
+            };
+            ensure_complete(finalized, ingested, onchain)?;
+        }
+
+        self.storage
+            .insert_consensus_data(chunk_end, inputs.iter(), epochs.iter())?;
         Ok(chunk_end == finalized)
     }
 
-    async fn advance(&mut self, chain: &Chain, prev_block: u64, current_block: u64) -> Result<()> {
-        let (inputs, epochs) = self
-            .collect_events(chain, prev_block, current_block)
-            .await?;
-
-        self.storage.insert_consensus_data(
-            current_block,
-            inputs.iter().collect::<Vec<&Input>>().into_iter(),
-            epochs.iter().collect::<Vec<&Epoch>>().into_iter(),
-        )?;
-
-        Ok(())
+    fn stored_totals(&mut self) -> Result<Totals> {
+        Ok(Totals {
+            inputs: self.storage.total_input_count()?,
+            last_sealed_epoch: self
+                .storage
+                .last_sealed_epoch()?
+                .map(|epoch| epoch.epoch_number),
+        })
     }
 
+    /// The chunk's sealed epochs and numbered inputs. A total that already
+    /// equals the head's cannot change within the chunk, so its log query
+    /// is skipped; the inputs are numbered either way, which keeps the
+    /// check of every sealed epoch's bound.
     async fn collect_events(
         &mut self,
         chain: &Chain,
         prev_block: u64,
         current_block: u64,
+        stored: Totals,
+        onchain: Totals,
     ) -> Result<(Vec<Input>, Vec<Epoch>)> {
-        // read sealed epochs from blockchain
-        let sealed_epochs: Vec<Epoch> = self
-            .collect_sealed_epochs(chain, prev_block, current_block)
-            .await?;
+        let sealed_epochs = if stored.last_sealed_epoch == onchain.last_sealed_epoch {
+            Vec::new()
+        } else {
+            self.collect_sealed_epochs(chain, prev_block, current_block)
+                .await?
+        };
 
-        let last_sealed_epoch_opt = self.storage.last_sealed_epoch()?;
-        let mut merged_sealed_epochs = Vec::new();
-        if let Some(last_sealed_epoch) = last_sealed_epoch_opt {
-            merged_sealed_epochs.push(last_sealed_epoch);
-        }
-        merged_sealed_epochs.extend(sealed_epochs.clone());
-        let merged_sealed_epochs_iter = merged_sealed_epochs
-            .iter()
-            .collect::<Vec<&Epoch>>()
-            .into_iter();
+        let mut merged_sealed_epochs: Vec<Epoch> =
+            self.storage.last_sealed_epoch()?.into_iter().collect();
+        merged_sealed_epochs.extend(sealed_epochs.iter().cloned());
 
-        // read inputs from blockchain
-        let inputs = self
-            .collect_inputs(chain, prev_block, current_block, merged_sealed_epochs_iter)
-            .await?;
+        let input_events = if stored.inputs == onchain.inputs {
+            Vec::new()
+        } else {
+            self.collect_input_events(chain, prev_block, current_block)
+                .await?
+        };
+        let inputs = self.number_inputs(&input_events, &merged_sealed_epochs)?;
 
         Ok((inputs, sealed_epochs))
     }
@@ -306,15 +343,13 @@ impl BlockchainReader {
             .collect())
     }
 
-    async fn collect_inputs(
+    async fn collect_input_events(
         &mut self,
         chain: &Chain,
         prev_block: u64,
         current_block: u64,
-        sealed_epochs_iter: impl Iterator<Item = &Epoch>,
-    ) -> Result<Vec<Input>> {
-        // read new inputs from blockchain
-        let input_events: Vec<_> = chain
+    ) -> Result<Vec<InputAdded>> {
+        Ok(chain
             .decoded_logs::<InputAdded>(
                 self.address_book.input_box,
                 Some(&self.address_book.app.into_word().into()),
@@ -325,8 +360,14 @@ impl BlockchainReader {
             .await?
             .into_iter()
             .map(|i| i.0)
-            .collect();
+            .collect())
+    }
 
+    fn number_inputs(
+        &mut self,
+        input_events: &[InputAdded],
+        sealed_epochs: &[Epoch],
+    ) -> Result<Vec<Input>> {
         let last_input = self.storage.last_input()?;
         // Inputs are numbered here, so a log the provider leaves out of a
         // finalized range would silently shift every later input and
@@ -344,7 +385,7 @@ impl BlockchainReader {
 
         let mut inputs = vec![];
         let mut input_events_peekable = input_events.iter().peekable();
-        for epoch in sealed_epochs_iter {
+        for epoch in sealed_epochs {
             if last_input_epoch_number > epoch.epoch_number {
                 continue;
             }
@@ -378,6 +419,62 @@ impl BlockchainReader {
 
 #[cfg(test)]
 pub(crate) mod test_utils;
+
+/// What the application's logs add up to: its input count and its last
+/// sealed epoch, read on chain at a block or from storage at the watermark
+/// (no sealed epoch before epoch 0's seal is ingested).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Totals {
+    inputs: u64,
+    last_sealed_epoch: Option<u64>,
+}
+
+/// The application's totals at `block`, read by number: the finalized
+/// head is recent, so a full node serves its state.
+async fn onchain_totals(chain: &Chain, book: AddressBook, block: u64) -> Result<Totals> {
+    let at = BlockId::number(block);
+    let inputs = IInputBox::new(book.input_box, chain.provider())
+        .getNumberOfInputs(book.app)
+        .block(at)
+        .call()
+        .await
+        .with_context(|| format!("failed to read the input count at block {block}"))?;
+    let sealed = DaveConsensus::new(book.consensus, chain.provider())
+        .getCurrentSealedEpoch()
+        .block(at)
+        .call()
+        .await
+        .with_context(|| format!("failed to read the sealed epoch at block {block}"))?;
+    Ok(Totals {
+        inputs: u64::try_from(inputs).context("the input count exceeds u64")?,
+        last_sealed_epoch: Some(
+            u64::try_from(sealed.epochNumber).context("the sealed epoch exceeds u64")?,
+        ),
+    })
+}
+
+/// The tail check contiguity cannot make: once ingestion reaches the
+/// finalized head, its totals must be the chain's own there. A provider
+/// that truncates a log response fails the tick before anything is stored,
+/// instead of leaving a gap the watermark has already passed.
+fn ensure_complete(head: u64, ingested: Totals, onchain: Totals) -> Result<()> {
+    anyhow::ensure!(
+        ingested.inputs == onchain.inputs,
+        "the InputBox holds {} inputs for the application at block {head}, but ingestion \
+         reaches {}: incomplete InputAdded logs from the provider",
+        onchain.inputs,
+        ingested.inputs
+    );
+    let show = |epoch: Option<u64>| epoch.map_or("none".to_string(), |e| e.to_string());
+    anyhow::ensure!(
+        ingested.last_sealed_epoch == onchain.last_sealed_epoch,
+        "the consensus's last sealed epoch at block {head} is {}, but ingestion reaches {}: \
+         incomplete EpochSealed logs from the provider",
+        show(onchain.last_sealed_epoch),
+        show(ingested.last_sealed_epoch)
+    );
+    Ok(())
+}
 
 /// Numbers the events of one epoch, up to its input upper bound
 /// (`u64::MAX` while open), checking each event's own index against the
@@ -480,6 +577,277 @@ mod input_numbering_tests {
             number(&[5, 6], 5, Some(8)).is_err(),
             "a sealed epoch missing its last input"
         );
+    }
+}
+
+#[cfg(test)]
+mod witness_tests {
+    use super::*;
+    use crate::chain::recording::{Requests, recording_provider};
+    use alloy::{
+        primitives::{Bytes, Log as PrimitiveLog},
+        rpc::types::{Block, Log},
+        sol_types::{SolCall, SolEvent},
+        transports::mock::Asserter,
+    };
+
+    const APP: Address = Address::repeat_byte(0xaa);
+    const INPUT_BOX: Address = Address::repeat_byte(0xbb);
+    const CONSENSUS: Address = Address::repeat_byte(0xcc);
+
+    struct Fixture {
+        _dir: tempfile::TempDir,
+        reader: BlockchainReader,
+        chain: Chain,
+        rpc: Asserter,
+        requests: Requests,
+    }
+
+    /// A reader over a mocked provider, its storage holding epoch 0 and
+    /// `inputs` inputs of epoch 1, processed through block 5.
+    fn fixture(inputs: u64, chunk_blocks: u64) -> Fixture {
+        let (dir, mut storage) = crate::storage::sql::test_helper::setup_storage();
+        let stored: Vec<Input> = (0..inputs)
+            .map(|index| Input {
+                id: InputId {
+                    epoch_number: 1,
+                    input_index_in_epoch: index,
+                },
+                data: vec![],
+            })
+            .collect();
+        storage
+            .insert_consensus_data(5, stored.iter(), [&sealed(0, 0)].into_iter())
+            .unwrap();
+        let (provider, rpc, requests) = recording_provider();
+        let book = AddressBook {
+            app: APP,
+            consensus: CONSENSUS,
+            tournament_factory: Address::ZERO,
+            input_box: INPUT_BOX,
+            initial_hash: [0; 32],
+            genesis_block_number: 0,
+        };
+        Fixture {
+            _dir: dir,
+            reader: BlockchainReader::new(storage, book, Duration::ZERO)
+                .with_chunk_blocks(chunk_blocks),
+            chain: Chain::new(provider, Vec::new()),
+            rpc,
+            requests,
+        }
+    }
+
+    fn sealed(epoch_number: u64, input_index_boundary: u64) -> Epoch {
+        Epoch {
+            epoch_number,
+            input_index_boundary,
+            root_tournament: Address::ZERO,
+            block_created_number: 1,
+        }
+    }
+
+    impl Fixture {
+        /// Queues the finalized head and the chain's totals there.
+        fn head(&self, finalized: u64, inputs: u64, sealed_epoch: u64) {
+            let mut block: Block = Block::default();
+            block.header.inner.number = finalized;
+            self.rpc.push_success(&Some(block));
+            self.rpc.push_success(&Bytes::from(
+                IInputBox::getNumberOfInputsCall::abi_encode_returns(&U256::from(inputs)),
+            ));
+            self.rpc.push_success(&Bytes::from(
+                DaveConsensus::getCurrentSealedEpochCall::abi_encode_returns(
+                    &DaveConsensus::getCurrentSealedEpochReturn {
+                        epochNumber: U256::from(sealed_epoch),
+                        inputIndexLowerBound: U256::ZERO,
+                        inputIndexUpperBound: U256::ZERO,
+                        tournament: Address::ZERO,
+                        isTournamentResultStaged: false,
+                        stagingBlockNumber: U256::ZERO,
+                        stagedPostEpochMachineStateHash: B256::ZERO,
+                        stagedPostEpochOutputsMerkleRoot: B256::ZERO,
+                    },
+                ),
+            ));
+        }
+
+        fn seals(&self, seals: &[(u64, u64)]) {
+            let logs: Vec<Log> = seals
+                .iter()
+                .map(|&(epoch_number, bound)| {
+                    let event = EpochSealed {
+                        epochNumber: U256::from(epoch_number),
+                        inputIndexLowerBound: U256::ZERO,
+                        inputIndexUpperBound: U256::from(bound),
+                        initialMachineStateHash: B256::ZERO,
+                        outputsMerkleRoot: B256::ZERO,
+                        tournament: Address::ZERO,
+                    };
+                    log(CONSENSUS, &event, 8, epoch_number)
+                })
+                .collect();
+            self.rpc.push_success(&logs);
+        }
+
+        fn inputs(&self, indices: &[u64]) {
+            let logs: Vec<Log> = indices
+                .iter()
+                .map(|&index| {
+                    let event = InputAdded {
+                        appContract: APP,
+                        index: U256::from(index),
+                        input: Bytes::new(),
+                    };
+                    log(INPUT_BOX, &event, 8, index)
+                })
+                .collect();
+            self.rpc.push_success(&logs);
+        }
+
+        /// The addresses of the log queries sent, in order.
+        fn log_queries(&self) -> Vec<String> {
+            self.requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|request| request["method"] == "eth_getLogs")
+                .map(|request| request["params"][0]["address"].as_str().unwrap().to_owned())
+                .collect()
+        }
+
+        fn stored(&mut self) -> (u64, Totals) {
+            let processed = self.reader.storage.latest_processed_block().unwrap();
+            (processed, self.reader.stored_totals().unwrap())
+        }
+    }
+
+    fn log(address: Address, event: &impl SolEvent, block: u64, index: u64) -> Log {
+        Log {
+            inner: PrimitiveLog {
+                address,
+                data: event.encode_log_data(),
+            },
+            block_hash: Some(B256::repeat_byte(0x11)),
+            block_number: Some(block),
+            block_timestamp: None,
+            transaction_hash: Some(B256::repeat_byte(0x22)),
+            transaction_index: Some(index),
+            log_index: Some(index),
+            removed: false,
+        }
+    }
+
+    fn address(address: Address) -> String {
+        format!("{address:#x}")
+    }
+
+    fn totals(inputs: u64, last_sealed_epoch: u64) -> Totals {
+        Totals {
+            inputs,
+            last_sealed_epoch: Some(last_sealed_epoch),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_quiet_range_commits_to_the_head_without_logs() {
+        let mut f = fixture(2, 1);
+        f.head(100_000, 2, 0);
+
+        assert!(f.reader.tick(&f.chain).await.unwrap());
+        assert!(f.log_queries().is_empty());
+        assert_eq!(f.stored(), (100_000, totals(2, 0)));
+        assert!(f.rpc.read_q().is_empty());
+
+        // the totals are read at the head, by number
+        let requests = f.requests.lock().unwrap();
+        let calls: Vec<_> = requests
+            .iter()
+            .filter(|request| request["method"] == "eth_call")
+            .collect();
+        assert_eq!(calls.len(), 2);
+        for call in calls {
+            assert_eq!(call["params"][1], serde_json::json!("0x186a0"));
+        }
+    }
+
+    /// The new seal bounds the stored inputs without any input log, which
+    /// keeps the bound check sound when the input query is skipped.
+    #[tokio::test]
+    async fn a_matching_input_count_skips_the_input_query() {
+        let mut f = fixture(2, 1_000);
+        f.head(10, 2, 1);
+        f.seals(&[(1, 2)]);
+
+        assert!(f.reader.tick(&f.chain).await.unwrap());
+        assert_eq!(f.log_queries(), [address(CONSENSUS)]);
+        assert_eq!(f.stored(), (10, totals(2, 1)));
+    }
+
+    #[tokio::test]
+    async fn a_matching_sealed_epoch_skips_the_seal_query() {
+        let mut f = fixture(0, 1_000);
+        f.head(10, 2, 0);
+        f.inputs(&[0, 1]);
+
+        assert!(f.reader.tick(&f.chain).await.unwrap());
+        assert_eq!(f.log_queries(), [address(INPUT_BOX)]);
+        assert_eq!(f.stored(), (10, totals(2, 0)));
+        assert_eq!(f.reader.storage.input_count(1).unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_truncated_tail_is_refused_at_the_head() {
+        let mut f = fixture(0, 1_000);
+        f.head(10, 2, 0);
+        f.inputs(&[0]);
+
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert!(
+            error.to_string().contains("incomplete InputAdded logs"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(f.stored(), (5, totals(0, 0)), "nothing is committed");
+    }
+
+    #[tokio::test]
+    async fn a_missing_seal_is_refused_at_the_head() {
+        let mut f = fixture(0, 1_000);
+        f.head(10, 0, 1);
+        f.seals(&[]);
+
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert!(
+            error.to_string().contains("incomplete EpochSealed logs"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(f.stored(), (5, totals(0, 0)), "nothing is committed");
+    }
+
+    /// Before the first seal is ingested nothing matches, so a fresh
+    /// directory always scans, and a missing epoch 0 is refused.
+    #[test]
+    fn no_stored_epoch_matches_the_chain() {
+        let fresh = Totals {
+            inputs: 0,
+            last_sealed_epoch: None,
+        };
+        assert_ne!(fresh, totals(0, 0));
+        let error = ensure_complete(10, fresh, totals(0, 0)).unwrap_err();
+        assert!(error.to_string().contains("ingestion reaches none"));
+        ensure_complete(10, totals(3, 2), totals(3, 2)).unwrap();
+    }
+
+    /// A chunk that ends before the head cannot be checked against it: it
+    /// commits on contiguity alone, and catch-up goes on.
+    #[tokio::test]
+    async fn a_chunk_before_the_head_commits_on_contiguity() {
+        let mut f = fixture(0, 10);
+        f.head(1_000, 5, 0);
+        f.inputs(&[0, 1]);
+
+        assert!(!f.reader.tick(&f.chain).await.unwrap());
+        assert_eq!(f.stored(), (15, totals(2, 0)));
     }
 }
 

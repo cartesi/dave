@@ -115,9 +115,10 @@ Three worker threads share one SQLite database (see
 ```
 
 - blockchain-reader (`cartesi-rollups/node/src/blockchain_reader`): polls
-  finalized blocks only, reads `InputAdded` and `EpochSealed` logs, assigns
-  each input to an epoch by comparing its global index against sealed
-  boundaries, and writes both tables transactionally together with the
+  finalized blocks only, reads `InputAdded` and `EpochSealed` logs (none when
+  the chain's input count and sealed epoch at the finalized head show nothing
+  new), assigns each input to an epoch by comparing its global index against
+  sealed boundaries, and writes both tables transactionally together with the
   last-processed block number.
 - machine-runner (`cartesi-rollups/node/src/machine_runner`): executes complete
   `--snapshot-gap-inputs` batches while an epoch is open, leaving a shorter

@@ -109,8 +109,9 @@ safety, not hygiene:
   final state cannot settle is held with an error log (epoch-lifecycle.md,
   the terminal application).
 - P2. Spend distrust where a lie would be silent, not where it would fail
-  loudly. Ingestion checks every input's index because a dropped log would
-  silently shift every later commitment. Re-proving contract rules on the
+  loudly. Ingestion checks every input's index, and its totals against the
+  chain's at the finalized head, because a dropped log would silently shift
+  every later commitment. Re-proving contract rules on the
   dispute path buys little against commission: a fabricated value yields an
   action the contract rejects, which the lane skips at estimation with a
   warning, and an error when the same call repeats on the next tick. It does
@@ -166,8 +167,8 @@ a transient provider or storage error costs one polling interval, and a
 warning that repeats tick after tick is a stall to investigate. A retry loop
 that should page reuses the epoch manager's consecutive-tick rule
 (`repeated_reverts`: a warning first, an error on the next tick). One stall
-needs an operator: a log missing from the tail of ingested inputs (rebuild the
-state directory). A tournament event that does not fold onto the reader's
+needs an operator: a log missing from the tail of a catch-up chunk (rebuild
+the state directory). A tournament event that does not fold onto the reader's
 finalized prefix drops the prefix, and the next tick refolds from the root's
 creation block as a restart would; an omitted log that still folds is not
 detected (RPC completeness is trusted). Asserts are for states reachable only
@@ -354,14 +355,23 @@ Epoch and input ingestion consumes logs only up to the chain's finalized block
 rolled back. Oversized `eth_getLogs` ranges are handled by binary range
 partitioning, triggered by provider-specific error codes passed in as
 configuration (`--long-block-range-error-codes`). A successful response is
-trusted to contain every matching log in its requested range; the node does not
-cross-check it against a second provider or an on-chain event count. Input
-logs are the exception, because the node numbers inputs itself and a missing
-one would silently shift every later commitment: each `InputAdded` must carry
-the next expected index, and a sealed epoch must end at its upper bound, or the
-tick fails before anything is stored. A gap inside the fetched range retries;
-a log missing from the tail of an already ingested range surfaces only at the
-next input and stops ingestion until the state directory is rebuilt.
+otherwise trusted to contain every matching log in its requested range; the
+node does not cross-check it against a second provider. Input and epoch logs
+are the exception, because the node numbers inputs itself and a missing one
+would silently shift every later commitment. Each `InputAdded` must carry the
+next expected index, and a sealed epoch must end at its upper bound. Each tick
+also reads, by number at the finalized head `F`, the InputBox's input count
+for the application and the consensus's current sealed epoch. When the stored
+totals already equal them, the tick moves the watermark to `F` with no
+`eth_getLogs`, however far behind it is; otherwise it skips the query whose
+total already matches, and the chunk that reaches `F` must end at exactly
+those totals. A mismatch fails the tick before anything is stored, and the
+next tick retries. Only `F`'s state is read, since an earlier block's would
+need an archive node, so a chunk that ends before `F` during catch-up is
+checked by contiguity alone: a log missing from its tail surfaces only at the
+next input and stops ingestion until the state directory is rebuilt. Until
+`F` reaches the consensus's deployment (an application deployed ahead of its
+consensus), the totals cannot be read and the tick retries.
 
 Ingestion starts at genesis, the earlier of the application's and the
 consensus's recorded deployment blocks, so a new application on a long-lived
@@ -378,7 +388,7 @@ Ingestion commits at most 10,000 finalized blocks at a time, with their
 watermark, so catch-up holds one chunk's inputs in memory and a restart
 resumes from the last chunk. The bound is in blocks, not bytes: an adversary
 paying for full blocks of inputs can still fill a chunk. Each chunk end is a
-tail like the finalized head, so during catch-up a provider that drops a
+tail the totals cannot check, so during catch-up a provider that drops a
 chunk's last input hits the stall above. While catching up, the epoch manager
 may take a settled historical epoch for the current one until its successor's
 seal arrives in a later chunk; the actions it plans for it revert at
