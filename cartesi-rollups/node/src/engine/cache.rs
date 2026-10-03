@@ -53,9 +53,8 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
 ) -> Result<Digest> {
     quartet.assert_valid(structure);
 
-    // Also a stable log marker the test harness kills on (see
-    // docs/test-harness.md); level-0 queries are seed-served, so this
-    // line means dispute-time machine work.
+    // Level-0 queries are seed-served, so this line means dispute-time
+    // machine work.
     log::info!(
         "computing quartet stride 2^{} height {} shift {} of epoch {}",
         quartet.log2_stride,

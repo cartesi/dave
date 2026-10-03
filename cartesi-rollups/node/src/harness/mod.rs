@@ -1,8 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! A deterministic chain for the node's own workers (item 3 of
-//! docs/plans/test-strategy-reset.md). The test owns the only clock:
+//! A deterministic chain for the node's own workers (docs/test-harness.md).
+//! The test owns the only clock:
 //! nothing free-runs or sleeps, the protocol counts blocks, and blocks are
 //! mined only here. A round ticks the honest node's reader, runner and
 //! epoch manager in lib.rs order and mines its wave into its own block.

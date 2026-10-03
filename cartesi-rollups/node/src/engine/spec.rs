@@ -1209,7 +1209,7 @@ fn collision_fails_loudly() {
 // tests count machine verbs, exactly and at the production structure,
 // against the work the emulator cannot avoid. Times, memory and disk
 // depend on hardware and workload and are not gated anywhere
-// (docs/plans/test-strategy-reset.md, item 2).
+// (node-architecture.md, performance stance).
 
 /// Machine work, verb by verb. Hashes are the expensive atom (a root-hash
 /// recomputation on the real machine); big cycles run natively.
@@ -1408,12 +1408,12 @@ fn positioning_runs_the_prefix_once_and_hashes_nothing() {
 
 #[test]
 fn join_descent_replays_the_prefix_once_per_stratum() {
-    // R4 (docs/plans/two-level-sling.md), pinned: a join builds the
-    // two-level leaf (one trip) and proves its last leaf, which descends
-    // four fanout strata (heights 29, 21, 13 and 5), each a trip that
-    // re-runs the input's prefix from the window boundary. The prefix
-    // replay is native and unhashed, but for a leaf deep inside a long
-    // input it is paid five times; fixing R4 lowers these counts.
+    // Pinned: a join builds the two-level leaf (one trip) and proves its
+    // last leaf, which descends four fanout strata (heights 29, 21, 13 and
+    // 5), each a trip that re-runs the input's prefix from the window
+    // boundary. The prefix replay is native and unhashed, so even a leaf
+    // deep inside a long input stays within the node's measured overhead
+    // over the emulator (docs/measurements/node-vs-emulator.md).
     let structure = Structure::PRODUCTION;
     let leaf_cycles = 1usize << (37 - structure.log2_uarch_span);
     // The input runs through the first leaf and 50 cycles into the

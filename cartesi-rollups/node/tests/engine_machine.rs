@@ -254,7 +254,7 @@ fn engine_root_with_inputs(
 /// The facade's root for one level, replayed on a fresh store. A dense
 /// level builds both ways, with the production bulk collector and the
 /// stepped reference, which must agree: an answer checked here is never
-/// the collect API's alone (two-level-sling.md, D7).
+/// the collect API's alone (computation-hash.md).
 fn engine_level_root(
     image: &Path,
     inputs: Vec<Vec<u8>>,
@@ -1145,10 +1145,10 @@ fn runner_settlement(
     )
 }
 
-/// Gap 2 of docs/plans/test-strategy-reset.md: the eager runner on a
-/// real machine. Under both tables, the root it settles must be the
-/// reference CLI's, and the dispute facade must serve that same root
-/// both from the runner's rows and by replay on a fresh store.
+/// The eager runner on a real machine. Under both tables, the root it
+/// settles must be the reference CLI's, and the dispute facade must serve
+/// that same root both from the runner's rows and by replay on a fresh
+/// store.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn runner_settles_the_reference_root() {
@@ -1361,14 +1361,14 @@ fn node_witness(
     })
 }
 
-/// Gap 1 of docs/plans/test-strategy-reset.md: the witness bytes the
-/// node sends, pinned for the Solidity step. NodeWitnesses.t.sol in
-/// cartesi-rollups/contracts runs every vector through the real
-/// CartesiStateTransition, rooting inputs the way DaveConsensus does.
-/// The shapes are the ones prove_transition_matches_prototype_get_logs
-/// and revert_closing_slot_restores_the_checkpoint cover, plus a second
-/// input's opening (a nonzero provider index) and the opening of a
-/// maximum-size input.
+/// The witness bytes the node sends, pinned for the Solidity step.
+/// NodeWitnesses.t.sol in cartesi-rollups/contracts runs every vector
+/// through the real CartesiStateTransition, rooting inputs the way
+/// DaveConsensus does. The shapes are the ones
+/// prove_transition_matches_prototype_get_logs and
+/// revert_closing_slot_restores_the_checkpoint cover, plus a second input's
+/// opening (a nonzero provider index) and the opening of a maximum-size
+/// input.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn node_witness_vectors_hold() {
@@ -1608,12 +1608,11 @@ fn positioning_over_rejected_inputs_keeps_the_floor() {
     assert_eq!(staging_leftovers(state_dir.path()), Vec::<String>::new());
 }
 
-/// Gaps 3 and 4 of docs/plans/test-strategy-reset.md: leaf commitments
-/// on a real machine, dense spans and reverts included, against the
-/// released CLI's answers (see leaf_cases). The CLI computes them through
-/// the collect API, as the node's bulk collector does, so the stepped
-/// reference must match them too, or a regeneration would compare the
-/// collect API with itself (two-level-sling.md, D7).
+/// Leaf commitments on a real machine, dense spans and reverts included,
+/// against the released CLI's answers (see leaf_cases). The CLI computes
+/// them through the collect API, as the node's bulk collector does, so the
+/// stepped reference must match them too, or a regeneration would compare
+/// the collect API with itself (computation-hash.md).
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn leaf_commitments_match_the_reference_cli() {
@@ -1854,15 +1853,14 @@ fn leaf_proof_vector(proof: &LeafProof) -> serde_json::Value {
     })
 }
 
-/// Gap 5 of docs/plans/test-strategy-reset.md: the node's commitment
-/// proofs and settlement validity proof, pinned for the contracts.
-/// NodeProofs.t.sol in cartesi-rollups/contracts opens each commitment
-/// proof with the tournament's Commitment library and validates the
-/// settlement the way DaveConsensus stages it, requiring the CLI's outputs
-/// Merkle root. The root proofs are the joins of a runner epoch under each
-/// table (served from the runner's rows); the leaf proofs are a seal's
-/// agree-state opening and a join's last leaf at the three-level leaf
-/// height.
+/// The node's commitment proofs and settlement validity proof, pinned for
+/// the contracts. NodeProofs.t.sol in cartesi-rollups/contracts opens each
+/// commitment proof with the tournament's Commitment library and validates
+/// the settlement the way DaveConsensus stages it, requiring the CLI's
+/// outputs Merkle root. The root proofs are the joins of a runner epoch
+/// under each table (served from the runner's rows); the leaf proofs are a
+/// seal's agree-state opening and a join's last leaf at the three-level
+/// leaf height.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn node_proof_vectors_hold() {

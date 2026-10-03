@@ -1430,7 +1430,8 @@ mod tests {
     }
 
     /// A terminal app still rolls: the node needs the epoch's settlement
-    /// row to defend its true state in the dispute (W8), and only staging
+    /// row to defend its true state in the dispute (defend, never stage:
+    /// epoch-lifecycle.md), and only staging
     /// refuses a state that cannot settle.
     #[test]
     fn a_terminal_epoch_rolls_without_settling() {

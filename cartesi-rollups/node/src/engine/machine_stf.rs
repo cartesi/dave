@@ -6,7 +6,7 @@
 //! other verb steps the machine through the per-step API. Under
 //! [`Collector::Stepped`] dense leaves are stepped too: the slow,
 //! obviously-correct path, kept permanently as the collector's
-//! differential reference (two-level-sling.md, D7). Machine errors
+//! differential reference (computation-hash.md). Machine errors
 //! propagate as errors; geometry violations remain panics (see the stf
 //! module doc).
 
@@ -444,7 +444,8 @@ impl Stf for MachineStf {
         );
         // Seam 1: v0.21.0's collector keeps the physical root when an input
         // is rejected on its budget's last cycle, where the step reverts
-        // (two-level-sling.md). Declining that cycle leaves it to stepping.
+        // (computation-hash.md, seam 1). Declining that cycle leaves it to
+        // stepping.
         let start = self.machine.mcycle()?;
         let last_budget_cycle = self.machine.imcyclemax()?.saturating_sub(1);
         let end = add_and_clamp(start, big_cycles).min(last_budget_cycle);

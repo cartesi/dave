@@ -242,7 +242,7 @@ measure-stress *ARGS: bind
       --machine test/programs/stress/machine-image \
       --out docs/measurements/measurements-stress.md --profile stress "$@"
 
-# time the dense two-level leaf build and its peak RSS (M2)
+# time the dense two-level leaf build and its peak RSS
 measure-two-level-leaf *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \

@@ -113,7 +113,7 @@ struct Args {
 
     /// Time a cold leaf join and a deep proof against the emulator doing
     /// the same work in process: the runbook recipe for the node's
-    /// no-overhead claim (docs/plans/test-strategy-reset.md).
+    /// no-overhead claim (node-architecture.md, performance stance).
     #[arg(long)]
     node_vs_emulator: bool,
 
@@ -610,7 +610,7 @@ fn two_level_leaf_report(
     let (_, build) = timed(|| source.node(&Quartet::level_root(0, 0, 37)))?;
     let target = T_SECS / args.hardware_slack;
 
-    writeln!(report, "# Two-level leaf build (M2)")?;
+    writeln!(report, "# Two-level leaf build")?;
     writeln!(report)?;
     writeln!(
         report,
@@ -1157,7 +1157,7 @@ fn constants_report(
 }
 
 /// The runbook recipe behind the node's claim that it adds no overhead
-/// over the emulator (docs/plans/test-strategy-reset.md, item 2): two
+/// over the emulator (node-architecture.md, performance stance): two
 /// dispute actions at the heaviest placement the snapshot gap allows, each
 /// timed against the emulator doing the same work in process.
 ///

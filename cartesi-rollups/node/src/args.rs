@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "spawns anvil, which inherits machine file locks (two-level-sling.md W7); run `just test-node-harness`"]
+    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
     async fn discovers_the_deployed_tournament_geometry() {
         let state = anvil_state_path();
         let anvil = Anvil::default()

@@ -60,11 +60,7 @@ linked from todo.md; when it ends, its lasting invariants move into the living
 docs and the plan is deleted. Git and pull-request history preserve the
 exploration. Active plans:
 [r19-honest-survival.md](plans/r19-honest-survival.md) and
-[audit-readiness.md](plans/audit-readiness.md). The five earlier campaign
-plans still under plans/ (`stf-upgrade`, `two-level-sling`,
-`collect-hashes-migration`, `test-strategy-reset`, `tooling-footguns`) are
-already folded into the living docs and todo.md; they stay only until the
-code comments that cite them are re-pointed, so do not add to them.
+[audit-readiness.md](plans/audit-readiness.md).
 
 Measurements: generated baselines live in [measurements/](measurements/) -
 `measurements.md` and `measurements-stress.md` (`just measure`,
