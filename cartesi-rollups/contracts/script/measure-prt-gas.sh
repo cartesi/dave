@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Reproduce every retained PRT refund-gas measurement and its environment: the
+# Tournament-only witnesses in prt/contracts, then the full-stack leaf proofs
+# here. The pins live in this file; the dependency digest covers both
+# projects' trees, so it runs from this directory with these find arguments.
 set -euo pipefail
 
 readonly EXPECTED_FOUNDRY_VERSION="1.5.1-v1.5.1"
@@ -48,17 +52,23 @@ if [ "$actual_version" != "$EXPECTED_FOUNDRY_VERSION" ]; then
         "$actual_version" >&2
 fi
 
-effective_config=$(forge config --json | jq -c \
-    '{solc, via_ir, optimizer, optimizer_runs, evm_version}')
-if [ "$effective_config" != "$EXPECTED_FOUNDRY_CONFIG" ]; then
-    if [ "$diagnostic" != "1" ]; then
-        printf 'error: unexpected effective Foundry config: %s\n' \
-            "$effective_config" >&2
-        exit 1
+prt_dir=../../prt/contracts
+read_config() {
+    (cd "$1" && forge config --json | jq -c \
+        '{solc, via_ir, optimizer, optimizer_runs, evm_version}')
+}
+effective_config=$(read_config .)
+prt_effective_config=$(read_config "$prt_dir")
+for config in "$effective_config" "$prt_effective_config"; do
+    if [ "$config" != "$EXPECTED_FOUNDRY_CONFIG" ]; then
+        if [ "$diagnostic" != "1" ]; then
+            printf 'error: unexpected effective Foundry config: %s\n' \
+                "$config" >&2
+            exit 1
+        fi
+        printf 'warning: unexpected effective config: %s\n' "$config" >&2
     fi
-    printf 'warning: unexpected effective config: %s\n' \
-        "$effective_config" >&2
-fi
+done
 
 # Soldeer may retain nested Git metadata, and dependencies may contain build
 # output. Neither is a compiler input or stable across equivalent restores.
@@ -73,6 +83,10 @@ if [ "$dependency_digest" != "$EXPECTED_DEPENDENCIES_SHA256" ]; then
     if [ "$diagnostic" != "1" ]; then
         printf 'error: unexpected dependency digest: %s\n' \
             "$dependency_digest" >&2
+        printf '%s\n' \
+            'hint: run just prt-contracts::install-deps and' \
+            'just rollups-contracts::install-deps, which restore the locked' \
+            'versions and prune the ones the locks no longer name' >&2
         exit 1
     fi
     printf 'warning: unexpected dependency digest: %s\n' \
@@ -113,6 +127,7 @@ cartesi_lua_hash=$(sha256sum "$cartesi_lua" | cut -d' ' -f1)
 printf 'revision: %s\n' "$revision"
 printf '%s\n' "$version_output"
 printf 'effective config: %s\n' "$effective_config"
+printf 'prt effective config: %s\n' "$prt_effective_config"
 printf 'dependencies sha256: %s\n' "$dependency_digest"
 printf 'yield machine hash: %s\n' "$machine_hash"
 printf 'lua: %s\n' "$lua_version"
@@ -120,8 +135,9 @@ printf '%s\n' "$machine_version"
 printf 'cartesi lua module: %s\n' "$cartesi_lua"
 printf 'cartesi lua module sha256: %s\n' "$cartesi_lua_hash"
 sha256sum foundry.toml soldeer.lock \
-    ../../prt/contracts/foundry.toml ../../prt/contracts/soldeer.lock
+    "$prt_dir/foundry.toml" "$prt_dir/soldeer.lock"
 git submodule status --recursive
 
-measurement_args=(--force --color never -vv)
-"$script_dir/test-prt-leaf-gas.sh" "${measurement_args[@]}"
+(cd "$prt_dir" && forge test --force --threads 1 --color never \
+    --match-path "test/gas/TournamentGas.t.sol" -vv)
+"$script_dir/test-prt-leaf-gas.sh" --force --color never -vv

@@ -34,10 +34,6 @@ test-prt-leaf-gas:
     ../../script/machine-image-fingerprint.sh verify yield
     ./script/test-prt-leaf-gas.sh
 
-# print the reproducibility header and full-stack PRT leaf-proof measurements
-measure-prt-leaf-gas:
-    ./script/measure-prt-leaf-gas.sh
-
 # generate LCOV coverage report
 coverage:
     forge coverage --no-match-contract ".*FfiTest" \

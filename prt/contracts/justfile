@@ -1,8 +1,6 @@
 BINDINGS_DIR := "./bindings-rs/src/contract"
 BIND_STAMP := "./bindings-rs/src/.bind-stamp"
 DEPLOYMENTS_DIR := "./deployments"
-GAS_FOUNDRY_VERSION := "1.5.1-v1.5.1"
-GAS_DEPENDENCIES_SHA256 := "ef44ca028e8ae45ab0d7a6b183c9db0fded37461db8355456f2b2b876ce57ac3"
 
 default: build
 
@@ -20,11 +18,6 @@ test-disputes:
 # validate every retained refund-gas witness against the configured allocations
 test-gas:
     forge test --match-path "test/gas/TournamentGas.t.sol"
-
-# print the reproducibility header and retained refund-gas measurements
-measure-gas:
-    "{{ source_directory() / "script/measure-gas.sh" }}" \
-      "{{GAS_FOUNDRY_VERSION}}" "{{GAS_DEPENDENCIES_SHA256}}"
 
 # The stateful invariants run in test-disputes. Their deterministic companion
 # traces map the same production lifecycle without slow IR instrumentation.

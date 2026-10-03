@@ -117,7 +117,7 @@ Also record the operating system and architecture. Use a fresh checkout or CI
 job for an accepted run and restore dependencies from the lockfile.
 
 The development shell may expose a development Forge build. Obtain the release
-pinned by both measurement entry points, verify its archive and binary hashes
+pinned by the measurement script, verify its archive and binary hashes
 against the latest accepted calibration record, and prepend its directory
 inside `direnv exec`:
 

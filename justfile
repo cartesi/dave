@@ -99,8 +99,7 @@ test-prt-gas:
 
 # reproduce every retained PRT refund-gas measurement and its environment
 measure-prt-gas:
-    just prt-contracts::measure-gas
-    just rollups-contracts::measure-prt-leaf-gas
+    ./cartesi-rollups/contracts/script/measure-prt-gas.sh
 
 # regenerate Rust bindings from the contracts (no-op when sources unchanged)
 bind:
