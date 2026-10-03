@@ -1063,9 +1063,32 @@ mod tests {
 
     #[tokio::test]
     async fn unstageable_roots_never_reach_a_stage_request() {
-        let (dir, _storage) = rolled_terminal_epoch_zero();
+        let (dir, mut storage) = rolled_terminal_epoch_zero();
+        let settlement = storage.settlement_info(0).unwrap().unwrap();
+        assert!(!settlement.machine_validity_proof.settles());
         let (mut manager, chain, rpc) = manager(dir.path());
         let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+
+        // The node won its terminal state's root: the views agree with the
+        // local row, and no validity proof accepts it, so the epoch is held.
+        push_call::<DaveConsensus::canStageTournamentResultCall>(
+            &rpc,
+            &DaveConsensus::canStageTournamentResultReturn {
+                isFinished: true,
+                isTournamentFailed: false,
+                isTournamentResultStaged: false,
+                epochNumber: U256::ZERO,
+                winnerCommitment: B256::from(settlement.computation_hash.data()),
+                winnerPostEpochMachineStateHash: B256::from(settlement.final_state),
+            },
+        );
+        assert!(
+            manager
+                .plan_stage_tournament_result(&consensus, 0, won_at())
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         // A root that finished without a winner reports zero winner values,
         // which the local row contradicts: the flag must stop it before
