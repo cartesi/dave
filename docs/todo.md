@@ -13,8 +13,9 @@ carry no backlog (reviews/README.md).
   start against earlier contracts. The release notes name the generation,
   its addresses, geometry and bonds. (build-system.md, CHANGELOG.md)
 - Operator notes in the node README: a warning that repeats every tick is a
-  stall (rebuild after an input gap); on foreclosure, stop the node once its
-  recoveries finish; an epoch lasts at least the root allowance, plus the
+  stall (rebuild after an input gap), and an error asks for an operator
+  (link the failure policy's log levels); on foreclosure, stop the node once
+  its recoveries finish; an epoch lasts at least the root allowance, plus the
   staging period unless every sentry agrees. (node-architecture.md,
   epoch-lifecycle.md)
 
@@ -68,7 +69,6 @@ carry no backlog (reviews/README.md).
   it fronts errors in the prune's first commit, or the prune turns a retry
   into a common-mode panic. `InvalidBisectingHeight` must keep its bound of
   2, not relax to nonzero. (node-architecture.md, failure policy)
-- Structured logging (debt 4). (node-architecture.md)
 
 ## Contracts and assurance
 

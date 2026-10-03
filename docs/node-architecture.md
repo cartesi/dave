@@ -176,6 +176,17 @@ already-defeated protocol; there, stopping loudly is the alarm. A panic stops
 every worker, refunds included (`lib.rs`, `worker_failure`), and a restart
 re-plans the same step.
 
+Log levels carry that split. ERROR means an operator must act: a lost or
+winnerless dispute, a won epoch that cannot settle, a rejected submission, a
+batch the signer cannot cover, a call that reverts on consecutive ticks, a
+torn snapshot, a worker exit, or a contract answer the node does not know (an
+unknown bond disposition holds the epoch, and with it the next one). WARN
+means the node carries on: the next tick retries, an action is skipped or
+falls back, or best-effort work failed. INFO is protocol progress. Every line's target is its module path, so
+`RUST_LOG` narrows the output to one subsystem
+(`RUST_LOG=cartesi_rollups_prt_node::hero=debug`). Structured fields are
+declined for lack of a consumer: the level and the target suffice.
+
 ## Storage
 
 Everything lives under `--state-dir`:
@@ -547,6 +558,4 @@ logs each action's preparation time, commitment builds included.
 
 ## Known debts
 
-Error handling and observability:
-
-4. Logging is unstructured and inconsistent between crates.
+None open. A new debt is listed here with the doc that owns its reasoning.

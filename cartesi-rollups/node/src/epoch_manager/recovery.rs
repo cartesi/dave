@@ -80,9 +80,11 @@ pub async fn plan_recovery(
             RECOVERABLE | RECOVERED | NO_WINNER => {}
             TOURNAMENT_RUNNING => tick.complete = false,
             other => {
-                log::warn!(
+                // Refunds gate the next epoch, so this holds the node out of
+                // every later dispute until an operator acts.
+                log::error!(
                     "unknown bond disposition {other} for tournament {tournament}; \
-                     keeping epoch incomplete"
+                     keeping epoch incomplete, so the next epoch waits for an operator"
                 );
                 tick.complete = false;
             }

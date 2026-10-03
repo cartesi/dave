@@ -503,15 +503,17 @@ impl<AS: ArenaSender> EpochManager<AS> {
         match tick.result() {
             TournamentResult::Running => {}
             TournamentResult::Won => info!(
-                "local commitment won dispute tournament for epoch {}",
-                epoch.epoch_number
+                "local commitment won dispute tournament {} for epoch {}",
+                epoch.root_tournament, epoch.epoch_number
             ),
             TournamentResult::Lost => log::error!(
-                "local commitment lost dispute tournament for epoch {}",
+                "local commitment lost dispute tournament {} for epoch {}",
+                epoch.root_tournament,
                 epoch.epoch_number
             ),
             TournamentResult::FailedNoWinner => log::error!(
-                "dispute tournament for epoch {} finished without a winner",
+                "dispute tournament {} for epoch {} finished without a winner",
+                epoch.root_tournament,
                 epoch.epoch_number
             ),
         }

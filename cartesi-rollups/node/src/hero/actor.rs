@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use ::log::{debug, error, info};
+use ::log::{debug, info};
 
 use crate::{
     chain::{Chain, ChainHead},
@@ -272,22 +272,11 @@ impl<AS: ArenaSender> Hero<AS> {
                 report_slow_tick(started, format!("{reason:?}"));
             }
             HeroDecision::Terminal(terminal) => {
+                // The epoch manager logs the result, once per tick.
                 result = match terminal {
-                    HeroTerminal::Won => {
-                        info!("Hero won tournament {}", self.root_tournament);
-                        TournamentResult::Won
-                    }
-                    HeroTerminal::Lost => {
-                        error!("Hero lost tournament {}", self.root_tournament);
-                        TournamentResult::Lost
-                    }
-                    HeroTerminal::FailedNoWinner => {
-                        error!(
-                            "root tournament {} finished without a winner",
-                            self.root_tournament
-                        );
-                        TournamentResult::FailedNoWinner
-                    }
+                    HeroTerminal::Won => TournamentResult::Won,
+                    HeroTerminal::Lost => TournamentResult::Lost,
+                    HeroTerminal::FailedNoWinner => TournamentResult::FailedNoWinner,
                 };
             }
         }
