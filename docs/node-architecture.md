@@ -124,18 +124,21 @@ safety, not hygiene:
   clock path. f371381c did this after a terminal application panicked every
   node at the roll, which would have let a fabricated claim win uncontested.
 
-Chain-reported coordinates reach the engine only through validators that
-accept everything the contracts produce. The observer checks each match
-against its tournament's descriptor (height, position, alignment, cycle) and
-the Hero's snapshot checks it again; a bisecting match must stand above
-height 1, since advancing opens the children of the node below the contested
-one; a level's base cycle must be aligned to its span, and a child's must be
-its parent's divergence cycle; and every level's stride and height must match
-the pinned table, which tiles the machine coordinate. The observer's standing
-decoders likewise front its own `expect`s on candidate and parent-match data.
-The engine's asserts behind them (`LevelCoords`, `Quartet`, the ruler) are
-tripwires for node bugs, so a prune must keep these validators or first turn
-the asserts they front into errors.
+Chain data reaches no panic on the dispute path. Chain-reported coordinates
+reach the engine only through validators that accept everything the contracts
+produce. The observer checks each match against its tournament's descriptor
+(height, position, alignment, cycle) and the Hero's snapshot checks it again;
+a bisecting match must stand above height 1, since advancing opens the
+children of the node below the contested one; a level's base cycle must be
+aligned to its span, and a child's must be its parent's divergence cycle; and
+every level's stride and height must match the pinned table, which tiles the
+machine coordinate. The observer's standing decoders likewise front its own
+`expect`s on candidate and parent-match data. The engine's asserts behind them
+(`LevelCoords`, `Quartet`, the ruler) are tripwires for node bugs, so a prune
+must keep these validators or first turn the asserts they front into errors.
+The settle asserts compare the local result with one block's views after the
+node's own win (epoch-lifecycle.md, settlement invariant), so they too fire
+only on a node bug or corrupt local state.
 
 Two input-reachable halts are accepted rather than defended. More than 2^24
 inputs in one epoch: the contracts handle it (they never feed the tail) but
@@ -143,14 +146,22 @@ the node panics, and reaching it takes a flood of about 5e11 gas
 (dimensioning.md); a defect accepted on cost. An input whose computation
 overruns its window: the engine panics rather than invent a transition shape
 (`engine/ruler.rs`); the trusted application and the per-input compute
-contract keep it out of model. P1 also holds only inside the trust model: a
-broken trusted assumption (finalized and complete RPC data, a stable
-parameters provider, a guest that yields through well-formed requests) may
-stop every node at once.
+contract keep it out of model. P1 also holds only inside the trust model, and
+a broken trusted assumption may stop every node at once: finalized and
+complete RPC data; a stable parameters provider (the Hero panics on a level
+that left the pinned table); and a template and guest that yield through
+well-formed requests (a template preset with a malformed request panics the
+runner, while a guest's oversized yield throws and the runner retries it
+forever). One failed standing read or finalized fold fails the Hero's whole
+tick, and a failed refund scan holds the epoch's completion; an audit of the
+node's panics and retry loops found no data the contracts can produce that
+fails any of them deterministically.
 
 Workers retry a failed tick with a warning that carries the whole error chain:
 a transient provider or storage error costs one polling interval, and a
-warning that repeats tick after tick is a stall to investigate. One stall
+warning that repeats tick after tick is a stall to investigate. A retry loop
+that should page reuses the epoch manager's consecutive-tick rule
+(`repeated_reverts`: a warning first, an error on the next tick). One stall
 needs an operator: a log missing from the tail of ingested inputs (rebuild the
 state directory). A tournament event that does not fold onto the reader's
 finalized prefix drops the prefix, and the next tick refolds from the root's
@@ -533,12 +544,6 @@ logs each action's preparation time, commitment builds included.
 
 Error handling and observability:
 
-3. Panics and asserts remain on hot paths. The settle-mismatch
-   assertions in `src/epoch_manager/mod.rs` deliberately stop on a
-   consensus-critical local/on-chain disagreement. The semantic Hero path now
-   returns observer, context, and fulfillment errors for ordinary invalid
-   observations, but invariant `expect`s remain and still need a dedicated
-   panic-surface audit.
 4. Logging is unstructured and inconsistent between crates.
 
 Structure:

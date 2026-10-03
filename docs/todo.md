@@ -62,13 +62,6 @@ carry no backlog (reviews/README.md).
 
 ## Node
 
-- Audit panics, asserts and retry loops against P1 (debt 3). Targets: the
-  Hero's remaining `expect`s; dispute-path validators stricter than the
-  contracts; `read_standings`, where one bad standing fails the whole Hero
-  tick; bond recovery, which runs serially before every wave; the reader's
-  `expect`s on finalized log data. A retry loop that should page reuses the
-  epoch manager's consecutive-tick rule (`repeated_reverts`: a warning first,
-  an error on the next tick). (node-architecture.md, failure policy)
 - Prune dispute-path validators that re-check what the contracts enforce
   (P1, bounded by P2: keep the checks whose absence makes a lie silent). The
   coordinate validators front engine asserts: keep each, or make the asserts
