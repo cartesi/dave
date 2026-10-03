@@ -148,16 +148,18 @@ broken trusted assumption (finalized and complete RPC data, a stable
 parameters provider, a guest that yields through well-formed requests) may
 stop every node at once.
 
-Workers retry a failed tick with a warning that carries the whole error
-chain: a transient provider or storage error costs one polling interval, and
-a warning that repeats tick after tick is a stall to investigate. Two stalls
-need an operator: a log missing from the tail of ingested inputs (rebuild the
-state directory) and one missing from the reader's finalized fold (restart,
-which refolds). Asserts are for states reachable only through a node bug,
-corrupt local state, a broken trusted assumption, or an already-defeated
-protocol; there, stopping loudly is the alarm. A panic stops every worker,
-refunds included (`lib.rs`, `worker_failure`), and a restart re-plans the
-same step.
+Workers retry a failed tick with a warning that carries the whole error chain:
+a transient provider or storage error costs one polling interval, and a
+warning that repeats tick after tick is a stall to investigate. One stall
+needs an operator: a log missing from the tail of ingested inputs (rebuild the
+state directory). A tournament event that does not fold onto the reader's
+finalized prefix drops the prefix, and the next tick refolds from the root's
+creation block as a restart would; an omitted log that still folds is not
+detected (RPC completeness is trusted). Asserts are for states reachable only
+through a node bug, corrupt local state, a broken trusted assumption, or an
+already-defeated protocol; there, stopping loudly is the alarm. A panic stops
+every worker, refunds included (`lib.rs`, `worker_failure`), and a restart
+re-plans the same step.
 
 ## Storage
 
@@ -351,14 +353,21 @@ every tournament's local event stream through `F`, applying events one at a
 time in log order, and only then replaces the Solid value. The fold does not
 re-prove what the contracts guarantee, so it cannot stall on a sequence they
 can emit: it rejects only an event it cannot apply without guessing (an
-unknown match or commitment, a second join, a seal, advance or delegation of
-a match that is no longer clocked, a second deletion). A commitment's standing
+unknown match or commitment, a second join, a seal, advance or delegation of a
+match that is no longer clocked, a second deletion). A commitment's standing
 is derived from its latest match rather than tracked. A new reader folds from
 the root tournament's creation block, so a restart is a cold start: it
 refetches the full finalized range of every tournament still live at the
 finalized head once (a child resolved before it costs only its descriptor
 read), which costs response-clock time on a long dispute, and a bad finalized
-prefix (a provider fault or a mixed fork) does not survive it.
+prefix (a provider fault or a mixed fork) does not survive it. A finalized
+event that does not fold onto Solid (an omitted log surfacing at the match's
+next event) drops Solid in process, and the next tick takes the same cold
+path; transport, harvest and decode failures keep it and retry the range. An
+omission that still folds, such as a missed advance or join, stays silent, and
+one may surface too late: a missed creation of the Hero's own match, when the
+Hero moves first, fails to fold only at the opponent's timeout deletion. Log
+completeness is a trusted RPC property.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest

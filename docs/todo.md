@@ -13,10 +13,10 @@ carry no backlog (reviews/README.md).
   start against earlier contracts. The release notes name the generation,
   its addresses, geometry and bonds. (build-system.md, CHANGELOG.md)
 - Operator notes in the node README: a warning that repeats every tick is a
-  stall (restart after a fold error, rebuild after an input gap); on
-  foreclosure, stop the node once its recoveries finish; an epoch lasts at
-  least the root allowance, plus the staging period unless every sentry
-  agrees. (node-architecture.md, epoch-lifecycle.md)
+  stall (rebuild after an input gap); on foreclosure, stop the node once its
+  recoveries finish; an epoch lasts at least the root allowance, plus the
+  staging period unless every sentry agrees. (node-architecture.md,
+  epoch-lifecycle.md)
 
 ## Before the canonical two-level switch (a later PR)
 
@@ -65,11 +65,10 @@ carry no backlog (reviews/README.md).
 - Audit panics, asserts and retry loops against P1 (debt 3). Targets: the
   Hero's remaining `expect`s; dispute-path validators stricter than the
   contracts; `read_standings`, where one bad standing fails the whole Hero
-  tick; Solid, which keeps a missed finalized log until a restart; bond
-  recovery, which runs serially before every wave; the reader's `expect`s on
-  finalized log data. A retry loop that should page reuses the epoch
-  manager's consecutive-tick rule (`repeated_reverts`: a warning first, an
-  error on the next tick). (node-architecture.md, failure policy)
+  tick; bond recovery, which runs serially before every wave; the reader's
+  `expect`s on finalized log data. A retry loop that should page reuses the
+  epoch manager's consecutive-tick rule (`repeated_reverts`: a warning first,
+  an error on the next tick). (node-architecture.md, failure policy)
 - Prune dispute-path validators that re-check what the contracts enforce
   (P1, bounded by P2: keep the checks whose absence makes a lie silent). The
   coordinate validators front engine asserts: keep each, or make the asserts

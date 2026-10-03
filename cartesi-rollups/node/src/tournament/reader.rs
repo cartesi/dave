@@ -24,7 +24,9 @@ use crate::{
     chain::{Chain, ChainHead},
     tournament::{
         MatchID,
-        dispute::{Dispute, EventKind, MatchDeletionReason, Tournament, WinnerCommitment},
+        dispute::{
+            Dispute, DisputeError, EventKind, MatchDeletionReason, Tournament, WinnerCommitment,
+        },
         observer,
     },
 };
@@ -142,7 +144,22 @@ impl StateReader {
 
         let phase = ReadPhase::try_new(from, finalized.number, finalized, Some(finalized))?;
         let mut validation = HarvestValidation::new(phase);
-        let tournament = extend_tournament(&self.chain, base.into_root(), &mut validation).await?;
+        let tournament =
+            match extend_tournament(&self.chain, base.into_root(), &mut validation).await {
+                Ok(tournament) => tournament,
+                Err(error) => {
+                    // A finalized event that does not fold means the prefix
+                    // missed a log, and extending it fails the same way every
+                    // tick. Drop it, so the next tick refolds from the root's
+                    // creation block as a restart would. Other failures
+                    // (transport, harvest, decode) keep it and retry the range,
+                    // so a struggling provider is not handed full refolds.
+                    if error.downcast_ref::<DisputeError>().is_some() {
+                        self.solid = None;
+                    }
+                    return Err(error);
+                }
+            };
         self.solid = Some(Solid {
             root,
             head: finalized,
@@ -526,6 +543,27 @@ mod tests {
                 one: id.commitment_one.into(),
                 two: id.commitment_two.into(),
                 leftOfTwo: digest(90).into(),
+                eliminableAt: eliminable_at,
+            },
+        )
+    }
+
+    fn match_advanced_log(
+        emitter: Address,
+        at: ChainHead,
+        index: u64,
+        id: MatchID,
+        eliminable_at: u64,
+    ) -> Log {
+        event_log_at(
+            emitter,
+            at,
+            index,
+            bindings::Tournament::MatchAdvanced {
+                matchIdHash: id.hash().into(),
+                otherParent: digest(91).into(),
+                leftNode: digest(92).into(),
+                segmentStartPosition: U256::ZERO,
                 eliminableAt: eliminable_at,
             },
         )
@@ -1105,6 +1143,85 @@ mod tests {
                 (serde_json::json!("0x28"), serde_json::json!("0x2b")),
             ],
             "a restart refolds every stream from the root's creation block"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fold_failure_drops_solid_and_the_next_tick_refolds() {
+        let root = address(1);
+        let first_finalized = head(41, 0x41);
+        let second_finalized = head(43, 0x43);
+        let id = MatchID {
+            commitment_one: digest(10),
+            commitment_two: digest(20),
+        };
+        let joins = vec![
+            join_log(root, first_finalized, 0, id.commitment_one),
+            join_log(root, first_finalized, 1, id.commitment_two),
+        ];
+        let created = match_created_log(root, first_finalized, 2, id, 60);
+        let advanced = match_advanced_log(root, second_finalized, 0, id, 70);
+        let (chain, asserter, requests) = recording_chain();
+        let mut reader = StateReader::new(chain, 40);
+
+        // The provider omits the match's creation from the first fold.
+        asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
+        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
+            &asserter,
+            &descriptor_response(0, TournamentKind::Leaf),
+        );
+        asserter.push_success(&joins);
+        asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
+        reader.fetch_from_root(root).await.unwrap();
+
+        // A transport failure keeps Solid and retries the same range.
+        asserter.push_success(&Some(block(second_finalized, B256::repeat_byte(0x42))));
+        asserter.push_failure_msg("getLogs unavailable");
+        assert!(reader.fetch_from_root(root).await.is_err());
+        assert_eq!(reader.solid().unwrap().0, first_finalized);
+
+        // The match's next event does not fold onto the gap: Solid goes.
+        asserter.push_success(&Some(block(second_finalized, B256::repeat_byte(0x42))));
+        asserter.push_success(&vec![advanced.clone()]);
+        let error = reader.fetch_from_root(root).await.unwrap_err();
+        assert!(error.downcast_ref::<DisputeError>().is_some(), "{error:#}");
+        assert!(reader.solid().is_none());
+
+        // The next tick refolds from the root's creation block.
+        asserter.push_success(&Some(block(second_finalized, B256::repeat_byte(0x42))));
+        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
+            &asserter,
+            &descriptor_response(0, TournamentKind::Leaf),
+        );
+        asserter.push_success(&[joins, vec![created, advanced]].concat());
+        asserter.push_success(&Some(block(second_finalized, B256::repeat_byte(0x42))));
+        reader.fetch_from_root(root).await.unwrap();
+        let (solid_head, solid) = reader.solid().unwrap();
+        assert_eq!(solid_head, second_finalized);
+        assert!(solid.root().match_by_id_hash(&id.hash()).is_some());
+        assert!(asserter.read_q().is_empty());
+
+        let ranges = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request["method"] == "eth_getLogs")
+            .map(|request| {
+                (
+                    request["params"][0]["fromBlock"].clone(),
+                    request["params"][0]["toBlock"].clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let range = |from: &str, to: &str| (serde_json::json!(from), serde_json::json!(to));
+        assert_eq!(
+            ranges,
+            vec![
+                range("0x28", "0x29"),
+                range("0x2a", "0x2b"),
+                range("0x2a", "0x2b"),
+                range("0x28", "0x2b"),
+            ]
         );
     }
 
