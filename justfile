@@ -146,10 +146,11 @@ lint-lua:
     luacheck prt/client-lua prt/measure_constants/measure.lua test/e2e \
       --exclude-files "**/dependencies/**"
 
-# focused state-machine tests for receipt/checker shell code
+# focused tests for the build tooling shell code (receipts, checkers, prune)
 test-build-tooling:
     ./script/tests/devnet-fingerprint.sh
     ./script/tests/machine-image-fingerprint.sh
+    ./script/tests/soldeer-prune.sh
 
 # fast, provider-free semantic tests for the Lua PRT client
 test-lua-client:

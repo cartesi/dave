@@ -118,9 +118,6 @@ carry no backlog (reviews/README.md).
 - The toolchain is off the bare PATH (forge, the CLI and the pinned emulator
   come from the nix devshell): recipes that enter it, or a doctor check that
   names the fix. (build-system.md)
-- Soldeer keeps old dependency versions after a bump, which poisons the
-  leaf-gate dependency digest (ca1b0357); prune them or digest only the pinned
-  versions. (runbooks/prt-refund-gas-calibration.md)
 - Fix the measurement generator's wording for `G` and regenerate the
   measurements, whose checked-in prose still names `matchEffort`.
   (dimensioning.md)

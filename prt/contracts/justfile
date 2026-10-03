@@ -99,8 +99,10 @@ compatibility-hashes:
     echo "MultiLevelTournamentFactory metadata-included runtime-bytecode fingerprint sha256:"
     forge inspect MultiLevelTournamentFactory deployedBytecode | sha256sum
 
+# install the locked dependencies and prune versions the lock no longer names
 install-deps:
     forge soldeer install
+    ../../script/soldeer-prune.sh
 
 clean-bindings:
     rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}

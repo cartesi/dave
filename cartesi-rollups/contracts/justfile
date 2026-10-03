@@ -17,8 +17,10 @@ fmt:
 check-fmt:
     forge fmt --check
 
+# install the locked dependencies and prune versions the lock no longer names
 install-deps:
     forge soldeer install
+    ../../script/soldeer-prune.sh
 
 # compile smart contracts
 build-smart-contracts:
