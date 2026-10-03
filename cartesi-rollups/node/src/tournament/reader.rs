@@ -68,8 +68,8 @@ impl StateReader {
     /// match's folded status, so the next fetch refolds from the root's
     /// creation block as a restart would. A missed finalized seal or
     /// delegation still folds, and Foam extends Solid only past `F`, so
-    /// otherwise every tick would fail the same way. A lagging Foam tail
-    /// costs one refold.
+    /// otherwise every tick would fail the same way. A lagging or mixed Foam
+    /// tail costs one refold; a persistent cause, one refold per tick.
     pub fn forget_contradicted_solid(&mut self, error: &anyhow::Error) {
         let contradicted = error.chain().any(|cause| {
             matches!(

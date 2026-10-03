@@ -432,12 +432,15 @@ next event) drops Solid in process, and the next tick takes the same cold
 path; transport, harvest and decode failures keep it and retry the range. A
 missed seal or delegation of an engaged match on the Hero's path still folds,
 but its pinned phase read contradicts the match's folded status and fails the
-Hero's tick, which then drops Solid the same way; a Foam tail that lags its
-head costs one such refold. Any other omission that still folds, such as a
-missed advance, or a missed join until a match pairs it, stays silent, and one
-may surface too late: a missed creation of the Hero's own match, when the Hero
-moves first, fails to fold only at the opponent's timeout deletion. Log
-completeness is a trusted RPC property.
+Hero's tick, which then drops Solid the same way; a lagging or mixed Foam
+tail costs one such refold. Both drops repeat while their cause persists (a
+provider that keeps omitting the log, or a node bug): every tick then refolds
+and fails with the same warning, adding reads to a stall that exists anyway.
+Any other omission that still folds, such as a missed advance, or a missed
+join until a match pairs it, stays silent, and one may surface too late: a
+missed creation of the Hero's own match, when the Hero moves first, fails to
+fold only at the opponent's timeout deletion. Log completeness is a trusted
+RPC property.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest
