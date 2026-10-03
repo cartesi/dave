@@ -22,11 +22,11 @@ use cartesi_prt_contracts::tournament;
 
 /// Default gas limit for refundable tournament calls (body + refund modifier overhead;
 /// sealInnerMatchAndCreateInnerTournament also creates a contract and needs more).
-/// Override with `GAS_LIMIT` env var if needed.
+/// Override with `CARTESI_SLING_BLOCKCHAIN_GAS_LIMIT` env var if needed.
 const DEFAULT_GAS_LIMIT: u64 = 15_000_000;
 
 pub(crate) fn gas_limit() -> u64 {
-    std::env::var("GAS_LIMIT")
+    std::env::var("CARTESI_SLING_BLOCKCHAIN_GAS_LIMIT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_GAS_LIMIT)
