@@ -14,7 +14,36 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
+use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio::sync::Notify;
+
+/// The process's stop signals: SIGINT (a terminal's Ctrl-C) and SIGTERM
+/// (what docker, systemd and Kubernetes send). Listening starts at
+/// construction, so a signal raised before the first poll is kept; the
+/// handlers then stay installed for the life of the process, so a stop
+/// signal never takes its default, abrupt action again.
+#[derive(Debug)]
+pub struct StopSignals {
+    interrupt: Signal,
+    terminate: Signal,
+}
+
+impl StopSignals {
+    pub fn listen() -> std::io::Result<Self> {
+        Ok(Self {
+            interrupt: signal(SignalKind::interrupt())?,
+            terminate: signal(SignalKind::terminate())?,
+        })
+    }
+
+    /// Resolves to the name of the next stop signal.
+    pub async fn next(&mut self) -> &'static str {
+        tokio::select! {
+            _ = self.interrupt.recv() => "SIGINT",
+            _ = self.terminate.recv() => "SIGTERM",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct ShutdownSignal {

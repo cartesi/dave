@@ -63,11 +63,13 @@ takes no local commitment and skips these checks.
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker
 sleeps through its condvar half. Worker errors do NOT travel through
-the signal - they return through JoinHandles. run() races an
-interrupt against every handle, turns the first exit into a shutdown
-request, then awaits EVERY remaining handle (dropping one would
-detach its task mid-drain). A worker returning before shutdown was
-requested counts as failure even on Ok: silence is not success.
+the signal - they return through JoinHandles. run() races a stop
+signal (SIGINT or SIGTERM) against every handle, turns the first exit
+into a shutdown request, then awaits EVERY remaining handle (dropping
+one would detach its task mid-drain). A stop signal during that drain
+exits at once, which is as crash-safe as SIGKILL. A worker returning
+before shutdown was requested counts as failure even on Ok: silence is
+not success.
 Panics surface as JoinErrors and are treated like errors. How a worker
 fails is the failure policy below.
 

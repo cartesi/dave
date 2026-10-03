@@ -28,7 +28,7 @@ mod harness;
 
 use args::NodeConfig;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use log::{error, info};
 use std::sync::Arc;
 use tokio::task::{JoinError, JoinHandle};
@@ -37,19 +37,24 @@ use crate::blockchain_reader::BlockchainReader;
 use crate::chain::Chain;
 use crate::epoch_manager::EpochManager;
 use crate::machine_runner::MachineRunner;
-use crate::sync::ShutdownSignal;
+use crate::sync::{ShutdownSignal, StopSignals};
 use crate::tournament::EthArenaSender;
 
 /// Runs the node: one runtime, three workers, explicit spawns and
 /// select arms - deliberately not a Worker abstraction, so each edit
 /// stays obvious and local. Shutdown is a signal everyone observes
 /// (see sync.rs); errors return through JoinHandles. The first exit,
-/// or an interrupt, requests shutdown for the rest, and then EVERY
-/// remaining handle is awaited - dropping one would detach its task
-/// mid-drain, exactly the abrupt-write case crash recovery exists to
-/// mop up. A worker that returns before shutdown was requested has
-/// stopped unexpectedly: silence is a failure, not a success.
+/// or a stop signal (SIGINT or SIGTERM), requests shutdown for the
+/// rest, and then EVERY remaining handle is awaited - dropping one
+/// would detach its task mid-drain, exactly the abrupt-write case
+/// crash recovery exists to mop up. A worker that returns before
+/// shutdown was requested has stopped unexpectedly: silence is a
+/// failure, not a success.
 pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
+    // Listening first, so a stop during the sweep or the spawns is caught
+    // rather than taking the signal's default action.
+    let mut stop_signals = StopSignals::listen().context("failed to listen for stop signals")?;
+
     // Startup hygiene, before any worker spawns: sweep the scratch
     // a crash or an older node version left behind - settled epochs'
     // dispute work and the snapshot store's staging leftovers. Grows
@@ -118,13 +123,13 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         })
     };
 
-    // Race the interrupt against every worker; biased so a pending
-    // interrupt beats a ready worker exit.
+    // Race the stop signals against every worker; biased so a pending
+    // signal beats a ready worker exit.
     let mut finished = (false, false, false);
     let first_exit: Option<(&str, std::result::Result<Result<()>, JoinError>)> = tokio::select! {
         biased;
-        _ = tokio::signal::ctrl_c() => {
-            info!("interrupt received, starting shutdown");
+        name = stop_signals.next() => {
+            info!("{name} received, starting shutdown");
             None
         }
         r = &mut machine_runner => { finished.0 = true; Some(("machine runner", r)) }
@@ -138,6 +143,15 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         first_exit.and_then(|(name, joined)| worker_failure(name, joined, shutdown.is_requested()));
 
     shutdown.request();
+
+    // A stop signal during the drain (a second one, or the first after a
+    // worker exit) exits at once: as crash-safe as SIGKILL, and a person
+    // at a terminal need not find another way to kill the process.
+    tokio::spawn(async move {
+        let name = stop_signals.next().await;
+        error!("{name} received during shutdown, exiting without draining");
+        std::process::exit(1);
+    });
 
     if !finished.0 {
         report_drained("machine runner", machine_runner.await);
