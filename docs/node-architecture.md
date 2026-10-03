@@ -40,25 +40,25 @@ state-directory lock and opens the directory. A seeded directory is compared
 with its `sling_config` pins (app, chain, consensus, template, emulator and
 table) before anything is written, and the claimant is pinned before any
 worker starts. A mismatch names the flag to fix (`--app-address`,
-`--web3-chain-id`), calls the directory another deployment's or an old one
-(the template), or asks for a rebuild (consensus, emulator, table). A new
-directory is seeded
-in one transaction: the genesis watermark, the epoch-0 boundary, the template
-row and the pins. So a deployment or flag these checks reject cannot create or
-alter local state, and a restart never imports the template again. The runner
-samples each window at the pinned root stride. Startup failures are errors
-that name the flag to fix; they add no URL or key material, though a transport
-error's own text may carry the endpoint. The initial hash comes from epoch 0's
-`EpochSealed` in the consensus's deployment block, which the consensus records
-as `block.number`: where that is not the log block coordinate (Arbitrum
-reports the parent chain's), the node cannot locate genesis and does not
-start. Table
-stability is a trust assumption of the parameters provider, so before
-planning any action the Hero checks the descriptor of every tournament on its
-own path against the pinned row for its level, and the root tournament's
-initial hash against the node's epoch-start snapshot. Both are invariant
-violations and panic. Cleanup of other branches takes no local commitment and
-skips these checks.
+`--web3-chain-id`, the signer's), calls the directory another deployment's or
+an old one (the template), or asks for a rebuild (consensus, emulator, table).
+A new directory is seeded in one transaction: the genesis watermark, the
+epoch-0 boundary, the template row and the pins. So a deployment or flag these
+checks reject cannot create or alter local state, and a restart never imports
+the template again. The runner samples each window at the pinned root stride.
+Other operator mistakes (an unknown chain id, an unreadable or invalid key, an
+endpoint on another chain, an address that is not a Dave application) are
+errors that name their flag too; they add no URL or key material, though a
+transport error's own text may carry the endpoint. The initial hash comes from
+epoch 0's `EpochSealed` in the consensus's deployment block, which the
+consensus records as `block.number`: where that is not the log block
+coordinate (Arbitrum reports the parent chain's), the node cannot locate
+genesis and does not start. Table stability is a trust assumption of the
+parameters provider, so before planning any action the Hero checks the
+descriptor of every tournament on its own path against the pinned row for its
+level, and the root tournament's initial hash against the node's epoch-start
+snapshot. Both are invariant violations and panic. Cleanup of other branches
+takes no local commitment and skips these checks.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker

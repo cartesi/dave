@@ -131,9 +131,8 @@ it too. A template with custom uarch code is outside the model: on the
 release corpus case `uarch-near-limit-tail`, Solidity, the CLI and Dave give
 three different roots. The node refuses such a template at startup, before
 it touches the state directory: a uarch reset must leave the template's root
-unchanged. That compares with the
-linked emulator's pristine uarch; that it is the deployed step's is the
-provenance gate's concern.
+unchanged. That compares with the linked emulator's pristine uarch; that it is
+the deployed step's is the provenance gate's concern.
 
 ### Toy picture
 
