@@ -1,12 +1,13 @@
 set positional-arguments
 
-[private]
-clean-program prog:
+# remove a program's image and its receipt (and the honeypot's build project)
+clean PROGRAM:
   #!/usr/bin/env bash
   set -euo pipefail
   program=$1
   case "$program" in
-    echo|yield|stress|honeypot) ;;
+    echo|yield|stress) ;;
+    honeypot) rm -rf honeypot/project ;;
     *)
       echo "error: unsupported test program: $program" >&2
       exit 2
@@ -18,23 +19,20 @@ clean-program prog:
   rm -f -- "$program"/machine-image.fingerprint.tmp.*
 
 # yield
-build-yield: clean-yield
+build-yield: (clean "yield")
   ./script/build-yield.sh
-clean-yield: (clean-program "yield")
 
 # stress: the compute-heavy workload. Each input burns a deterministic
 # ~2^29 big cycles by hashing 8 MB of zeros with sha256sum. Several
 # level-0 leaf spans per input are therefore fully active - the
 # worst-case replay shape the measurement baseline needs.
 # build the synthetic instruction-heavy measurement sample
-build-stress: clean-stress
+build-stress: (clean "stress")
   ./script/build-stress.sh
-clean-stress: (clean-program "stress")
 
 # echo
-build-echo: clean-echo
+build-echo: (clean "echo")
   ./script/build-echo.sh
-clean-echo: (clean-program "echo")
 
 # The honeypot is an opt-in e2e fixture, built from source so that any
 # honeypot commit, released or not, can be tested. Its released snapshots
@@ -47,11 +45,8 @@ HONEYPOT_REF := "23b31c06f0537cbd33f996f4ecf1ef6bea8363b3" # cartesi/honeypot#37
 # Just has no named arguments, so REF=<commit> arrives literally; the
 # prefix is stripped so that spelling works like a bare <commit>.
 # build the honeypot image from a honeypot commit (requires docker)
-build-honeypot REF=HONEYPOT_REF: clean-honeypot-snapshot clean-honeypot-project
+build-honeypot REF=HONEYPOT_REF: (clean "honeypot")
   ./script/build-honeypot.sh "${1#REF=}"
-clean-honeypot-snapshot: (clean-program "honeypot")
-clean-honeypot-project:
-    rm -rf honeypot/project
 
 # required lightweight fixtures
 build-programs: build-yield build-echo

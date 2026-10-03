@@ -300,14 +300,11 @@ worktrees-sweep:
 # Clean
 # ------------------------------------------------------------------
 
-clean-contracts:
+# remove contract outputs, bindings, deployments and the Rust target dir
+clean:
     just prt-contracts::clean
     just rollups-contracts::clean
-
-clean-rust-workspace:
     cargo clean
-
-clean: clean-contracts clean-rust-workspace
 
 # ------------------------------------------------------------------
 # End-to-end tests (see docs/test-harness.md)

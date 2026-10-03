@@ -5,7 +5,11 @@ DEPLOYMENTS_DIR := "./deployments"
 default: build
 
 build: build-smart-contracts bind
-clean: clean-smart-contracts clean-bindings clean-deployments
+
+# remove compiler output, generated bindings and deployment records
+clean:
+    forge clean
+    rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}} {{DEPLOYMENTS_DIR}}
 
 build-smart-contracts:
     forge build
@@ -49,9 +53,6 @@ test-stf:
 test-stf-fuzzy:
     ../../script/machine-image-fingerprint.sh verify yield
     forge test --match-contract ".*FfiTest" --match-test ".*Fuzzy" --ffi --threads 1
-
-clean-smart-contracts:
-    forge clean
 
 fmt:
     forge fmt
@@ -97,14 +98,9 @@ install-deps:
     forge soldeer install
     ../../script/soldeer-prune.sh
 
-clean-bindings:
-    rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}
-
-clean-deployments:
-    rm -rf {{DEPLOYMENTS_DIR}}
-
 # regenerate Rust bindings only when their inputs changed
 bind:
     "{{ source_directory() / "../../script/contract-bindings.sh" }}" generate prt
 
-bind-force: clean-bindings bind
+bind-force: && bind
+    rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}

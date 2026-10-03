@@ -9,7 +9,12 @@ DEVNET_FINGERPRINT_PENDING := "state.fingerprint.pending"
 default: build
 
 build: build-smart-contracts bind
-clean: clean-smart-contracts clean-bindings clean-deployments
+
+# remove compiler output, generated bindings, deployment records and the devnet
+clean:
+    forge clean
+    rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}} {{DEPLOYMENTS_DIR}} {{DEVNET_STATE}} \
+      {{DEVNET_FINGERPRINT}} {{DEVNET_FINGERPRINT_PENDING}}
 
 fmt:
     forge fmt
@@ -40,24 +45,12 @@ coverage:
       --report lcov --lcov-version 2
     genhtml -o coverage lcov.info --rc derive_function_end_line=0
 
-# clean smart contracts artifacts
-clean-smart-contracts:
-    forge clean
-
-# clean generated bindings
-clean-bindings:
-    rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}
-
-# clean deployment artifacts
-clean-deployments:
-    rm -rf {{DEPLOYMENTS_DIR}} {{DEVNET_STATE}} \
-      {{DEVNET_FINGERPRINT}} {{DEVNET_FINGERPRINT_PENDING}}
-
 # regenerate Rust bindings only when their inputs changed
 bind:
     "{{ source_directory() / "../../script/contract-bindings.sh" }}" generate rollups
 
-bind-force: clean-bindings bind
+bind-force: && bind
+    rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}
 
 # DEVNET_GEOMETRY=two-level deploys the devnet-only two-level table instead
 # of the canonical one; bundle consumers verify against the same variable.
