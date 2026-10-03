@@ -384,11 +384,13 @@ a leaf proof in flight when the opponent's shorter leaf clock expires reverts,
 and the survivor needs a separate timeout claim. With `d1` the proof's latency
 from the seal and `d2` the claim's latency after it, the survivor is charged
 `max(0, d1 + d2 - G)` and must outlive `d1 + d2`. The adversary chooses how
-often this happens, one Sybil bond each, but not the latencies; with ordinary
-inclusion both land well inside `G`, and stretching them is censorship, which
-`C` budgets. At `C = 0` (devnets) it can decide a match. Letting `winLeafMatch`
-settle as the timeout win the classifier selects was judged not worth revising
-the disjoint verbs.
+often this happens, one Sybil bond each, but not the latencies. Each
+occurrence can cost up to one `G` of `C` even when both actions land within
+their own `G`: the review's trace lost a match at `C = 0` with every inclusion
+inside its bound. It costs nothing only if the proof and its fallback claim
+land within one `G` of the seal, an operating assumption whose adoption R19
+decides (todo.md). Letting `winLeafMatch` settle as the timeout win the
+classifier selects was judged not worth revising the disjoint verbs.
 
 A non-leaf match resolves when its linked child finishes:
 

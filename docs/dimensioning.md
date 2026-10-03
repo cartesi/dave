@@ -144,12 +144,15 @@ one input is replayed, never cached, by three honest actions:
 
 Under the two-level table (`[55, 37]`, `G` of five minutes, hardware slack
 2), the hash-cost curve in docs/measurements/constants.md (stress workload,
-measured on v0.20) gives about 3.5 ns per big cycle to run and about 7 ns
-per big cycle sampled at stride 2^37. That puts the contract near 2^34 big
-cycles per input at a gap of 1, and near 2^29 at the default gap of 64,
-where the prefix replay dominates. These are estimates on one workload; a
-v0.21 re-measurement on validator-grade hardware confirms or replaces them.
-Heavy applications lower the gap.
+measured on v0.20) gives about 7 ns per big cycle sampled at stride 2^37
+(run plus root hash, between its 2^16 and 2^18 rows). Replaying whole inputs
+is one unbroken run, which its long rows put at about 1.2 ns per big cycle,
+as does the v0.21 positioning in docs/measurements/node-vs-emulator.md. With
+`G` halved by the slack to 150 s, the contract is near 2^34 big cycles per input
+at a gap of 1, and near 2^30.8 at the default gap of 64 (63 replayed inputs
+and one sampled), where the prefix replay dominates. These are estimates on
+one workload; a v0.21 re-measurement on validator-grade hardware confirms or
+replaces them. Heavy applications lower the gap.
 
 An overrun is charged to the honest clock beyond `G` and draws on `C`: it
 spends censorship tolerance before it loses a dispute. Past the contract, as
