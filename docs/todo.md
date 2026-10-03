@@ -60,11 +60,27 @@ carry no backlog (reviews/README.md).
 - Validate before writing at startup (R10): the pinned-config drift checks and
   the template's initial hash run after `Storage::initialize` has written the
   genesis watermark and cloned the template, so until then only the geometry
-  and MARCHID checks precede local writes. (node-architecture.md)
-- Audit panics, asserts and retry loops against P1 (debt 3), then prune
-  dispute-path validators that re-check what the contracts enforce (P1,
-  bounded by P2: keep the checks whose absence makes a lie silent).
-  (node-architecture.md, failure policy)
+  and MARCHID checks precede local writes; then drop the R10 caveat from
+  node-architecture.md's startup paragraph. (node-architecture.md)
+- Audit panics, asserts and retry loops against P1 (debt 3). Targets: the
+  Hero's remaining `expect`s; dispute-path validators stricter than the
+  contracts; `read_standings`, where one bad standing fails the whole Hero
+  tick; Solid, which keeps a missed finalized log until a restart; bond
+  recovery, which runs serially before every wave; the reader's `expect`s on
+  finalized log data; the terminal-application hold, which has no
+  `settles()` test for a `TX_EXCEPTION` yield. (node-architecture.md,
+  failure policy)
+- Pin the settle asserts' staging and accept reads to the Hero's observed
+  head (or to finalized): read at a fresh latest, a tip reorg may fire them
+  once without a node bug (a lead). (epoch-lifecycle.md, settlement
+  invariant)
+- After that audit, prune dispute-path validators that re-check what the
+  contracts enforce (P1, bounded by P2: keep the checks whose absence makes a
+  lie silent). Before pruning one that guards an engine assert, make the
+  assert an error, or the prune turns a retry into a common-mode panic. The
+  unmarked cases: `MatchHeightOutOfRange`, which guards `LevelCoords::node`,
+  and the `children` expect in `engine/dispute.rs`. (node-architecture.md,
+  failure policy)
 - Serialize snapshot GC's directory removal with re-adoption; dispute
   positioning now publishes from the manager's thread too (debt 1).
   (node-architecture.md)
@@ -78,9 +94,14 @@ carry no backlog (reviews/README.md).
   manager (debt 7); graceful shutdown and cancellable leaf builds (debt 9).
   (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
-- The design assumptions (debts 10 to 12): the Latest tail's ancestry, one
-  node per state directory without a process lock, and ingestion held in
-  memory before one commit. (node-architecture.md)
+- Take an exclusive process lock on the state directory before any write,
+  with R10 (debt 11). (node-architecture.md)
+- Check that the Latest tail descends from Solid's finalized block, by parent
+  hashes, instead of trusting a number range (debt 10; today the estimate
+  pre-check of 8ace5822 is the backstop). (node-architecture.md)
+- Bound each ingestion tick to a block range and commit per chunk, so a cold
+  start never holds the whole backlog in memory (debt 12).
+  (node-architecture.md)
 
 ## Contracts and assurance
 
@@ -98,7 +119,8 @@ carry no backlog (reviews/README.md).
   (runbooks/prt-refund-gas-calibration.md)
 - Replace the local `CM_MARCHID = 21` in `CartesiStateTransition` with
   solidity-step's constant once a release exports it; it moves deployed
-  addresses, so it rides a generation. (computation-hash.md)
+  addresses, so it rides the next deployment bundle (normally the next
+  generation). (computation-hash.md)
 - Review contract code shaped for tests (`Deployment.s.sol`'s
   `commitmentBudget` parameter, which only the devnet script uses), say that
   on-chain geometry validation is test-only, and make the canonical validator
@@ -133,8 +155,8 @@ carry no backlog (reviews/README.md).
 
 ## Decisions
 
-- The tournament events ABI stays as is in this generation; a follow-up may
-  add fields if consumers request them.
+- The tournament events ABI stays as is in this PR; a follow-up may add
+  fields if consumers request them.
 - The safety-gate branch stays tabled: the delay lives in DaveConsensus
   staging and sentries, and the branch is kept for its `ITask` genericity.
 - Open: the external audit's scope, firm and date, and whether R19 gates it

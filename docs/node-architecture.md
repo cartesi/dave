@@ -35,16 +35,18 @@ table can be built in time (one warning for a leaf taller than its measured
 capacity) and does not pin or check `T`. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
 linked Cartesi Machine library. These checks run before database
-initialization, so an incompatible deployment cannot create or alter local
+initialization, so a deployment they reject cannot create or alter local
 state. Initialization then pins the table and the consensus address in
 `sling_config`; the runner samples each window at the pinned root stride, and
-a later start against another table or consensus is refused. Table stability
-is a trust assumption of the parameters provider, so before planning any
-action the Hero checks the descriptor of every tournament on its own path
-against the pinned row for its level, and the root tournament's initial hash
-against the node's epoch-start snapshot. Both are invariant violations and
-panic. Cleanup of other branches takes no local commitment and skips these
-checks.
+a later start against another table or consensus is refused. That refusal,
+and the template's initial-hash check, still run after initialization has
+written the genesis watermark and stored the template (R10, todo.md). Table
+stability is a trust assumption of the parameters provider, so before
+planning any action the Hero checks the descriptor of every tournament on its
+own path against the pinned row for its level, and the root tournament's
+initial hash against the node's epoch-start snapshot. Both are invariant
+violations and panic. Cleanup of other branches takes no local commitment and
+skips these checks.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker

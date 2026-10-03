@@ -36,7 +36,7 @@ linked descendants is at most `C`, then:
 
 This is a safety property: whether a wrong root can win. How long the root
 takes to finish is the separate liveness question (the delay bound), which
-stays a non-claim (dispute-game.md:818-822, prt-delay-bound.md).
+stays a non-claim (dispute-game.md:820-824, prt-delay-bound.md).
 
 ## The honest strategy
 
@@ -98,9 +98,9 @@ Paths under `prt/contracts/` unless stated.
 
 No evidence combines an honest actor, Sybil-populated children, one `C`
 ledger, both orientations end to end, and reserves set exactly at the
-formula. The living docs say so: dispute-game.md:818-822,
-prt-contract-testing.md:139-143, dimensioning.md:357-361, and
-prt-delay-bound.md:155-160 (no honest-validator strategy is imposed). The
+formula. The living docs say so: dispute-game.md:820-824,
+prt-contract-testing.md:139-144, dimensioning.md:360-364, and
+prt-delay-bound.md:156-160 (no honest-validator strategy is imposed). The
 devnet's own claim, that with `C = 0` "clocks cover only the honest path"
 (`script/Deployment.s.sol:166-168`), is what the model checks at `C = 0`.
 
@@ -169,13 +169,13 @@ CF-01 trace. The owner decides.
 
 ## Where the results land
 
-- dispute-game.md: split "Remaining liveness work" (:818-822) into a safety
+- dispute-game.md: split "Remaining liveness work" (:820-824) into a safety
   result (honest survival under `C`, with its assumptions) and the liveness
   non-claim (the delay bound), and restate the assumption at :28 as derived
   from the latency bounds.
 - prt-contract-testing.md: replace the "No current model combines ..."
-  paragraph (:139-143) with the new invariant.
-- dimensioning.md:357-361 and prt-delay-bound.md, where they call the
+  paragraph (:139-144) with the new invariant.
+- dimensioning.md:360-364 and prt-delay-bound.md, where they call the
   general result open.
 - [audit-readiness.md](audit-readiness.md): mark R19 done or name what the
   auditor receives instead.

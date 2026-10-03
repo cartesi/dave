@@ -8,10 +8,9 @@ at the commit that added this file; re-check them.
 
 ## Candidate scope
 
-- `prt/contracts/src/`: `Tournament` and its libraries, the factories,
-  `CanonicalTournamentParametersProvider`, `ClockBudgets`,
-  `ArbitrationConstants`, and the state-transition adapters with
-  `CartesiStateTransition`.
+- `prt/contracts/src/`: `Tournament` and its libraries,
+  `MultiLevelTournamentFactory`, `CanonicalTournamentParametersProvider`,
+  `ClockBudgets`, `ArbitrationConstants`, and `CartesiStateTransition`.
 - `cartesi-rollups/contracts/src/`: `DaveConsensus` and `DaveAppFactory`
   with their interfaces.
 - The deployment scripts: `prt/contracts/script/Deployment.s.sol` and
@@ -36,9 +35,9 @@ the off-chain clients; the rollups-contracts dependency (`Application`,
   disputable, and authors the template machine (dimensioning.md; the
   per-input compute contract).
 - The deployer's parameter table is trusted: production validates nothing
-  on chain beyond code presence and a nonzero allowance (below), and a
-  provider's table must be validated before use and stay stable for its
-  factory's lifetime (dispute-game.md:584-586).
+  on chain beyond code presence and a nonzero allowance and block time
+  (below), and a provider's table must be validated before use and stay
+  stable for its factory's lifetime (dispute-game.md:586-588).
 - The base layer may censor the honest party for at most `C` in total per
   root dispute; chain support is stated in prt/contracts/AGENTS.md, "Trust
   boundary and assumptions".
@@ -93,8 +92,9 @@ before the freeze.
    compares the provider with `ClockBudgets` itself. Make the canonical test
    validate the provider's real rows for each registered chain, and state
    the table as trusted configuration. A root allowance short by one refill
-   is a fixed `C - (T + 2G)` loss, decisive only near `C = 0`; an
-   accumulating drain needs per-row or understated budgets.
+   is a fixed loss of `T + 2G` (tolerance falls from `C` to `C - (T + 2G)`),
+   decisive only near `C = 0`; an accumulating drain needs per-row or
+   understated budgets.
 4. The deployment path, and a runbook it lacks. `deploy.sh` runs three Forge
    scripts in order (PRT, the rollups-contracts dependency, Dave); every
    address is CREATE2 with a zero salt over the full initcode
@@ -112,7 +112,8 @@ before the freeze.
    mismatched deployment, but an old node binary against a deployment whose
    step changed and whose literal did not would start silently (a lead).
    Importing the upstream constant changes the bytecode and the addresses,
-   so it rides a generation; list it as a known item.
+   so it rides the next deployment bundle (normally the next generation);
+   list it as a known item.
 6. The leaf-proof gas witnesses in CI. `Gas.WIN_LEAF_MATCH = 5,543,000`
    (`prt/contracts/src/tournament/libs/Gas.sol:35`), the largest allocation,
    is witnessed only by the 12 full-stack FFI tests in
@@ -120,6 +121,13 @@ before the freeze.
    maximum input measured 5,040,748). `rollups-contracts::test` excludes
    `*FfiTest` (`cartesi-rollups/contracts/justfile:28`) and no workflow
    calls `test-prt-leaf-gas`; 3700a1d5 accepted them by a manual run.
+
+The refill review's release-evidence item ("Remaining assurance work", 3) is
+covered elsewhere: the gas calibration by 3700a1d5, active real-machine
+tall-leaf differentials by ec8c7276, dense height-37 performance by
+measurements/two-level-leaf.md and node-vs-emulator.md with the v0.21
+confirmation in todo.md; full E2E is the per-PR smoke, since dense disputes
+left e2e by design (0a9976a0).
 
 ## Freeze and audit identity
 
@@ -173,9 +181,9 @@ addresses (build-system.md).
 9. Tag the audited release, naming the generation, addresses, geometry and
    bonds in the release notes.
 
-The tournament events ABI is unchanged in this generation. A later field
-addition is a wire break: it lands before the freeze or waits for the next
-generation (upstream PR #390 already forces one).
+The tournament events ABI stays as is in this PR. A later field addition is
+a wire break: it lands before the freeze or waits for the next generation
+(upstream PR #390 already forces one).
 
 ## Open questions
 
