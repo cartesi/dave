@@ -418,9 +418,9 @@ Known blind spots, by layer:
   dark in every scenario: the non-boundary GC's modulo never fired,
   advance batches degenerated to single inputs, and dispute
   positioning never replayed past a boundary. Gap 2 lights all three
-  everywhere at the cost of at most one input of replay;
-  `kill_catchup` pins gap 1 for the degenerate case and
-  `kill_catchup_batched` runs gap 3.
+  everywhere at the cost of at most one input of replay, and
+  `kill_catchup_batched` runs gap 3. No e2e scenario runs gap 1 since
+  `kill_catchup` was cut (0a9976a0).
 - The storage unit tests build a real 128 MB machine per test from
   `test/programs/linux.bin`: filesystem and emulator dependencies in
   what should be unit tests, plus bootstrap friction on fresh

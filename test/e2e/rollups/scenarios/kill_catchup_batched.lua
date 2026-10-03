@@ -3,14 +3,13 @@ require "setup_path"
 local env = require "test_env"
 
 -- With a snapshot gap above 1, the machine-runner commits one batch
--- of inputs per transaction, so a
--- SIGKILL mid-batch drops the uncommitted records entirely and the
--- resumed run re-executes the whole batch. The oracle comparison
--- proves the replay reproduces identical rows - the e2e counterpart
--- of the unit-level fault-injection atomicity test. The harness
--- default is gap 2 (small batches everywhere); this scenario's
--- larger gap is what puts a full multi-record batch plus a partial
--- one under the kill.
+-- of inputs per transaction, so a SIGKILL mid-batch drops the
+-- uncommitted records entirely and the resumed run re-executes the
+-- whole batch. The oracle comparison proves the replay reproduces
+-- identical rows - the e2e counterpart of the unit-level
+-- fault-injection atomicity test. The harness default is gap 2
+-- (small batches everywhere); this scenario's larger gap is what
+-- puts a full multi-record batch plus a partial one under the kill.
 
 -- Main Execution
 env.spawn_blockchain { env.sample_inputs[1] }
