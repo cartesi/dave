@@ -41,7 +41,9 @@ const LOCK_FILE: &str = "node.lock";
 /// How far below genesis a new directory's watermark starts. Genesis is
 /// read at latest, so a reorg between the deployment and the first start
 /// can still move the deployment lower, which would strand epoch 0's seal
-/// below a watermark at genesis for good.
+/// below a watermark at genesis for good. A reorg moves a block down by
+/// less than its depth, which finality bounds: Ethereum's unfinalized span
+/// is two to three epochs (64 to 96 slots) while the chain finalizes.
 const GENESIS_REORG_MARGIN: u64 = 128;
 
 /// One node process owns a state directory: a second one would sweep the
@@ -575,8 +577,9 @@ mod tests {
         let mut storage =
             initialize_at(&state_dir, &template, 0, Address::repeat_byte(0xaa), 1).unwrap();
 
+        // A genesis beyond the seeding margin, so a stray seed would show.
         let error =
-            initialize_at(&state_dir, &template, 100, Address::repeat_byte(0xbb), 1).unwrap_err();
+            initialize_at(&state_dir, &template, 1000, Address::repeat_byte(0xbb), 1).unwrap_err();
         assert!(
             format!("{error:#}").contains("--app-address"),
             "unexpected error: {error:#}"
@@ -592,7 +595,7 @@ mod tests {
         let state_dir = dir.path().join("state");
         let mut storage = initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
 
-        let error = initialize_at(&state_dir, &template, 100, Address::ZERO, 2).unwrap_err();
+        let error = initialize_at(&state_dir, &template, 1000, Address::ZERO, 2).unwrap_err();
         assert!(
             format!("{error:#}").contains("--web3-chain-id"),
             "unexpected error: {error:#}"

@@ -395,7 +395,10 @@ index or epoch number would not be 0 and ingestion would refuse it. Genesis
 is read at latest, where a reorg before a new directory's first start may
 still move the deployment lower, so the directory's watermark starts 128
 blocks below genesis; with no application or consensus log before the
-deployment, the margin only adds empty blocks to the first log query. The
+deployment, the margin only adds empty blocks to the first log query. A
+reorg moves a block down by less than its depth, and 128 exceeds Ethereum's
+unfinalized span while the chain finalizes; a deeper move, during a finality
+stall, still strands epoch 0's seal until the directory is rebuilt. The
 initial hash is read at the consensus's deployment block (Process layout).
 Both are `block.number` values, read as RPC block numbers, which is why the
 node does not start on Arbitrum.
