@@ -77,9 +77,6 @@ carry no backlog (reviews/README.md).
   2, not relax to nonzero. (node-architecture.md, failure policy)
 - Structured logging (debt 4). (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
-- Check that the Latest tail descends from Solid's finalized block, by parent
-  hashes, instead of trusting a number range (debt 10; today the estimate
-  pre-check of 8ace5822 is the backstop). (node-architecture.md)
 
 ## Contracts and assurance
 

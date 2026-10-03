@@ -372,11 +372,16 @@ completeness is a trusted RPC property.
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest
 quantum foam is used once and dropped. It is never promoted, reverse-applied,
-compared with the previous tick, or checked for ancestry against `H`. A reorg
-or mixed tail may reject the working tree, delay one action, or propose a stale
-mutation. Contract mutators revalidate every transition, and the next tick
-starts again from Solid. Oversized ranges use the same binary range
-partitioning as other log ingestion.
+or compared with the previous tick. A tail log at `H`'s height must carry
+`H`'s hash, as a finalized log at `F` must carry `F`'s, so a tail served from
+another fork fails whenever `H` itself holds a tournament log. Ancestry below
+`H` is not proven, by decision: walking parent hashes would cost one header
+read per tail block, and a mixed tail is only a stale observation. A reorg or
+mixed tail may reject the working tree, delay one action, or propose a stale
+mutation. Contract mutators revalidate every transition, the lane skips a call
+that reverts at estimation, and the next tick starts again from Solid.
+Oversized ranges use the same binary range partitioning as other log
+ingestion.
 
 Events own tournament structure, commitment placement, match lifecycle, and
 the inclusive block at which a clock-bearing match can be eliminated. Point
@@ -540,11 +545,3 @@ Structure:
 
 8. Commented-out code blocks kept as reference (the test-scaffolding
    `instance.rs` snapshot logic) and disabled/empty tests.
-
-Design assumptions:
-
-10. Finalized-only Solid. The tournament reader keeps only its finalized fold
-    between ticks, and additionally acts on a disposable number-range tail and
-    point views at one sampled hash. It does
-    not prove the tail belongs to that hash's ancestry; stale work is safe
-    because mutators revalidate it, and the next tick rebuilds the tail.

@@ -93,8 +93,7 @@ impl StateReader {
             .number
             .checked_add(1)
             .ok_or_else(|| anyhow!("finalized Solid block cannot be advanced"))?;
-        let phase = ReadPhase::try_new(from, latest.number, latest, None)?;
-        let mut validation = HarvestValidation::new(phase);
+        let mut validation = HarvestValidation::new(ReadPhase { from, head: latest });
         let tournament = extend_tournament(
             &self.chain,
             solid.dispute.clone().into_root(),
@@ -142,8 +141,10 @@ impl StateReader {
             }
         };
 
-        let phase = ReadPhase::try_new(from, finalized.number, finalized, Some(finalized))?;
-        let mut validation = HarvestValidation::new(phase);
+        let mut validation = HarvestValidation::new(ReadPhase {
+            from,
+            head: finalized,
+        });
         let tournament =
             match extend_tournament(&self.chain, base.into_root(), &mut validation).await {
                 Ok(tournament) => tournament,
@@ -169,39 +170,16 @@ impl StateReader {
     }
 }
 
+/// One harvest over `[from, head.number]`, read against the head sampled
+/// for it: finalized for Solid, latest for Foam. A log at the head's height
+/// must carry its hash, which catches a range served from another fork
+/// whenever the head itself holds a tournament log. Ancestry below the head
+/// is not proven: a mixed tail is a stale observation, which contract
+/// mutators revalidate and the next tick rebuilds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ReadPhase {
     from: u64,
-    to: u64,
     head: ChainHead,
-    finalized_boundary: Option<ChainHead>,
-}
-
-impl ReadPhase {
-    fn try_new(
-        from: u64,
-        to: u64,
-        head: ChainHead,
-        finalized_boundary: Option<ChainHead>,
-    ) -> Result<Self> {
-        if let Some(boundary) = finalized_boundary {
-            ensure!(
-                boundary.number == to,
-                "finalized boundary {} does not end requested range [{from}, {to}]",
-                boundary.number
-            );
-            ensure!(
-                boundary == head,
-                "finalized boundary must be the phase's pinned head"
-            );
-        }
-        Ok(Self {
-            from,
-            to,
-            head,
-            finalized_boundary,
-        })
-    }
 }
 
 #[async_recursion]
@@ -211,12 +189,14 @@ async fn extend_tournament(
     validation: &mut HarvestValidation,
 ) -> Result<Tournament> {
     let phase = validation.phase;
-    if phase.from > phase.to {
+    if phase.from > phase.head.number {
         return Ok(tournament);
     }
 
     let address = tournament.address();
-    let logs = chain.raw_logs(address, phase.from, phase.to).await?;
+    let logs = chain
+        .raw_logs(address, phase.from, phase.head.number)
+        .await?;
     let mut tournament = fold_local_logs(chain, tournament, logs, validation).await?;
 
     // A child resolved within the range was dropped with its match, so its
@@ -277,12 +257,8 @@ impl HarvestValidation {
     }
 
     fn observe(&mut self, log: &Log, expected_address: Address) -> Result<()> {
-        let ReadPhase {
-            from,
-            to,
-            finalized_boundary,
-            ..
-        } = self.phase;
+        let ReadPhase { from, head } = self.phase;
+        let to = head.number;
         ensure!(
             log.address() == expected_address,
             "ranged log belongs to address {}, expected {expected_address}",
@@ -318,15 +294,11 @@ impl HarvestValidation {
                 "block {block} has conflicting hashes {previous} and {block_hash} across tournament addresses"
             );
         }
-        if let Some(boundary) = finalized_boundary
-            && block == boundary.number
-        {
-            ensure!(
-                block_hash == boundary.hash,
-                "finalized boundary log belongs to {block_hash}, expected {}",
-                boundary.hash
-            );
-        }
+        ensure!(
+            block != head.number || block_hash == head.hash,
+            "log at block {block} belongs to {block_hash}, not to the sampled head {}",
+            head.hash
+        );
         Ok(())
     }
 }
@@ -700,7 +672,10 @@ mod tests {
         let range_head = head(12, 0x12);
         let root = address(1);
         let child = address(2);
-        let phase = ReadPhase::try_new(10, 12, range_head, Some(range_head)).unwrap();
+        let phase = ReadPhase {
+            from: 10,
+            head: range_head,
+        };
         let mut validation = HarvestValidation::new(phase);
         validation
             .observe(&log_at(root, range_head, 2), root)
@@ -714,7 +689,6 @@ mod tests {
             .unwrap_err();
         assert!(duplicate.to_string().contains("returned twice"));
 
-        let phase = ReadPhase::try_new(10, 12, range_head, None).unwrap();
         let mut conflicting = HarvestValidation::new(phase);
         conflicting
             .observe(&log_at(root, range_head, 1), root)
@@ -799,7 +773,7 @@ mod tests {
         asserter.push_success(&vec![join_log(child, discovery_block, 4, child_commitment)]);
 
         let root = Tournament::new(descriptor(root, 0, TournamentKind::NonLeaf));
-        let phase = ReadPhase::try_new(10, 12, at, None).unwrap();
+        let phase = ReadPhase { from: 10, head: at };
         let mut validation = HarvestValidation::new(phase);
         let loaded = extend_tournament(&chain, root, &mut validation)
             .await
@@ -854,7 +828,10 @@ mod tests {
             WinnerCommitment::One,
         )]);
 
-        let phase = ReadPhase::try_new(at.number, at.number, at, None).unwrap();
+        let phase = ReadPhase {
+            from: at.number,
+            head: at,
+        };
         let mut validation = HarvestValidation::new(phase);
         let loaded = extend_tournament(&chain, fixture.dispute.into_root(), &mut validation)
             .await
@@ -1223,6 +1200,37 @@ mod tests {
                 range("0x28", "0x2b"),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_tail_log_at_the_sampled_head_must_carry_its_hash() {
+        let root = address(1);
+        let finalized = head(41, 0x41);
+        let latest = head(43, 0x43);
+        let (chain, asserter, _) = recording_chain();
+        let mut reader = StateReader::new(chain, 40);
+
+        asserter.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
+        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
+            &asserter,
+            &descriptor_response(0, TournamentKind::Leaf),
+        );
+        asserter.push_success(&vec![join_log(root, finalized, 0, digest(10))]);
+        asserter.push_success(&Some(block(latest, B256::repeat_byte(0x42))));
+        // The tail is served from a fork whose block 43 is not the head.
+        asserter.push_success(&vec![join_log(root, head(43, 0x99), 0, digest(20))]);
+
+        let error = reader.fetch_from_root(root).await.unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("sampled head {}", latest.hash)),
+            "{error:#}"
+        );
+        let (solid_head, solid) = reader.solid().unwrap();
+        assert_eq!(solid_head, finalized);
+        assert!(solid.root().commitment(&digest(20)).is_none());
+        assert!(asserter.read_q().is_empty());
     }
 
     #[tokio::test]
