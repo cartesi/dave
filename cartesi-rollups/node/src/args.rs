@@ -24,7 +24,7 @@ use crate::provider::{TransactionLane, create_rpc_provider, create_signer};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
-const SLEEP_DURATION: u64 = 30;
+const POLLING_INTERVAL: u64 = 30;
 
 fn validate_root_tournament_geometry(log2step: u64, height: u64) -> Result<()> {
     let deployed_span = log2step
@@ -95,48 +95,52 @@ async fn validate_deployed_tournament_configuration(
 #[command(about = "Arguments of Cartesi PRT")]
 pub struct PRTArgs {
     /// address of application
-    #[arg(long, env)]
+    #[arg(long, env = "CARTESI_SLING_APP_ADDRESS")]
     pub app_address: Address,
 
     /// path to machine template image
-    #[arg(long, env)]
-    pub machine_path: PathBuf,
+    #[arg(long, env = "CARTESI_SLING_TEMPLATE_PATH")]
+    pub template_path: PathBuf,
 
     /// blockchain read gateway endpoint URL
-    #[arg(long, env, default_value = ANVIL_URL)]
-    pub web3_rpc_url: Url,
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT", default_value = ANVIL_URL)]
+    pub blockchain_http_endpoint: Url,
 
     /// raw-transaction submission endpoint URL; defaults to the read gateway
-    #[arg(long, env)]
-    pub web3_submit_rpc_url: Option<Url>,
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT")]
+    pub blockchain_http_submit_endpoint: Option<Url>,
 
     /// blockchain chain id
-    #[arg(long, env, default_value_t = ANVIL_CHAIN_ID)]
-    pub web3_chain_id: u64,
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_ID", default_value_t = ANVIL_CHAIN_ID)]
+    pub blockchain_id: u64,
 
     #[clap(subcommand)]
     pub signer: SignerArgs,
 
-    /// polling sleep interval
-    #[arg(long, env, default_value_t = SLEEP_DURATION)]
-    pub sleep_duration_seconds: u64,
+    /// polling interval in seconds
+    #[arg(long, env = "CARTESI_SLING_POLLING_INTERVAL", default_value_t = POLLING_INTERVAL)]
+    pub polling_interval: u64,
 
     /// execute and durably publish open-epoch inputs in batches of N;
     /// 1 processes each input immediately, and sealing flushes a
     /// shorter final batch
     #[arg(
         long,
-        env,
+        env = "CARTESI_SLING_SNAPSHOT_GAP_INPUTS",
         default_value_t = crate::storage::DEFAULT_SNAPSHOT_GAP_INPUTS,
         value_parser = clap::value_parser!(u64).range(1..)
     )]
     pub snapshot_gap_inputs: u64,
 
-    #[arg(long, env, default_value_os_t = std::env::temp_dir())]
-    pub state_dir: PathBuf,
+    #[arg(long, env = "CARTESI_SLING_DATA_DIR", default_value_os_t = std::env::temp_dir())]
+    pub data_dir: PathBuf,
 
     /// error codes to retry `get_logs` with shorter block range
-    #[arg(long, env, default_values = &["-32005", "-32600", "-32602", "-32616"])]
+    #[arg(
+        long,
+        env = "CARTESI_SLING_LONG_BLOCK_RANGE_ERROR_CODES",
+        default_values = &["-32005", "-32600", "-32602", "-32616"]
+    )]
     // -32005 Infura
     // -32600, -32602 Alchemy
     // -32616 QuickNode
@@ -150,15 +154,15 @@ pub enum SignerArgs {
         group(
             ArgGroup::new("pk_source")
                 .required(true)
-                .args(&["web3_private_key", "web3_private_key_file"])
+                .args(&["auth_private_key", "auth_private_key_file"])
         )
     )]
     Pk {
-        #[arg(long, env, group = "pk_source")]
-        web3_private_key: Option<String>,
+        #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY", group = "pk_source")]
+        auth_private_key: Option<String>,
 
-        #[arg(long, env, group = "pk_source")]
-        web3_private_key_file: Option<PathBuf>,
+        #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY_FILE", group = "pk_source")]
+        auth_private_key_file: Option<PathBuf>,
     },
 
     /// AWS KMS signer
@@ -166,15 +170,19 @@ pub enum SignerArgs {
         group(
             ArgGroup::new("kms_source")
                 .required(true)
-                .args(&["aws_kms_key_id", "aws_kms_key_id_file"])
+                .args(&["auth_aws_kms_key_id", "auth_aws_kms_key_id_file"])
         )
     )]
     AwsKms {
-        #[arg(long, env, group = "kms_source")]
-        aws_kms_key_id: Option<String>,
+        #[arg(long, env = "CARTESI_SLING_AUTH_AWS_KMS_KEY_ID", group = "kms_source")]
+        auth_aws_kms_key_id: Option<String>,
 
-        #[arg(long, env, group = "kms_source")]
-        aws_kms_key_id_file: Option<PathBuf>,
+        #[arg(
+            long,
+            env = "CARTESI_SLING_AUTH_AWS_KMS_KEY_ID_FILE",
+            group = "kms_source"
+        )]
+        auth_aws_kms_key_id_file: Option<PathBuf>,
 
         /// aws endpoint url
         #[arg(long, env)]
@@ -268,22 +276,22 @@ impl NodeConfig {
         let args = PRTArgs::parse();
 
         let chain_id = args
-            .web3_chain_id
+            .blockchain_id
             .try_into()
             .expect("fail to convert chain id");
 
-        let provider = create_rpc_provider(&args.web3_rpc_url, chain_id).await;
+        let provider = create_rpc_provider(&args.blockchain_http_endpoint, chain_id).await;
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await;
         let address_book = AddressBook::new(args.app_address, &provider).await;
         validate_deployed_tournament_configuration(address_book.tournament_factory, &provider)
             .await?;
         let ethereum_submit_gateway = args
-            .web3_submit_rpc_url
-            .unwrap_or_else(|| args.web3_rpc_url.clone());
+            .blockchain_http_submit_endpoint
+            .unwrap_or_else(|| args.blockchain_http_endpoint.clone());
 
         let mut storage = Storage::initialize(
-            &args.state_dir,
-            &args.machine_path,
+            &args.data_dir,
+            &args.template_path,
             address_book.genesis_block_number,
             address_book.app,
         )
@@ -303,12 +311,12 @@ impl NodeConfig {
             Self {
                 address_book,
                 state_dir: storage.state_dir().to_owned(),
-                machine_path: args.machine_path,
+                machine_path: args.template_path,
                 chain_id,
                 signer_address,
-                ethereum_gateway: args.web3_rpc_url,
+                ethereum_gateway: args.blockchain_http_endpoint,
                 ethereum_submit_gateway,
-                sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
+                sleep_duration: Duration::from_secs(args.polling_interval),
                 wallet,
                 long_block_range_error_codes: args.long_block_range_error_codes,
                 snapshot_gap_inputs: args.snapshot_gap_inputs,
@@ -331,12 +339,12 @@ mod tests {
             "cartesi-sling-node",
             "--app-address",
             "0x0000000000000000000000000000000000000000",
-            "--machine-path",
+            "--template-path",
             "/tmp/machine",
             "--snapshot-gap-inputs",
             gap,
             "pk",
-            "--web3-private-key",
+            "--auth-private-key",
             "unused-by-parser",
         ]
     }
