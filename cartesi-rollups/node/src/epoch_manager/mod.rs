@@ -32,6 +32,7 @@ pub struct EpochManager<AS: ArenaSender> {
     sleep_duration: Duration,
     storage: Storage,
     epoch_hero: Option<Hero<AS>>,
+    shutdown: ShutdownSignal,
 }
 
 struct EpochTick {
@@ -59,6 +60,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
         signer_address: Address,
         mut storage: Storage,
         sleep_duration: Duration,
+        shutdown: ShutdownSignal,
     ) -> Result<Self> {
         storage.pin_epoch_claimant(signer_address)?;
         Ok(Self {
@@ -69,10 +71,15 @@ impl<AS: ArenaSender> EpochManager<AS> {
             sleep_duration,
             storage,
             epoch_hero: None,
+            shutdown,
         })
     }
 
-    pub async fn execution_loop(mut self, shutdown: ShutdownSignal, chain: Chain) -> Result<()> {
+    /// A stop lets the tick in flight finish, so an action whose
+    /// preparation completed still goes out; only the Hero's machine
+    /// work stops early.
+    pub async fn execution_loop(mut self, chain: Chain) -> Result<()> {
+        let shutdown = self.shutdown.clone();
         while !shutdown.is_requested() {
             match self.tick(&chain).await {
                 // Catch up completed historical epochs without a polling sleep.
@@ -151,6 +158,9 @@ impl<AS: ArenaSender> EpochManager<AS> {
                                 ),
                             }
                         }
+                    }
+                    Err(e) if self.shutdown.is_requested() => {
+                        info!("dispute planning stopped by shutdown: {e:#}")
                     }
                     Err(e) => log::warn!("dispute planning failed, retrying next tick: {e:#}"),
                 }
@@ -438,6 +448,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 epoch.block_created_number,
                 storage,
                 epoch.epoch_number,
+                self.shutdown.clone(),
             )?);
         }
         let tick = self
@@ -601,6 +612,7 @@ mod tests {
             address,
             Storage::new(path).unwrap(),
             Duration::ZERO,
+            ShutdownSignal::default(),
         )
         .unwrap();
         (manager, Chain::new(provider, Vec::new()), asserter)

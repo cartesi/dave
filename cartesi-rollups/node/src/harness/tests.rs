@@ -193,7 +193,7 @@ async fn acceptance_waits_out_the_staging_period_without_unanimity() -> Result<(
 }
 
 // Disputes. Epoch 0 is empty, so every transition past the deployment is
-// idle and every build is one captured cycle; the adversaries diverge at
+// idle and every build only captures idle cycles; the adversaries diverge at
 // the first transition of the second root leaf.
 
 fn idle_tail() -> Tail {

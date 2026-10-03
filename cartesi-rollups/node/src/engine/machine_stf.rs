@@ -17,8 +17,9 @@ use super::structure::Structure;
 use crate::arithmetic::add_and_clamp;
 use crate::merkle::Digest;
 use crate::storage::{InputId, Storage};
+use crate::sync::ShutdownSignal;
 use alloy::primitives::U256;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use cartesi_machine::{
     config::runtime::RuntimeConfig,
     constants::{
@@ -605,6 +606,9 @@ pub struct Positioner {
     epoch: u64,
     spawned: usize,
     collector: Collector,
+    /// The node's shutdown signal once [`DisputeSource::stop_on`] sets
+    /// it; otherwise never requested.
+    shutdown: ShutdownSignal,
 }
 
 /// The production constructor of the facade: one closed epoch's
@@ -647,11 +651,19 @@ impl DisputeSource<Positioner> {
             epoch,
             spawned: 0,
             collector,
+            shutdown: ShutdownSignal::default(),
         };
         // The level-0 material was recorded at the pinned root stride;
         // the source reads it (window-root rows, interior runs) from
         // storage on demand.
         DisputeSource::new(storage, positioner, epoch, config.geometry.root_stride())
+    }
+
+    /// Stops machine work once `shutdown` is requested: positioning
+    /// before its next crossed input, a tall build before its next
+    /// unstored span. Finished work stays stored for a restart.
+    pub fn stop_on(&mut self, shutdown: ShutdownSignal) {
+        self.factory_mut().shutdown = shutdown;
     }
 }
 
@@ -667,6 +679,13 @@ impl Positioner {
     fn cross(&mut self, floor: u64, path: PathBuf, hash: Hash, to: u64) -> Result<()> {
         let (mut machine, mut batch) = self.store.begin_crossing(path, self.epoch, floor, hash)?;
         for window in floor..to {
+            // Dropping the batch on a stop cleans up as on any error.
+            if self.interrupted() {
+                bail!(
+                    "stopped by shutdown before crossing input {window} of epoch {}",
+                    self.epoch
+                );
+            }
             let payload = self
                 .store
                 .input(&InputId {
@@ -768,6 +787,10 @@ impl RulerFactory for Positioner {
         let mut ruler = Ruler::new_at(stf, self.structure, self.fed_windows, at);
         ruler.advance(position)?;
         Ok(ruler)
+    }
+
+    fn interrupted(&mut self) -> bool {
+        self.shutdown.is_requested()
     }
 }
 

@@ -277,6 +277,10 @@ impl<F: RulerFactory> DisputeSource<F> {
         &self.factory
     }
 
+    pub(super) fn factory_mut(&mut self) -> &mut F {
+        &mut self.factory
+    }
+
     #[cfg(test)]
     pub(crate) fn set_tail(&mut self, tail: Tail) {
         self.tail = Some(tail);

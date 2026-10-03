@@ -73,6 +73,22 @@ not success.
 Panics surface as JoinErrors and are treated like errors. How a worker
 fails is the failure policy below.
 
+A stop request stops each worker at its next safe point. The reader drops
+its tick in flight, whose one write, the chunk's commit, follows every await.
+The runner stops before its next input and drops an unfinished batch, which a
+restart replays as after a crash. The manager finishes its tick, so an action
+whose preparation completed still goes out with the tick's recoveries, but
+the Hero's machine work stops early: positioning before its next crossed
+input, and a stride-0 build at least `c + 8 = 28` high (the leaf level of a
+two-level table) before its next bottom-stratum span. Finished spans stay in
+the quartet cache, and the restarted node's build resumes after them.
+Everything else runs to completion: one input's replay, a recompute below
+that height, the leaf and middle builds of the three-level table (seconds to
+minutes, unmeasured), and the tick's RPC calls (the recovery scan,
+estimation, submission). So a stop can drop a due action's preparation,
+which the restarted node prepares again after its Hero refolds the live
+tournaments' logs.
+
 ## Failure policy
 
 The Rust node is the only honest dispute client; the Lua player is an e2e
@@ -413,7 +429,8 @@ a geometry fits an application on given hardware is measured with the
 emulator (docs/measurements/constants.md) and sized by the operator; the
 node never refuses to run for performance. CI gates deterministic work
 counts, never time (`engine/spec.rs`: a leaf build runs each ustep once, an
-idle stretch costs one span, folded spans cost no machine work; a join
+idle stretch costs one captured cycle per stratum span (at most 256 per
+build), folded spans cost no machine work; a join
 replays the disputed input's prefix once for the build and once per stored
 fanout stratum, five times at height 37, within the measured overhead).
 Before releases and hot-path changes, `just measure-node-vs-emulator` times a
@@ -456,16 +473,14 @@ Structure:
    Hero's machine work (commitment builds, proofs) runs inside the epoch
    manager task. It hands its runtime worker off first, so the other tasks
    keep running, but the manager itself waits: a long leaf build delays that
-   epoch's refund and cleanup planning, wave submission (the only path that
-   resubmits or reprices pending transactions), and shutdown (debt 9). The
+   epoch's refund and cleanup planning and wave submission (the only path
+   that resubmits or reprices pending transactions). The
    action that follows rests on an observation as old as the build; that a
    stale action can only revert is a lead resting on the contracts' state
    checks, not a verified claim. A background builder the Hero polls would
    remove both; it remains open.
 8. Commented-out code blocks kept as reference (the test-scaffolding
    `instance.rs` snapshot logic) and disabled/empty tests.
-9. No graceful-shutdown story for in-flight work: a mid-epoch machine run
-   or mid-dispute reaction is only interrupted at the next poll.
 
 Design assumptions:
 

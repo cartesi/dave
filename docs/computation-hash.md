@@ -278,7 +278,11 @@ one root per big cycle. The node takes the active cycles' roots from the
 emulator's uarch collector (`cm_collect_uarch_cycle_root_hashes` bundled at
 2^20, so each mcycle's entries end with its cycle's root), and an idle
 stretch steps one captured span and repeats its root. The tree is the one
-stepping every span would build. The stepped path stays, permanently, as the
+stepping every span would build. It is built span by span over the bottom
+stratum of its stored fanout (256 spans, 512 big cycles each at height 37),
+storing each span's row as it completes, so a stopped build keeps its
+finished spans and the next one resumes after them; those rows are ones a
+whole build stores anyway. The stepped path stays, permanently, as the
 test reference, and in production it covers one cycle the v0.21 collector gets
 wrong: a rejection on the input budget's last cycle keeps the physical root
 instead of the revert root, so that cycle is stepped. That fallback cannot
@@ -286,8 +290,9 @@ cover an input whose first cycle is its budget's last, which takes a delivery
 at mcycle 2^64 - 2, where the budget saturates: a template preset there, or
 centuries of machine time. It is out of model, and the node stops with an
 assert where stepping would proceed. Memory is one
-collection call's roots plus a tree over one root per active big cycle, and
-an idle stretch costs one span however long it is.
+collection call's roots, one span's roots and the 256 span roots, and an idle
+stretch costs one captured big cycle per stratum span it covers (at most 256
+per build) however long it is.
 
 The rollups node computes level-0 leaves eagerly while processing
 inputs, at the root stride of the deployed tournament table (pinned at

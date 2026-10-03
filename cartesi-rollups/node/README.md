@@ -80,6 +80,17 @@ refuses a directory another process holds, or one on a filesystem without
 file locks. The lock does not cover the signer: nodes on different
 directories must still not share a key.
 
+Stop the node with SIGTERM or SIGINT. Ingestion stops at once and machine
+execution before its next input, dropping an unfinished batch that a restart
+replays. A dispute tick in flight finishes, so a prepared action still goes
+out, while the dispute's machine work stops early and resumes after the
+restart. Give the stop timeout room for one input's execution and one tick's
+RPC calls; under three levels a dispute's leaf and middle commitment builds
+also run to completion. A second stop signal exits at once, as safely as
+SIGKILL. A restart refetches the live tournaments' logs. Upgrade or rebuild
+the state directory between disputes: a fresh directory rebuilds every
+engaged level's commitment on the dispute clock.
+
 Put `--state-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
 `reflink=1`). Every input clones a stored machine; a reflinked clone shares
 unchanged extents, while elsewhere (ext4) the emulator falls back to sparse

@@ -14,11 +14,12 @@
 //! (write-once positional keys, collision tripwire); this module owns
 //! only what to compute and when.
 
-use super::ruler::{Hashing, RulerFactory};
+use super::ruler::{Hashing, Ruler, RulerFactory, Run};
 use super::structure::{Quartet, Structure};
 use crate::merkle::{Digest, MerkleBuilder, MerkleTree};
 use crate::storage::Storage;
-use anyhow::{Result, ensure};
+use alloy::primitives::U256;
+use anyhow::{Result, bail, ensure};
 use std::sync::Arc;
 
 /// Fanout depth stored per miss: 2^0 + ... + 2^8 = 511 rows. Tunable;
@@ -53,8 +54,8 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
 ) -> Result<Digest> {
     quartet.assert_valid(structure);
 
-    // Level-0 queries are seed-served, so this line means dispute-time
-    // machine work.
+    // Quartets the level-0 frontier serves never get here, so this line
+    // means dispute-time machine work.
     log::info!(
         "computing quartet stride 2^{} height {} shift {} of epoch {}",
         quartet.log2_stride,
@@ -63,40 +64,18 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
         quartet.epoch
     );
 
-    let mut ruler = factory.ruler_at(
-        quartet.span_start(),
-        Hashing::for_stride(quartet.log2_stride),
-    )?;
-    // A single-transition quartet whose fanout stays above big-cycle
-    // granularity is built from big-cycle roots: the stored levels never
-    // reach inside a cycle, idle stretches cost one cycle however long, and
-    // memory stays one cycle's runs. That is what makes a whole leaf-level
-    // commitment (2^37 transitions under two levels) buildable.
-    let c = structure.log2_uarch_span;
-    let (runs, tree_height) = if quartet.log2_stride == 0 && quartet.height >= c + PRECOMPUTE_LEVELS
+    let tree = if quartet.log2_stride == 0
+        && quartet.height >= structure.log2_uarch_span + PRECOMPUTE_LEVELS
     {
-        (
-            ruler.collect_big_cycle_roots(quartet.span_end())?,
-            quartet.height - c,
-        )
+        build_tall(storage, structure, factory, quartet)?
     } else {
-        (
-            ruler.collect(quartet.span_end(), quartet.log2_stride)?,
-            quartet.height,
-        )
+        let mut ruler = factory.ruler_at(
+            quartet.span_start(),
+            Hashing::for_stride(quartet.log2_stride),
+        )?;
+        let runs = ruler.collect(quartet.span_end(), quartet.log2_stride)?;
+        fold(&runs, quartet, quartet.height)?
     };
-
-    let mut builder = MerkleBuilder::default();
-    for run in &runs {
-        builder.append_repeated(run.hash, run.repetitions);
-    }
-    let tree = builder.build();
-    ensure!(
-        u64::from(tree.height()) == tree_height,
-        "span tree height {} does not match the expected {tree_height} for quartet height {}",
-        tree.height(),
-        quartet.height
-    );
 
     let mut rows = vec![];
     collect_fanout(
@@ -108,6 +87,76 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
     storage.insert_quartet_nodes(&rows)?;
 
     Ok(tree.root_hash())
+}
+
+/// A single-transition quartet whose fanout stays above big-cycle
+/// granularity is built from big-cycle roots: the stored levels never
+/// reach inside a cycle, and memory stays one cycle's runs. That is what
+/// makes a whole leaf-level commitment (2^37 transitions under two
+/// levels) buildable. It is built span by span over its bottom fanout
+/// stratum, storing each span's row as it completes, so a stop between
+/// spans keeps them and the next build resumes after them; a span row
+/// stored any other way (a descent's fanout) is reused too. An idle
+/// stretch costs one captured cycle per span it covers.
+fn build_tall<F: RulerFactory>(
+    storage: &mut Storage,
+    structure: &Structure,
+    factory: &mut F,
+    quartet: &Quartet,
+) -> Result<Arc<MerkleTree>> {
+    let spans = 1u64 << PRECOMPUTE_LEVELS;
+    let span_height = quartet.height - PRECOMPUTE_LEVELS;
+    let mut top = MerkleBuilder::default();
+    // Positioned once, at the first missing span; stored spans are skipped
+    // by advancing, which hashes nothing.
+    let mut ruler: Option<Ruler<F::S>> = None;
+    for index in 0..spans {
+        let span = Quartet {
+            height: span_height,
+            shift: (quartet.shift << PRECOMPUTE_LEVELS) + U256::from(index),
+            ..quartet.clone()
+        };
+        if let Some(root) = storage.quartet_node(&span)? {
+            top.append(root);
+            continue;
+        }
+        if factory.interrupted() {
+            bail!("stopped by shutdown at span {index} of {spans}");
+        }
+        let ruler = match &mut ruler {
+            Some(ruler) => {
+                ruler.advance(span.span_start())?;
+                ruler
+            }
+            None => {
+                if index > 0 {
+                    log::info!("{index} of {spans} spans already stored, resuming");
+                }
+                ruler.insert(factory.ruler_at(span.span_start(), Hashing::PerStep)?)
+            }
+        };
+        let runs = ruler.collect_big_cycle_roots(span.span_end())?;
+        let root = fold(&runs, &span, span_height - structure.log2_uarch_span)?.root_hash();
+        storage.insert_quartet_nodes(&[(span, root)])?;
+        top.append(root);
+    }
+    Ok(top.build())
+}
+
+/// The tree over a quartet's runs, which must be `tree_height` tall.
+fn fold(runs: &[Run], quartet: &Quartet, tree_height: u64) -> Result<Arc<MerkleTree>> {
+    let mut builder = MerkleBuilder::default();
+    for run in runs {
+        builder.append_repeated(run.hash, run.repetitions);
+    }
+    let tree = builder.build();
+    ensure!(
+        u64::from(tree.height()) == tree_height,
+        "span tree height {} does not match the expected {tree_height} for quartet height {}",
+        tree.height(),
+        quartet.height
+    );
+    Ok(tree)
 }
 
 fn collect_fanout(

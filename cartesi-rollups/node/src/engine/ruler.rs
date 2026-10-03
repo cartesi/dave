@@ -576,4 +576,10 @@ impl Hashing {
 pub trait RulerFactory {
     type S: Stf;
     fn ruler_at(&mut self, position: U256, hashing: Hashing) -> Result<Ruler<Self::S>>;
+
+    /// Whether to stop before more machine work, keeping what is stored:
+    /// the machine factory answers the node's shutdown request.
+    fn interrupted(&mut self) -> bool {
+        false
+    }
 }

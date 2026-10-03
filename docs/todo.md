@@ -30,6 +30,10 @@ carry no backlog (reviews/README.md).
 - After the switch, retire `DEVNET_GEOMETRY`: the devnet-only two-level
   deployment, its CI smoke, the fingerprint branch, and the duplicated literal
   in `TournamentGeometry::two_level`. (build-system.md)
+- On the first two-level staging, stop and restart the node mid leaf build:
+  three-level releases never take the span-by-span, resumable tall build,
+  which only the spec, engine-machine and two-level devnet tests exercise.
+  (computation-hash.md)
 
 ## Before a two-level release
 
@@ -81,8 +85,7 @@ carry no backlog (reviews/README.md).
   gaps with escalation of a repeated identical intent (debt 6).
   (node-architecture.md)
 - A background builder the Hero polls, so a long build stops holding the
-  manager (debt 7); graceful shutdown and cancellable leaf builds (debt 9).
-  (node-architecture.md)
+  manager (debt 7). (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
 - Check that the Latest tail descends from Solid's finalized block, by parent
   hashes, instead of trusting a number range (debt 10; today the estimate

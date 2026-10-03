@@ -190,8 +190,10 @@ kills on it): `processing input <epoch>:<index>` (machine-runner):
 kill_catchup_batched. The other targeted kills moved below e2e: at the join,
 mid-bisection and around acceptance to the node's in-crate harness
 (`restart_after_*`), which restarts the workers deterministically instead of
-signalling, and mid-build to the unit test
-`restarted_source_resumes_a_half_built_level` (`tests/engine_machine.rs`).
+signalling, and mid-build to `restarted_source_resumes_a_half_built_level`
+(`tests/engine_machine.rs`). A stop mid-build is
+`a_stopped_build_resumes_after_its_stored_spans` there, and a stopped runner
+batch is `a_stopped_runner_drops_its_batch_and_a_restart_replays_it`.
 
 ## Scenario inventory
 

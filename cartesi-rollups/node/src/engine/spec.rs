@@ -483,6 +483,41 @@ fn big_cycle_roots_fold_to_the_transition_tree() {
     }
 }
 
+/// The whole epoch's transition-level tree, from the oracle.
+fn oracle_tree(structure: &Structure, script: &[ToyInput]) -> Arc<MerkleTree> {
+    let mut reference = MerkleBuilder::default();
+    for digest in oracle_digests(structure, script) {
+        reference.append(digest);
+    }
+    reference.build()
+}
+
+/// Every row one build of `top` stores matches `reference`, in which `top`
+/// sits `depth` levels below the root.
+fn assert_fanout(
+    cache: &Storage,
+    reference: &Arc<MerkleTree>,
+    top: &Quartet,
+    depth: u64,
+    name: &str,
+) -> Result<()> {
+    let mut stratum = vec![(top.clone(), depth)];
+    while let Some((quartet, depth)) = stratum.pop() {
+        let expected = reference_node(reference, depth, quartet.shift).root_hash();
+        assert_eq!(
+            cache.quartet_node(&quartet)?,
+            Some(expected),
+            "script {name}, stored row {quartet:?}"
+        );
+        if quartet.height > top.height - PRECOMPUTE_LEVELS {
+            let (left, right) = quartet.children().unwrap();
+            stratum.push((left, depth + 1));
+            stratum.push((right, depth + 1));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn tall_leaf_quartets_build_from_big_cycle_roots() -> Result<()> {
     // The cache path for tall stride-0 quartets: every stored fanout row,
@@ -492,12 +527,7 @@ fn tall_leaf_quartets_build_from_big_cycle_roots() -> Result<()> {
     let total = structure.log2_ruler_span();
     assert!(total > structure.log2_uarch_span + PRECOMPUTE_LEVELS);
     for (name, script) in scripts_for(&structure) {
-        let mut reference = MerkleBuilder::default();
-        for digest in oracle_digests(&structure, &script) {
-            reference.append(digest);
-        }
-        let reference = reference.build();
-
+        let reference = oracle_tree(&structure, &script);
         let mut cache = toy_storage(structure);
         let mut factory = Counting {
             inner: ToyFactory {
@@ -506,29 +536,11 @@ fn tall_leaf_quartets_build_from_big_cycle_roots() -> Result<()> {
             },
             calls: 0,
         };
-        // Every row one build stored, `depth` levels below the level root.
-        let assert_fanout = |cache: &Storage, top: &Quartet, depth: u64| -> Result<()> {
-            let mut stratum = vec![(top.clone(), depth)];
-            while let Some((quartet, depth)) = stratum.pop() {
-                let expected = reference_node(&reference, depth, quartet.shift).root_hash();
-                assert_eq!(
-                    cache.quartet_node(&quartet)?,
-                    Some(expected),
-                    "script {name}, stored row {quartet:?}"
-                );
-                if quartet.height > top.height - PRECOMPUTE_LEVELS {
-                    let (left, right) = quartet.children().unwrap();
-                    stratum.push((left, depth + 1));
-                    stratum.push((right, depth + 1));
-                }
-            }
-            Ok(())
-        };
 
         let root = Quartet::level_root(0, 0, total);
         get_or_compute(&mut cache, &structure, &mut factory, &root)?;
         assert_eq!(factory.calls, 1);
-        assert_fanout(&cache, &root, 0)?;
+        assert_fanout(&cache, &reference, &root, 0, name)?;
         assert_eq!(factory.calls, 1, "the fanout rows came from one build");
 
         // Below the stratum, down both edges to single transitions.
@@ -553,14 +565,98 @@ fn tall_leaf_quartets_build_from_big_cycle_roots() -> Result<()> {
         assert_eq!(right.height, structure.log2_uarch_span + PRECOMPUTE_LEVELS);
         let mut fresh = toy_storage(structure);
         get_or_compute(&mut fresh, &structure, &mut factory, &right)?;
-        assert_fanout(&fresh, &right, 1)?;
+        assert_fanout(&fresh, &reference, &right, 1, name)?;
+    }
+    Ok(())
+}
+
+/// Reports a stop once `spans` more spans have started, as a shutdown
+/// request does to the machine factory mid-build.
+struct Stopping<F> {
+    inner: F,
+    spans: u64,
+}
+
+impl<F: RulerFactory> RulerFactory for Stopping<F> {
+    type S = F::S;
+    fn ruler_at(&mut self, position: U256, hashing: Hashing) -> Result<Ruler<F::S>> {
+        self.inner.ruler_at(position, hashing)
+    }
+    fn interrupted(&mut self) -> bool {
+        if self.spans == 0 {
+            return true;
+        }
+        self.spans -= 1;
+        false
+    }
+}
+
+/// The bottom fanout stratum of a level root: the spans a tall build
+/// stores one by one.
+fn bottom_span(root: &Quartet, index: u64) -> Quartet {
+    Quartet {
+        height: root.height - PRECOMPUTE_LEVELS,
+        shift: (root.shift << PRECOMPUTE_LEVELS) + U256::from(index),
+        ..root.clone()
+    }
+}
+
+#[test]
+fn an_interrupted_tall_build_keeps_its_spans_and_resumes() -> Result<()> {
+    // A stop between spans fails the build but keeps the spans it
+    // finished, and the next build reuses them: one ruler trip, positioned
+    // at the first missing span, and the rows a whole build stores.
+    let structure = S_TALL;
+    let root = Quartet::level_root(0, 0, structure.log2_ruler_span());
+    let spans = 1u64 << PRECOMPUTE_LEVELS;
+    for (name, script) in scripts_for(&structure) {
+        let reference = oracle_tree(&structure, &script);
+        let toy = || ToyFactory {
+            structure,
+            script: script.clone(),
+        };
+        for stopped_after in [0, 1, spans / 2, spans - 1] {
+            let mut cache = toy_storage(structure);
+            let mut stopping = Stopping {
+                inner: toy(),
+                spans: stopped_after,
+            };
+            assert!(get_or_compute(&mut cache, &structure, &mut stopping, &root).is_err());
+            assert_eq!(cache.quartet_node(&root)?, None, "script {name}");
+            for index in 0..spans {
+                let expected = (index < stopped_after).then(|| {
+                    reference_node(&reference, PRECOMPUTE_LEVELS, U256::from(index)).root_hash()
+                });
+                assert_eq!(
+                    cache.quartet_node(&bottom_span(&root, index))?,
+                    expected,
+                    "script {name}, stopped after {stopped_after}, span {index}"
+                );
+            }
+
+            let mut resumed = Counting {
+                inner: toy(),
+                calls: 0,
+            };
+            assert_eq!(
+                get_or_compute(&mut cache, &structure, &mut resumed, &root)?,
+                reference.root_hash(),
+                "script {name}, stopped after {stopped_after}"
+            );
+            assert_eq!(
+                resumed.calls, 1,
+                "script {name}, stopped after {stopped_after}"
+            );
+            assert_fanout(&cache, &reference, &root, 0, name)?;
+        }
     }
     Ok(())
 }
 
 #[test]
 fn idle_stretches_cost_one_captured_cycle() {
-    // An idle stretch steps one big cycle however long it is; replaying
+    // One collect steps one big cycle per idle stretch however long it is
+    // (a tall build collects span by span, one capture each); replaying
     // every idle cycle would fold to the same roots, so only the step
     // count tells the two apart.
     let structure = S_TALL;
@@ -1365,7 +1461,7 @@ fn dense_leaf_hashes_each_distinct_leaf_once() {
     // roots. A big cycle with d active usteps has d + 2 distinct leaves
     // (each active post-state, the halted run, the closing reset), which
     // is all the hashing the commitment needs; the idle rest of the leaf
-    // costs one captured span however long it is.
+    // costs one captured span per collect, however long it is.
     let structure = Structure::PRODUCTION;
     let usteps = [3u64, 1, 5, 2, 7];
     let factory = MeteredFactory::new(structure, vec![accept(&usteps)]);
@@ -1383,6 +1479,54 @@ fn dense_leaf_hashes_each_distinct_leaf_once() {
             hashes: active + 2 * cycles + IDLE_CHURN_TICKS + 2,
             ..Work::default()
         }
+    );
+}
+
+#[test]
+fn a_resumed_tall_build_steps_only_its_missing_spans() {
+    // Over a script with no idle cycle, the stopped build and its resume
+    // step the uarch exactly as often as one whole build: positioning at
+    // the first missing span runs whole cycles natively.
+    let structure = S_TALL;
+    let window_bigs = 1usize << structure.log2_barch_span;
+    let script =
+        vec![dense(window_bigs, structure.big_span() - 1); structure.max_inputs() as usize];
+    let root = Quartet::level_root(0, 0, structure.log2_ruler_span());
+    let stepped = |work: Work| (work.usteps, work.uresets);
+
+    let mut factory = MeteredFactory::new(structure, script.clone());
+    get_or_compute(&mut toy_storage(structure), &structure, &mut factory, &root).unwrap();
+    let whole = stepped(factory.take());
+
+    let mut cache = toy_storage(structure);
+    let mut stopping = Stopping {
+        inner: MeteredFactory::new(structure, script),
+        spans: 100,
+    };
+    assert!(get_or_compute(&mut cache, &structure, &mut stopping, &root).is_err());
+    let first = stepped(stopping.inner.take());
+    stopping.spans = u64::MAX;
+    get_or_compute(&mut cache, &structure, &mut stopping, &root).unwrap();
+    let rest = stepped(stopping.inner.take());
+    assert_eq!((first.0 + rest.0, first.1 + rest.1), whole);
+    assert!(first.0 > 0 && rest.0 > 0);
+}
+
+#[test]
+fn a_tall_build_captures_one_idle_cycle_per_span() {
+    // A tall build stores each bottom-stratum span as it completes, so an
+    // idle stretch costs one captured cycle per span it covers: 256 for an
+    // empty epoch, where one whole-span collect would capture one. The
+    // cost is bounded per build, not per idle cycle.
+    let structure = S_TALL;
+    let root = Quartet::level_root(0, 0, structure.log2_ruler_span());
+    let mut factory = MeteredFactory::new(structure, vec![]);
+    get_or_compute(&mut toy_storage(structure), &structure, &mut factory, &root).unwrap();
+    let work = factory.take();
+    assert_eq!(
+        (work.trips, work.uresets),
+        (1, 1 << PRECOMPUTE_LEVELS),
+        "one trip, one capture per span"
     );
 }
 

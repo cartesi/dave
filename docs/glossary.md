@@ -64,7 +64,8 @@ level. Terms marked (code) appear verbatim in identifiers.
 - dense (leaf, span): a leaf-level span over executing big cycles, where
   every uarch step is a distinct leaf, so its build cost scales with
   executed usteps (the density label in docs/measurements). An idle stretch
-  at a fixed point costs one captured span however long it is.
+  at a fixed point costs one captured span however long it is, one per
+  stratum span in a tall leaf build.
 - seam 1, seam 2: the input budget's last cycle (mcycle == imcyclemax). At
   seam 1 an `RX_REJECTED` yield still reverts at the closing reset; at seam
   2 an `RX_ACCEPTED` yield still takes the next input, because the step

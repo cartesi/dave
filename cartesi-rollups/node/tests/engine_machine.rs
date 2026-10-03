@@ -1986,11 +1986,11 @@ fn node_proof_vectors_hold() {
 /// level (rows commit per build, all or nothing) and wrote back the
 /// boundaries its positioning crossed is dropped between operations; a
 /// restarted source over the same state and work directories must serve
-/// the level exactly like a fresh store. It does not interrupt a build or a
-/// publication midway: atomicity under injected failure is pinned by the
-/// storage tests, and process kills by the retained chaos and
-/// kill_catchup_batched e2e scenarios. The level is the big-cycle-root
-/// builder's active branch inside window 1.
+/// the level exactly like a fresh store. A build stopped midway is
+/// `a_stopped_build_resumes_after_its_stored_spans`; atomicity under
+/// injected failure is pinned by the storage tests, and process kills by
+/// the retained chaos and kill_catchup_batched e2e scenarios. The level is
+/// the big-cycle-root builder's active branch inside window 1.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn restarted_source_resumes_a_half_built_level() {
@@ -2034,6 +2034,79 @@ fn restarted_source_resumes_a_half_built_level() {
     let resumed = restarted.prove_leaf(&level, mid).unwrap();
     assert_eq!(
         (resumed.node, resumed.siblings),
+        (agree.node, agree.siblings),
+        "agree proof"
+    );
+}
+
+/// A stopped source keeps what it finished. Positioning stops before
+/// crossing an input, so nothing is written back. A tall level root
+/// (height 28, built span by span over its height-20 stratum) reuses the
+/// spans a descent already stored and stops at the first missing one, and
+/// a source over the same store then resumes there and serves the level
+/// exactly like a fresh store.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn a_stopped_build_resumes_after_its_stored_spans() {
+    let image = echo_image();
+    let level = LevelCoords::new(0, U256::from(1) << 68, 0, 28);
+    let mid = (U256::ONE << 27) + U256::from(777);
+    let (left, _) = level.root().children().unwrap();
+
+    let (_fresh_guards, mut fresh) = machine_source(&image);
+    let root = fresh.node(&level.root()).unwrap();
+    let last = fresh.prove_last(&level).unwrap();
+    let agree = fresh.prove_leaf(&level, mid).unwrap();
+
+    let (state_dir, _storage) = initialized_storage(&image);
+    let work = scratch();
+    let source = |stopped: bool| {
+        let mut source = DisputeSource::on_store(
+            Storage::new(state_dir.path()).unwrap(),
+            0,
+            work.path().to_path_buf(),
+        )
+        .unwrap();
+        if stopped {
+            let shutdown = ShutdownSignal::default();
+            shutdown.request();
+            source.stop_on(shutdown);
+        }
+        source
+    };
+    let mut check = Storage::new(state_dir.path()).unwrap();
+
+    let error = source(true).node(&left).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("before crossing input 0"),
+        "{error:#}"
+    );
+    assert!(
+        check.snapshot_hash(0, 1).unwrap().is_none(),
+        "crossed input 0"
+    );
+
+    // The left child is not tall: one stepped build whose fanout reaches
+    // height 20, the left half of the root's bottom stratum.
+    source(false).node(&left).unwrap();
+    let error = source(true).node(&level.root()).unwrap_err();
+    assert!(
+        format!("{error:#}").contains("at span 128 of 256"),
+        "{error:#}"
+    );
+    assert!(check.quartet_node(&level.root()).unwrap().is_none());
+
+    let mut resumed = source(false);
+    assert_eq!(resumed.node(&level.root()).unwrap(), root, "root");
+    let proof = resumed.prove_last(&level).unwrap();
+    assert_eq!(
+        (proof.node, proof.siblings),
+        (last.node, last.siblings),
+        "last leaf proof"
+    );
+    let proof = resumed.prove_leaf(&level, mid).unwrap();
+    assert_eq!(
+        (proof.node, proof.siblings),
         (agree.node, agree.siblings),
         "agree proof"
     );

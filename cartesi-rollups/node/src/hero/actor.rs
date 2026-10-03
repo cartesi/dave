@@ -18,6 +18,7 @@ use crate::{
     merkle::Digest,
     provider::LaneRequest,
     storage::Storage,
+    sync::ShutdownSignal,
     tournament::{
         ArenaSender, StateReader,
         dispute::Dispute,
@@ -70,6 +71,8 @@ pub struct Hero<AS: ArenaSender> {
 }
 
 impl<AS: ArenaSender> Hero<AS> {
+    /// The node's Hero: its machine work stops once `shutdown` is
+    /// requested, keeping what it stored for the restarted node.
     pub fn new(
         arena_sender: Arc<AS>,
         chain: Chain,
@@ -77,9 +80,10 @@ impl<AS: ArenaSender> Hero<AS> {
         block_created_number: u64,
         mut storage: Storage,
         epoch_number: u64,
+        shutdown: ShutdownSignal,
     ) -> Result<Self> {
         let engine_dir = storage.epoch_directory(epoch_number)?.join("engine");
-        Self::build(
+        let mut hero = Self::build(
             arena_sender,
             chain,
             root_tournament,
@@ -87,7 +91,9 @@ impl<AS: ArenaSender> Hero<AS> {
             storage,
             epoch_number,
             engine_dir,
-        )
+        )?;
+        hero.source.stop_on(shutdown);
+        Ok(hero)
     }
 
     /// The harness adversary: this actor over a test-only tail overlay.
