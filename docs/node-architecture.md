@@ -39,23 +39,23 @@ paused at a manual accepted yield) and requires that hash to equal the
 consensus's initial hash. A matching template paused elsewhere is the deployed
 application's own and still refused: the engine starts every epoch from a
 state awaiting input, so the node could not defend any of its epochs. Only
-then does it take the state-directory lock and open the directory. A seeded directory is compared
-with its `sling_config` pins (app, chain, consensus, template, emulator and
-table) before anything is written, and the claimant is pinned before any
-worker starts. A mismatch names the flag to fix (`--app-address`,
-`--web3-chain-id`, the signer's), calls the directory another deployment's or
-an old one (the template), or asks for a rebuild (consensus, emulator, table).
-A new directory is seeded in one transaction: the genesis watermark, the
-epoch-0 boundary, the template row and the pins. So a deployment or flag these
-checks reject cannot create or alter local state, and a restart never imports
-the template again. The runner samples each window at the pinned root stride.
-Other operator mistakes (an unknown chain id, an unreadable or invalid key, an
-endpoint on another chain, an address that is not a Dave application) are
-errors that name their flag too; they add no URL or key material, though a
-transport error's own text may carry the endpoint. The initial hash comes from
-epoch 0's `EpochSealed` in the consensus's deployment block, which the
-consensus records as `block.number`: where that is not the log block
-coordinate (Arbitrum reports the parent chain's), the node cannot locate
+then does it take the state-directory lock and open the directory. A seeded
+directory is compared with its `sling_config` pins (app, chain, consensus,
+template, emulator and table) before anything is written, and the claimant is
+pinned before any worker starts. A mismatch names the flag to fix
+(`--app-address`, `--web3-chain-id`, the signer's), calls the directory another
+deployment's or an old one (the template), or asks for a rebuild (consensus,
+emulator, table). A new directory is seeded in one transaction: the genesis
+watermark, the epoch-0 boundary, the template row and the pins. So a deployment
+or flag these checks reject cannot create or alter local state, and a restart
+never imports the template again. The runner samples each window at the pinned
+root stride. Other operator mistakes (an unknown chain id, an unreadable or
+invalid key, an endpoint on another chain, an address that is not a Dave
+application) are errors that name their flag too; they add no URL or key
+material, though a transport error's own text may carry the endpoint. The
+initial hash comes from epoch 0's `EpochSealed` in the consensus's deployment
+block, which the consensus records as `block.number`: where that is not the log
+block coordinate (Arbitrum reports the parent chain's), the node cannot locate
 genesis and does not start. Table stability is a trust assumption of the
 parameters provider, so before planning any action the Hero checks the
 descriptor of every tournament on its own path against the pinned row for its
@@ -368,16 +368,17 @@ inputs itself and a missing one would silently shift every later commitment.
 Each `InputAdded` must carry the next expected index, and a sealed epoch must
 end at its upper bound.
 
-Each tick also reads, by number at the finalized head `F`, the InputBox's input
-count for the application and the consensus's current sealed epoch. When the
-stored totals already equal them, the tick moves the watermark to `F` with no
-`eth_getLogs`, however far behind it is; otherwise it skips the query whose
-total already matches, and the chunk that reaches `F` must end at exactly those
-totals. A mismatch fails the tick before anything is stored, and the next tick
-retries. Only `F`'s state is read, since an earlier block's would need an
-archive node, so a chunk that ends before `F` during catch-up is checked by
-contiguity alone: a log missing from its tail surfaces only at the next input
-and stops ingestion until the state directory is rebuilt. Until `F` reaches the
+A tick that finds new finalized blocks also reads, by number at the finalized
+head `F`, the InputBox's input count for the application and the consensus's
+current sealed epoch. When the stored totals already equal them, the tick
+moves the watermark to `F` with no `eth_getLogs`, however far behind it is;
+otherwise it skips the query whose total already matches, and the chunk that
+reaches `F` must end at exactly those totals. A mismatch fails the tick before
+anything is stored, and the next tick retries. Only `F`'s state is read, since
+an earlier block's would need an archive node, so a chunk that ends before `F`
+during catch-up is checked by contiguity alone: a log missing from its tail
+surfaces only later, at the next log of its kind or at `F`, and then stops
+ingestion until the state directory is rebuilt. Until `F` reaches the
 consensus's deployment (an application deployed ahead of its consensus), the
 totals cannot be read and the tick retries.
 

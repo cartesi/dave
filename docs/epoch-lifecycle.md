@@ -68,7 +68,10 @@ input) ends its epoch in a state no machine validity proof accepts, so that
 epoch can never be staged. The node still defends that true state in the
 root tournament: an undefended root would let a fabricated, stageable claim
 win by timeout. Having won, the node holds the epoch with an error log, like
-a no-winner result, and foreclosure is how the application moves on.
+a no-winner result, and foreclosure is how the application moves on. A
+template already terminal is refused at startup instead: the engine starts
+every epoch from a state awaiting input, so the node cannot defend such an
+application at all, and its epochs are the guardian's alone.
 
 Settlement never touches the tournament's bond path: staging and
 acceptance move no value, and nothing on the consensus path calls
