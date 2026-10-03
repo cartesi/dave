@@ -150,8 +150,8 @@ resumes the durable cursor, which is bound to the configured claimant.
 The lane rebuilds each batch from current observations and assigns consecutive
 nonces from the signer's latest mined count, with fresh market fees. The node
 accepts ordinary races, retries, and modest participation delay while finishing
-the previous epoch. The account must fund the entire batch's fee envelopes and
-call values, including nested tournament bonds. See
+the previous epoch. The signer's funding floor is in the
+[node README](../cartesi-rollups/node/README.md); the lane's rules are in
 [node architecture](node-architecture.md#mutation-scheduling-and-transaction-submission).
 
 Completion releases the old Hero before advancing the cursor. The machine

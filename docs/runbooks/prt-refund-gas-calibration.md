@@ -243,7 +243,9 @@ For one action family:
 3. rerun the report on the candidate;
 4. recompute every legal terminal sequence and each role-specific maximum,
    and update the policy checkpoint in `RefundReserve.t.sol`;
-5. recompute work reserves and join bonds for supported heights; and
+5. recompute work reserves and join bonds for supported heights, and the
+   node README's funding floor, which counts the bonds and the largest
+   whole-transaction diagnostic; and
 6. record the environment, measurements, derived values, tests, and
    deployment-artifact status.
 

@@ -460,9 +460,17 @@ which ordinary rising congestion does. The retry ignores intent: when a
 transient Hero planning failure shrinks a wave to its recoveries, a recovery
 may displace the pending Hero action at the same nonce for a tick. A full
 pool or a minimum tip (a bare "transaction underpriced") takes the same retry
-with a warning, and logs an error when the retry is refused too. The signer must be
-exclusive to one node instance and funded for the whole pending batch's fee
-envelopes and call values. Nested tournaments require their own join bonds.
+with a warning, and logs an error when the retry is refused too.
+
+The signer must be exclusive to one node instance. A pool admits a batch only
+while the balance covers every gas limit at its max fee plus its value, join
+bonds included. After its sends the lane reads the balance and logs an error
+on each tick whose batch reserves more; the check is advisory, since holding a
+dispute step is the stall, and it speaks on the batch's first tick, which
+matters behind a private relay that accepts an unaffordable batch silently.
+The reserve is a lower bound (transactions an earlier, longer batch left
+pooled count too), and a slot on the 15M fallback inflates it. The
+provisioning floor and its assumed peak fee live in the node README.
 
 ## Performance stance
 
@@ -491,11 +499,6 @@ Error handling and observability:
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
 4. Logging is unstructured and inconsistent between crates.
-5. A pool may require balance for `gas_limit * max_fee_per_gas + value`, not
-   expected gas use; join value is therefore additional to the fee envelope.
-   A batch needs enough balance for its cumulative fee envelopes and values,
-   including nested join bonds. A calibrated operating funding floor remains
-   pre-mainnet work.
 6. The lane does not observe receipts or mined revert reasons. Its estimate
    runs the call at latest first, so a call that already reverts there is not
    sent: a deterministic self-authored revert costs nothing, is logged each

@@ -107,11 +107,37 @@ Each transaction's gas limit is its estimate at the latest block plus half
 again, at least 150,000 (a join that pairs on inclusion needs 117,262 more
 than its estimate), and stops at the EIP-7825 cap of 16,777,216 when the
 estimate fits under it; the largest action, a maximum-input leaf proof,
-estimates about 5.1M. A call that already reverts there is not sent. When estimation fails for another
-reason the node falls back to 15M. Fund the whole pending batch: a pool may
-require each transaction's full gas limit at its max fee, plus its call value.
-These requirements accumulate across the batch, and nested tournaments each
-require their own join bond.
+estimates about 5.1M. A call that already reverts there is not sent. When
+estimation fails for another reason the node falls back to 15M. A transaction
+the pool turns down on price is sent once more with its priority fee raised
+to its max fee, which displaces a pending transaction the base fee has
+outrun.
+
+Fund the signer for a whole batch. A pool admits a transaction only while the
+balance covers every pending transaction's gas limit at its max fee plus its
+value, and the node logs an error on each tick whose batch reserves more than
+the signer holds. A dispute posts a join bond at every level it reaches, each
+the level's match work allocation at 50 gwei (`Bond.sol`), and a bond comes
+back only once its tournament's result is finalized, so a level whose next
+join comes due sooner holds two. With the canonical table (heights 48, 17,
+27) and a peak base fee of 100 gwei, twice the contracts' 50 gwei work-price
+cap, which the node quotes as a max fee of about 200 gwei (twice the base fee
+plus the tip):
+
+```
+floor = root bond + 2 x each inner level's bond
+        + (leaf-proof gas limit + 1M) x peak max fee
+      = 0.3353 + 2 x (0.1369 + 0.4512) + (7.62M + 1M) x 200 gwei
+      = about 3.2 ETH
+```
+
+The 1M covers the settlement step and bond recoveries that share the leaf
+proof's batch. A slot whose estimate fails other than by a revert reserves
+15M, 3 ETH at that fee. Above the work-price cap an action's refund falls short
+of its cost, and a replaced transaction pays its whole max fee, so a long
+dispute during a fee spike draws the balance down: the per-tick error is the
+signal to top up. These are Ethereum L1 numbers from `Bond.sol`, `Gas.sol` and
+the deployed table; recompute them when any of them changes.
 
 Here are its arguments:
 

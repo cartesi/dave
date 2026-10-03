@@ -8,7 +8,7 @@ use alloy::{
     network::{
         Ethereum, EthereumWallet, NetworkTransactionBuilder, NetworkWallet, TransactionBuilder,
     },
-    primitives::{Address, B256, keccak256},
+    primitives::{Address, B256, U256, keccak256, utils::format_ether},
     providers::{DynProvider, Provider, ProviderBuilder},
     rpc::{client::RpcClient, types::TransactionRequest},
     signers::local::PrivateKeySigner,
@@ -278,6 +278,7 @@ impl TransactionLane {
 
         let mut reports = Vec::with_capacity(wave.len());
         let mut nonce = base;
+        let mut reserved = U256::ZERO;
         for (label, mut request) in wave {
             if request.gas.is_none() {
                 let Some(gas) = self.gas_limit(&label, &request).await else {
@@ -291,6 +292,11 @@ impl TransactionLane {
                 };
                 request.set_gas_limit(gas);
             }
+            let cost = reserve(
+                request.gas.unwrap_or_default(),
+                fees.max_fee_per_gas,
+                request.value.unwrap_or_default(),
+            );
             let (raw, tx_hash) = self
                 .sign(request.clone(), nonce, fees)
                 .await
@@ -310,6 +316,10 @@ impl TransactionLane {
                 }
                 sent => (tx_hash, judge(&label, nonce, tx_hash, fees, sent.map(drop))),
             };
+            // A stale slot's nonce already mined; nothing pools for it.
+            if verdict != SendVerdict::Stale {
+                reserved = reserved.saturating_add(cost);
+            }
             reports.push(SendReport {
                 label,
                 nonce,
@@ -318,7 +328,38 @@ impl TransactionLane {
             });
             nonce += 1;
         }
+        self.check_funding(reserved).await;
         Ok(reports)
+    }
+
+    /// Advisory, and after the sends: holding a dispute step is the stall,
+    /// and the pool decides admission anyway. It speaks on the first tick a
+    /// batch exists, when a private relay would accept an unaffordable batch
+    /// silently. The reserve is a lower bound: transactions an earlier,
+    /// longer batch left pooled above these nonces count against the
+    /// balance too.
+    async fn check_funding(&self, reserved: U256) {
+        if reserved.is_zero() {
+            return;
+        }
+        match self
+            .read_provider
+            .get_balance(self.signer_address)
+            .latest()
+            .await
+        {
+            Ok(balance) if balance < reserved => error!(
+                "signer {} holds {} ETH but this batch reserves {} ETH, {} ETH short: \
+                 a pool admits the batch only while the balance covers every gas limit \
+                 at its max fee plus its value; fund it before a dispute clock runs out",
+                self.signer_address,
+                format_ether(balance),
+                format_ether(reserved),
+                format_ether(reserved - balance)
+            ),
+            Ok(_) => {}
+            Err(error) => warn!("failed to read the signer's balance to check the batch: {error}"),
+        }
     }
 
     /// The padded estimate at latest ([`gas_limit_for`]), or `None` when
@@ -532,6 +573,12 @@ fn judge(
     }
 }
 
+/// What a pool holds against the balance for one transaction: its whole
+/// gas limit at its max fee, plus its value.
+fn reserve(gas_limit: u64, max_fee_per_gas: u128, value: U256) -> U256 {
+    (U256::from(gas_limit) * U256::from(max_fee_per_gas)).saturating_add(value)
+}
+
 /// The fees of the one retry a slot turned down on price gets: the quote's
 /// max fee, with the tip raised to it. geth replaces a pending transaction
 /// only on 10% more of both fees. One the base fee has outrun has both
@@ -627,6 +674,12 @@ mod tests {
         assert_eq!(gas_limit_for(u64::MAX), u64::MAX);
     }
 
+    #[test]
+    fn a_batch_reserves_each_gas_limit_at_its_max_fee_plus_value() {
+        assert_eq!(reserve(100, 3, U256::from(7)), U256::from(307));
+        assert_eq!(reserve(u64::MAX, u128::MAX, U256::MAX), U256::MAX);
+    }
+
     /// geth's replacement rule (legacypool list.go): both fees strictly
     /// higher and at least 10% higher.
     fn replaces(new: Eip1559Estimation, old: Eip1559Estimation) -> bool {
@@ -681,8 +734,9 @@ mod tests {
     }
 
     /// A lane over mocked endpoints, each answering in call order: `reads`
-    /// the nonce, then the fee history (then the latest block when the
-    /// history has no base fee); `sends` each raw submission.
+    /// the nonce, the fee history (then the latest block when the history
+    /// has no base fee) and, after the sends, the balance; `sends` each raw
+    /// submission.
     fn mocked_lane() -> (TransactionLane, Asserter, Asserter) {
         let (reads, sends) = (Asserter::new(), Asserter::new());
         let provider = |asserter: &Asserter| {
@@ -713,6 +767,8 @@ mod tests {
     /// An underpriced slot is signed once more at the max tip, and the
     /// report carries the retry's verdict and hash. Anvil replaces on a
     /// higher max fee alone, so only mocked endpoints reach this branch.
+    /// The funding check after the sends never holds the reports back,
+    /// whether the balance is short, ample or unreadable.
     #[tokio::test]
     async fn an_underpriced_slot_is_retried_once_at_the_max_tip() -> Result<()> {
         const GWEI: u128 = 1_000_000_000;
@@ -733,10 +789,15 @@ mod tests {
                 SendVerdict::Failed,
             ),
         ];
-        for (first, retry, verdict) in cases {
+        for (case, (first, retry, verdict)) in cases.into_iter().enumerate() {
             let (mut lane, reads, sends) = mocked_lane();
             reads.push_success(&U64::from(7));
             reads.push_success(&fee_history(10 * GWEI, GWEI));
+            match case % 3 {
+                0 => reads.push_success(&U256::ZERO),
+                1 => reads.push_failure_msg("balance unavailable"),
+                _ => reads.push_success(&U256::MAX),
+            }
             sends.push_failure_msg(first);
             match retry {
                 None => sends.push_success(&B256::ZERO),
@@ -761,6 +822,7 @@ mod tests {
         reads.push_success(&U64::from(7));
         reads.push_success(&fee_history(0, GWEI));
         reads.push_success(&block);
+        reads.push_success(&U256::ZERO);
         sends.push_failure_msg("replacement transaction underpriced");
         let report = lane
             .submit_wave(vec![("act".to_string(), payment(0x11))])

@@ -22,7 +22,8 @@ carry no backlog (reviews/README.md).
 
 - Switch `ArbitrationConstants` to two levels, `[37, 0]` / `[55, 37]` with
   `COMMITMENT_BUDGET = 60 minutes`, plus `testCheckedInCanonicalTable`,
-  through the contract-change gate; regenerate bindings and the devnet.
+  through the contract-change gate; regenerate bindings and the devnet, and
+  recompute the node README's funding floor for the new bonds.
   (dimensioning.md)
 - Place `stf_all` and `stf_revert` once leaves are two-level: the node
   harness, or e2e on a small test-shape table kept under `test/` behind the
@@ -81,8 +82,7 @@ carry no backlog (reviews/README.md).
   and the `children` expect in `engine/dispute.rs`. (node-architecture.md,
   failure policy)
 - Structured logging (debt 4). (node-architecture.md)
-- A calibrated operating funding floor (debt 5), and the receipt-blind
-  lane's remaining gaps (debt 6). (node-architecture.md)
+- The receipt-blind lane's remaining gaps (debt 6). (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
 - Check that the Latest tail descends from Solid's finalized block, by parent
   hashes, instead of trusting a number range (debt 10; today the estimate

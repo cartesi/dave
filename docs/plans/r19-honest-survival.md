@@ -54,7 +54,10 @@ Model the Rust node as an eager actor, abstracted to latencies:
 
 Every latency is a strict bound: consumption must stay below the configured
 duration, because a clock expires at equality (dimensioning.md). Lateness
-beyond these latencies is censorship, charged to `C`.
+beyond these latencies is censorship, charged to `C`. The latencies assume a
+signer funded to the node README's floor; the max-tip replacement's overpay
+and the races among honest nodes cost the signer ETH, not clock time
+(node-architecture.md, transaction submission).
 
 ## Adversary powers
 
