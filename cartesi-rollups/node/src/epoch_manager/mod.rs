@@ -359,17 +359,14 @@ impl<AS: ArenaSender> EpochManager<AS> {
             return Ok(None);
         }
 
-        // A no-winner result cannot settle. Keep the epoch open for operator
-        // attention; repeated observation of this state is not a contradiction.
-        if can_stage.isTournamentFailed {
-            log::error!(
-                "dispute tournament for epoch {} finished without a winner; settlement is impossible, notify all users!",
-                can_stage.epochNumber
-            );
-            return Ok(None);
-        }
-
-        if !can_stage.isFinished || can_stage.isTournamentResultStaged {
+        // Staging follows the Hero's win, read at this block, where a root
+        // without a winner cannot occur (the Hero logs that case). The flag
+        // still keeps a failed root, which the contracts can produce, away
+        // from the asserts below.
+        if !can_stage.isFinished
+            || can_stage.isTournamentFailed
+            || can_stage.isTournamentResultStaged
+        {
             trace!("tournament result not ready to be staged");
             return Ok(None);
         }
@@ -389,8 +386,8 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     "Winner final state mismatch, notify all users!"
                 );
                 // The node defended a terminal app's true state, which no
-                // validity proof accepts. Like a no-winner result, hold
-                // the epoch for the consensus's operators.
+                // validity proof accepts, so it holds the epoch for the
+                // application's guardian.
                 if !settlement.machine_validity_proof.settles() {
                     log::error!(
                         "epoch {} ended with the application in a terminal state; \
@@ -1047,5 +1044,50 @@ mod tests {
                 serde_json::json!(format!("{:#x}", won_at().hash))
             );
         }
+    }
+
+    /// A rolled epoch 0 whose template is yielded with an exception, the
+    /// ordinary terminal application.
+    fn rolled_terminal_epoch_zero() -> (tempfile::TempDir, Storage) {
+        use cartesi_machine::cartesi_machine_sys::{
+            CM_HTIF_CMD_SHIFT, CM_HTIF_DEV_SHIFT, CM_HTIF_DEV_YIELD, CM_HTIF_REASON_SHIFT,
+            CM_HTIF_YIELD_CMD_MANUAL, CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION, CM_REG_HTIF_TOHOST,
+        };
+        rolled_epoch_zero(|machine| {
+            let tohost = (u64::from(CM_HTIF_DEV_YIELD) << CM_HTIF_DEV_SHIFT)
+                | (u64::from(CM_HTIF_YIELD_CMD_MANUAL) << CM_HTIF_CMD_SHIFT)
+                | (u64::from(CM_HTIF_YIELD_MANUAL_REASON_TX_EXCEPTION) << CM_HTIF_REASON_SHIFT);
+            machine.write_reg(CM_REG_HTIF_TOHOST, tohost).unwrap();
+        })
+    }
+
+    #[tokio::test]
+    async fn unstageable_roots_never_reach_a_stage_request() {
+        let (dir, _storage) = rolled_terminal_epoch_zero();
+        let (mut manager, chain, rpc) = manager(dir.path());
+        let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+
+        // A root that finished without a winner reports zero winner values,
+        // which the local row contradicts: the flag must stop it before
+        // the settle asserts.
+        push_call::<DaveConsensus::canStageTournamentResultCall>(
+            &rpc,
+            &DaveConsensus::canStageTournamentResultReturn {
+                isFinished: true,
+                isTournamentFailed: true,
+                isTournamentResultStaged: false,
+                epochNumber: U256::ZERO,
+                winnerCommitment: B256::ZERO,
+                winnerPostEpochMachineStateHash: B256::ZERO,
+            },
+        );
+        assert!(
+            manager
+                .plan_stage_tournament_result(&consensus, 0, won_at())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(rpc.read_q().is_empty());
     }
 }
