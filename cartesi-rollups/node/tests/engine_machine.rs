@@ -27,7 +27,7 @@ use cartesi_rollups_prt_node::engine::{
 use cartesi_rollups_prt_node::machine_runner::MachineRunner;
 use cartesi_rollups_prt_node::merkle::{Digest, MerkleProof};
 use cartesi_rollups_prt_node::storage::{
-    Epoch, Input as StorageInput, InputId, LeafProof, Storage,
+    Epoch, Input as StorageInput, InputId, LeafProof, Storage, Template,
 };
 use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
@@ -208,8 +208,16 @@ fn initialized_storage_under(
     geometry: &TournamentGeometry,
 ) -> (tempfile::TempDir, Storage) {
     let dir = scratch();
-    let mut storage =
-        Storage::initialize(dir.path(), image, 0, Address::ZERO, Address::ZERO, geometry).unwrap();
+    let mut storage = Storage::initialize(
+        dir.path(),
+        &Template::inspect(image).unwrap(),
+        0,
+        Address::ZERO,
+        Address::ZERO,
+        0,
+        geometry,
+    )
+    .unwrap();
     let rows: Vec<StorageInput> = inputs
         .into_iter()
         .enumerate()
@@ -486,18 +494,10 @@ const UARCH_OUT_OF_MODEL: (&str, &str) = (
     "0x8c40a7ed8c6327731bc0444947574e39593c5c1cddcefbeeebdca6461150315b",
 );
 
-/// Whether the node refuses a template at import for lacking the pristine
+/// Whether the node refuses a template at startup for lacking the pristine
 /// uarch every big-cycle boundary must carry.
 fn refused_as_non_pristine(image: &Path) -> bool {
-    let dir = scratch();
-    match Storage::initialize(
-        dir.path(),
-        image,
-        0,
-        Address::ZERO,
-        Address::ZERO,
-        &three_level(),
-    ) {
+    match Template::inspect(image) {
         Ok(_) => false,
         Err(error) => format!("{error:#}").contains("pristine uarch"),
     }
@@ -512,7 +512,7 @@ fn refused_as_non_pristine(image: &Path) -> bool {
 /// at big-cycle boundaries; Solidity, the CLI and Dave give three different
 /// roots there (docs/computation-hash.md). Upstream 22b4431 makes it
 /// error-no-hash; drop the exclusion when the corpus comes from a release
-/// that carries it. The node refuses such a template at import, and the
+/// that carries it. The node refuses such a template at startup, and the
 /// exclusion asserts that refusal and the released hash, so a changed
 /// template or answer forces a revisit.
 #[test]

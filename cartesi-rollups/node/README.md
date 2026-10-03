@@ -70,7 +70,10 @@ same unfinished epoch after restart. Other participants may advance meanwhile;
 the operating timing assumption allows a modest delay while refunds finish.
 The completion cursor is bound to one claimant, so changing signer requires a
 fresh state directory. A changed node version, schema, or commitment semantics
-also requires a fresh directory under the node's rebuild policy.
+also requires a fresh directory under the node's rebuild policy. The first
+start pins a directory to its application, chain and template, and every start
+checks the `--machine-path` image against the application's on-chain initial
+hash; a mismatch is refused before anything is written.
 
 One node process owns a state directory: startup locks its `node.lock` and
 refuses a directory another process holds, or one on a filesystem without

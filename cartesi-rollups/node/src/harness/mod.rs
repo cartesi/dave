@@ -48,7 +48,7 @@ use crate::{
     hero::Hero,
     machine_runner::MachineRunner,
     provider::{SendVerdict, TransactionLane},
-    storage::Storage,
+    storage::{Storage, Template},
     tournament::EthArenaSender,
 };
 
@@ -449,10 +449,11 @@ impl World {
         let state_dir = tempfile::tempdir()?;
         Storage::initialize(
             state_dir.path(),
-            &program_path().join("machine-image"),
+            &Template::inspect(&program_path().join("machine-image"))?,
             self.book.genesis_block_number,
             self.book.app,
             self.book.consensus,
+            self.anvil.chain_id(),
             &self.geometry,
         )?;
         Node::start(self, state_dir)

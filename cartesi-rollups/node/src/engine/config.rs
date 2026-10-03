@@ -18,6 +18,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineConfig {
     pub structure: Structure,
+    /// The same app, consensus and image can exist on two chains.
+    pub chain_id: u64,
     pub app: Vec<u8>,
     /// The consensus the app answered with at initialization: the source
     /// of this store's epochs, inputs, and tournament factory.
@@ -44,11 +46,12 @@ pub fn pin(connection: &Connection, config: &EngineConfig) -> Result<()> {
         ),
         None => {
             connection.execute(
-                "INSERT INTO sling_config VALUES (0, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO sling_config VALUES (0, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     config.structure.log2_input_span,
                     config.structure.log2_barch_span,
                     config.structure.log2_uarch_span,
+                    config.chain_id,
                     config.app,
                     config.consensus,
                     config.template_hash.slice(),
@@ -90,7 +93,7 @@ pub fn assert_compatible(
 pub fn stored(connection: &Connection) -> Result<Option<EngineConfig>> {
     let config = connection
         .query_row(
-            "SELECT log2_input_span, log2_barch_span, log2_uarch_span,
+            "SELECT log2_input_span, log2_barch_span, log2_uarch_span, chain_id,
                     app, consensus, template_hash, emulator_version, tournament_levels
              FROM sling_config WHERE id = 0",
             [],
@@ -102,20 +105,22 @@ pub fn stored(connection: &Connection) -> Result<Option<EngineConfig>> {
                 };
                 Ok((
                     structure,
-                    row.get::<_, Vec<u8>>(3)?,
+                    row.get::<_, u64>(3)?,
                     row.get::<_, Vec<u8>>(4)?,
                     row.get::<_, Vec<u8>>(5)?,
-                    row.get::<_, String>(6)?,
+                    row.get::<_, Vec<u8>>(6)?,
                     row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
                 ))
             },
         )
         .optional()?;
     config
         .map(
-            |(structure, app, consensus, template_hash, emulator_version, levels)| {
+            |(structure, chain_id, app, consensus, template_hash, emulator_version, levels)| {
                 Ok(EngineConfig {
                     structure,
+                    chain_id,
                     app,
                     consensus,
                     template_hash: Digest::from_digest(&template_hash)
@@ -155,6 +160,7 @@ mod tests {
         };
         let config = EngineConfig {
             structure,
+            chain_id: 1,
             app: vec![0xaa; 20],
             consensus: vec![0xcc; 20],
             template_hash: Digest::from_digest(&[1u8; 32])?,
@@ -170,6 +176,9 @@ mod tests {
         // Any drift is refused.
         let mut drifted = config.clone();
         drifted.emulator_version = "0.22.0".into();
+        assert!(pin(&Connection::open(&path)?, &drifted).is_err());
+        let mut drifted = config.clone();
+        drifted.chain_id = 11155111;
         assert!(pin(&Connection::open(&path)?, &drifted).is_err());
         let mut drifted = config.clone();
         drifted.consensus = vec![0xdd; 20];

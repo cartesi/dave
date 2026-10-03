@@ -196,7 +196,7 @@ fn settlement_info_is_write_once() {
 fn sling_config_is_write_once() {
     let (_dir, conn) = initialized_conn();
     conn.execute(
-        "INSERT INTO sling_config VALUES (0, 24, 27, 20, x'00', x'02', x'01', 'v', '44/48')",
+        "INSERT INTO sling_config VALUES (0, 24, 27, 20, 1, x'00', x'02', x'01', 'v', '44/48')",
         [],
     )
     .unwrap();

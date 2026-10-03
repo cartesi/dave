@@ -129,8 +129,9 @@ machine runs whole cycles without touching the uarch, and one captured idle
 span stands for every later one. The v0.21 CLI and the Lua client rely on
 it too. A template with custom uarch code is outside the model: on the
 release corpus case `uarch-near-limit-tail`, Solidity, the CLI and Dave give
-three different roots. The node refuses such a template when it imports it:
-a uarch reset must leave the template's root unchanged. That compares with the
+three different roots. The node refuses such a template at startup, before
+it touches the state directory: a uarch reset must leave the template's root
+unchanged. That compares with the
 linked emulator's pristine uarch; that it is the deployed step's is the
 provenance gate's concern.
 

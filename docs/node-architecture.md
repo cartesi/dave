@@ -34,13 +34,20 @@ between one big cycle and one input window). It does not judge whether a
 table can be built in time (one warning for a leaf taller than its measured
 capacity) and does not pin or check `T`. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
-linked Cartesi Machine library. These checks run before database
-initialization, so a deployment they reject cannot create or alter local
-state. Initialization then pins the table and the consensus address in
-`sling_config`; the runner samples each window at the pinned root stride, and
-a later start against another table or consensus is refused. That refusal,
-and the template's initial-hash check, still run after initialization has
-written the genesis watermark and stored the template (R10, todo.md). Table
+linked Cartesi Machine library. It then inspects the `--machine-path` template
+(one private load: its root hash and the pristine-uarch check) and requires
+that hash to equal the consensus's initial hash, and only then takes the
+state-directory lock and opens the directory. A seeded directory is compared
+with its `sling_config` pins (app, chain, consensus, template, emulator and
+table) before anything is written, and the claimant is pinned before any
+worker starts. A mismatch names the flag to fix (`--app-address`,
+`--web3-chain-id`), calls the directory another deployment's or an old one
+(the template), or asks for a rebuild (consensus, emulator, table). A new
+directory is seeded
+in one transaction: the genesis watermark, the epoch-0 boundary, the template
+row and the pins. So a deployment or flag these checks reject cannot create or
+alter local state, and a restart never imports the template again. The runner
+samples each window at the pinned root stride. Table
 stability is a trust assumption of the parameters provider, so before
 planning any action the Hero checks the descriptor of every tournament on its
 own path against the pinned row for its level, and the root tournament's

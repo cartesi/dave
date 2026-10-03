@@ -32,7 +32,7 @@ pub(crate) mod sql;
 
 pub use advance::AdvanceBatch;
 pub(crate) use advance::AdvancePlan;
-pub use open::{DEFAULT_SNAPSHOT_GAP_INPUTS, StateDirLock, Storage};
+pub use open::{DEFAULT_SNAPSHOT_GAP_INPUTS, StateDirLock, Storage, Template};
 
 use self::error::Result;
 use crate::merkle::Digest;

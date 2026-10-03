@@ -501,10 +501,11 @@ mod blockchain_reader_tests {
 
         let acc = Storage::initialize(
             state_dir,
-            &machine_path,
+            &crate::storage::Template::inspect(&machine_path).unwrap(),
             0,
             Address::ZERO,
             Address::ZERO,
+            0,
             &crate::engine::TournamentGeometry::two_level(),
         )
         .unwrap();

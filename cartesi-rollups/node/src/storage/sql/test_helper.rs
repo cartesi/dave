@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::engine::TournamentGeometry;
-use crate::storage::Storage;
+use crate::storage::{Storage, Template};
 use cartesi_machine::{
     Machine,
     cartesi_machine_sys::{
@@ -35,10 +35,11 @@ pub fn setup_storage_with(geometry: &TournamentGeometry) -> (TempDir, Storage) {
 
     let storage = Storage::initialize(
         state_dir,
-        &machine_path,
+        &Template::inspect(&machine_path).unwrap(),
         0,
         alloy::primitives::Address::ZERO,
         alloy::primitives::Address::ZERO,
+        0,
         geometry,
     )
     .unwrap();

@@ -3,7 +3,7 @@
 
 use crate::blockchain_reader::AddressBook;
 use crate::engine::{Level, Structure, TournamentGeometry};
-use crate::storage::{StateDirLock, Storage, StorageError};
+use crate::storage::{StateDirLock, Storage, StorageError, Template};
 use alloy::{
     network::EthereumWallet,
     primitives::Address,
@@ -308,8 +308,15 @@ impl NodeConfig {
     }
 
     pub async fn setup() -> Result<Self> {
-        let args = PRTArgs::parse();
+        Self::setup_with(PRTArgs::parse()).await
+    }
 
+    /// Validates everything it can before the first local write: the
+    /// deployment, then the template against the chain's initial hash,
+    /// then, under the state-directory lock, the directory's pins and the
+    /// claimant. A refusal leaves a new directory uncreated and an existing
+    /// one untouched.
+    pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = args
             .web3_chain_id
             .try_into()
@@ -321,6 +328,15 @@ impl NodeConfig {
         let geometry =
             discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
         log::info!("deployed tournament geometry (stride/height, top first): {geometry}");
+        let template = Template::inspect(&args.machine_path).context("--machine-path")?;
+        ensure!(
+            *template.hash() == address_book.initial_hash,
+            "--machine-path holds template {}, but application {} starts from {}: fix \
+             --machine-path, or check --app-address",
+            alloy::hex::encode_prefixed(template.hash()),
+            address_book.app,
+            alloy::hex::encode_prefixed(address_book.initial_hash),
+        );
         let ethereum_submit_gateway = args
             .web3_submit_rpc_url
             .unwrap_or_else(|| args.web3_rpc_url.clone());
@@ -328,23 +344,15 @@ impl NodeConfig {
         let state_lock = StateDirLock::acquire(&args.state_dir)?;
         let mut storage = Storage::initialize(
             &args.state_dir,
-            &args.machine_path,
+            &template,
             address_book.genesis_block_number,
             address_book.app,
             address_book.consensus,
+            chain_id as u64,
             &geometry,
         )
-        .context("could not create `storage`")?;
-
-        let mut machine = storage
-            .snapshot(0, 0)
-            .unwrap()
-            .expect("epoch zero should always exist");
-        assert_eq!(
-            machine.state_hash().unwrap(),
-            address_book.initial_hash,
-            "local machine initial hash doesn't match on-chain"
-        );
+        .context("could not open the state directory")?;
+        storage.pin_epoch_claimant(signer_address)?;
 
         Ok(Self {
             address_book,
@@ -367,9 +375,12 @@ impl NodeConfig {
 mod tests {
     use super::*;
     use crate::blockchain_reader::test_utils::{
-        anvil_state_path, deployment_address, rpc_client_with_timeout,
+        anvil_state_path, deployment_address, program_path, rpc_client_with_timeout,
+        spawn_anvil_and_provider,
     };
+    use crate::storage::sql::test_helper::store_template;
     use alloy::{node_bindings::Anvil, providers::ProviderBuilder};
+    use std::path::Path;
 
     fn args_with_snapshot_gap(gap: &str) -> Vec<&str> {
         vec![
@@ -472,5 +483,65 @@ mod tests {
             geometry, expected,
             "the devnet bundle serves another geometry than DEVNET_GEOMETRY selects"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    async fn setup_validates_before_writing() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let (anvil, _provider, book) = spawn_anvil_and_provider().await?;
+        let dir = tempfile::tempdir()?;
+        let state_dir = dir.path().join("state");
+        let endpoint = anvil.endpoint();
+        let chain_id = anvil.chain_id().to_string();
+        let key = alloy::hex::encode(anvil.keys()[0].to_bytes());
+        let app = book.app.to_string();
+        let args = |machine_path: &Path| {
+            PRTArgs::try_parse_from([
+                "cartesi-rollups-prt-node",
+                "--app-address",
+                &app,
+                "--machine-path",
+                machine_path.to_str().unwrap(),
+                "--web3-rpc-url",
+                &endpoint,
+                "--web3-chain-id",
+                &chain_id,
+                "--state-dir",
+                state_dir.to_str().unwrap(),
+                "pk",
+                "--web3-private-key",
+                &key,
+            ])
+            .unwrap()
+        };
+
+        let wrong = dir.path().join("wrong");
+        store_template(&wrong, |_| {});
+        let error = NodeConfig::setup_with(args(&wrong))
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--machine-path"),
+            "unexpected error: {error:#}"
+        );
+        assert!(!state_dir.exists(), "a refused start must not write");
+
+        let image = program_path().join("machine-image");
+        let config = NodeConfig::setup_with(args(&image)).await?;
+        let error = NodeConfig::setup_with(args(&image))
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("in use by another node process"),
+            "unexpected error: {error:#}"
+        );
+
+        // The restart path: the pinned directory reopens without a re-import.
+        drop(config);
+        NodeConfig::setup_with(args(&image)).await?;
+        Ok(())
     }
 }

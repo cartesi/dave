@@ -109,6 +109,7 @@ CREATE TABLE sling_config (
     log2_input_span INTEGER NOT NULL,
     log2_barch_span INTEGER NOT NULL,
     log2_uarch_span INTEGER NOT NULL,
+    chain_id INTEGER NOT NULL,
     app BLOB NOT NULL,
     consensus BLOB NOT NULL,
     template_hash BLOB NOT NULL,

@@ -1444,10 +1444,11 @@ mod tests {
         });
         let mut s = Storage::initialize(
             state_dir.path(),
-            &template,
+            &super::super::Template::inspect(&template).unwrap(),
             0,
             Address::ZERO,
             Address::ZERO,
+            0,
             &TournamentGeometry::two_level(),
         )
         .unwrap();
@@ -1487,6 +1488,55 @@ mod tests {
         assert!(storage.snapshot_hash(0, 0).unwrap().is_none());
         assert!(storage.snapshot_hash(1, 0).unwrap().is_some());
         assert!(!scratch.exists());
+    }
+
+    /// A seeded directory is never re-seeded: a restart neither imports the
+    /// template again nor resurrects the collected epoch-0 boundary.
+    #[test]
+    fn restart_skips_the_template_import() {
+        let (handle, mut storage) = setup_storage();
+        storage.pin_epoch_claimant(Address::ZERO).unwrap();
+        let epochs: Vec<_> = (0..3)
+            .map(|epoch_number| Epoch {
+                epoch_number,
+                input_index_boundary: 0,
+                root_tournament: Address::repeat_byte(epoch_number as u8),
+                block_created_number: 1,
+            })
+            .collect();
+        storage
+            .insert_consensus_data(1, [].iter(), epochs.iter())
+            .unwrap();
+        for _ in 0..3 {
+            storage.roll_epoch().unwrap();
+        }
+        storage.complete_epoch(0).unwrap();
+        storage.advance_plan().unwrap();
+        assert!(storage.snapshot_hash(0, 0).unwrap().is_none());
+        let latest = storage
+            .read(super::super::snapshots::latest_boundary_in)
+            .unwrap();
+
+        // The same arguments test_helper's setup_storage seeded with.
+        let template =
+            super::super::Template::inspect(&handle.path().join("_my_machine_image")).unwrap();
+        let mut restarted = Storage::initialize(
+            handle.path(),
+            &template,
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            0,
+            &TournamentGeometry::two_level(),
+        )
+        .unwrap();
+        assert!(restarted.snapshot_hash(0, 0).unwrap().is_none());
+        assert_eq!(
+            restarted
+                .read(super::super::snapshots::latest_boundary_in)
+                .unwrap(),
+            latest
+        );
     }
 
     #[test]

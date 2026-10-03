@@ -373,23 +373,6 @@ impl Storage {
             })
     }
 
-    /// Loads the machine stored at a boundary, positioned to process
-    /// that boundary's input next.
-    pub fn snapshot(
-        &mut self,
-        epoch_number: u64,
-        input_number: u64,
-    ) -> Result<Option<RollupsMachine>> {
-        let path = self.snapshot_dir(epoch_number, input_number)?;
-        let ret = if let Some(path) = path {
-            Some(RollupsMachine::new(&path, epoch_number, input_number)?)
-        } else {
-            None
-        };
-
-        Ok(ret)
-    }
-
     pub fn snapshot_dir(
         &mut self,
         epoch_number: u64,

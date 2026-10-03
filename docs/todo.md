@@ -57,11 +57,6 @@ carry no backlog (reviews/README.md).
 
 ## Node
 
-- Validate before writing at startup (R10): the pinned-config drift checks and
-  the template's initial hash run after `Storage::initialize` has written the
-  genesis watermark and cloned the template, so until then only the geometry
-  and MARCHID checks precede local writes; then drop the R10 caveat from
-  node-architecture.md's startup paragraph. (node-architecture.md)
 - Audit panics, asserts and retry loops against P1 (debt 3). Targets: the
   Hero's remaining `expect`s; dispute-path validators stricter than the
   contracts; `read_standings`, where one bad standing fails the whole Hero

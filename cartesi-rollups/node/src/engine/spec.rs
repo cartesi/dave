@@ -202,6 +202,7 @@ pub(crate) fn toy_storage(structure: Structure) -> Storage {
     .unwrap();
     let config = EngineConfig {
         structure,
+        chain_id: 1,
         app: vec![0xda; 20],
         consensus: vec![0xdc; 20],
         template_hash: ToyStf::hash_of(0),

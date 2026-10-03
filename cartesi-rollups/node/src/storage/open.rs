@@ -7,13 +7,14 @@
 //! `impl Storage`.
 
 use super::error::Result;
-use super::rollups_machine::RollupsMachine;
 use super::sql::schema;
 use crate::engine::{EngineConfig, Structure, TournamentGeometry, config as sling_config};
 use crate::merkle::Digest;
 use alloy::primitives::Address;
-use anyhow::Context;
-use cartesi_machine::{format_emulator_version, machine::Machine};
+use anyhow::{Context, ensure};
+use cartesi_machine::{
+    config::runtime::RuntimeConfig, format_emulator_version, machine::Machine, types::Hash,
+};
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use std::{
     fs,
@@ -83,18 +84,70 @@ pub struct Storage {
     pub(super) snapshot_gap_inputs: u64,
 }
 
+/// The operator's template image, inspected once per start through a private
+/// load that leaves the image untouched. Initialization stores it only into a
+/// fresh state directory; a seeded one compares its hash.
+#[derive(Debug, Clone)]
+pub struct Template {
+    path: PathBuf,
+    hash: Hash,
+}
+
+impl Template {
+    /// Hashes the image and refuses one without the pristine uarch of the
+    /// linked emulator, which is assumed to be the deployed step's (the
+    /// provenance gate's concern): every commitment shortcut assumes it at
+    /// big-cycle boundaries, and every closing reset restores it, so within
+    /// the node only the template can break it (custom uarch code, or an image
+    /// built by an emulator with another uarch). Commitments over such a
+    /// template would be silently wrong; a reset that changes the root is the
+    /// test.
+    pub fn inspect(path: &Path) -> anyhow::Result<Self> {
+        ensure!(
+            path.is_dir(),
+            "machine template `{}` is not an existing directory",
+            path.display()
+        );
+        let mut machine = Machine::load(path, &RuntimeConfig::quiet_console())
+            .with_context(|| format!("failed to load template `{}`", path.display()))?;
+        let hash = machine.root_hash()?;
+        machine.reset_uarch()?;
+        ensure!(
+            machine.root_hash()? == hash,
+            "template `{}` does not carry the pristine uarch of this node's emulator \
+             (custom uarch code or another emulator's image); refusing it",
+            path.display()
+        );
+        Ok(Self {
+            path: path.to_owned(),
+            hash,
+        })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn hash(&self) -> &Hash {
+        &self.hash
+    }
+}
+
 impl Storage {
-    /// Process setup: creates the state directory, initializes the
-    /// schema, seeds the genesis watermark, stores and registers
-    /// the template machine, and pins the engine configuration (which
-    /// fails loudly on app, consensus, geometry, or emulator drift
-    /// against an existing state dir).
+    /// Opens the state directory, creating and seeding it when it is new.
+    /// A directory already pinned to an engine configuration is compared
+    /// with this start's before anything is written, so a wrong flag leaves
+    /// it untouched: no watermark raise, no template import. A new one gets
+    /// the template stored (filesystem first), then one transaction for the
+    /// genesis watermark, the epoch-0 boundary, the template row and the pin,
+    /// so a pinned directory is always a seeded one.
     pub fn initialize(
         state_dir: &Path,
-        initial_machine_path: &Path,
+        template: &Template,
         genesis_block_number: u64,
         app_address: Address,
         consensus_address: Address,
+        chain_id: u64,
         geometry: &TournamentGeometry,
     ) -> Result<Self> {
         create_directory_structure(state_dir)?;
@@ -109,23 +162,47 @@ impl Storage {
             snapshot_gap_inputs: DEFAULT_SNAPSHOT_GAP_INPUTS,
         };
 
-        storage.set_genesis(genesis_block_number)?;
-        let template_hash = storage.set_initial_machine(initial_machine_path)?;
-
-        sling_config::pin(
-            &storage.connection,
-            &EngineConfig {
-                structure: Structure::PRODUCTION,
-                app: app_address.as_slice().to_vec(),
-                consensus: consensus_address.as_slice().to_vec(),
-                template_hash: Digest::from_digest(&template_hash).map_err(anyhow::Error::from)?,
-                emulator_version: format_emulator_version(Machine::version()),
-                geometry: geometry.clone(),
-            },
-        )
-        .map_err(|error| anyhow::anyhow!("{error:#}; {}", schema::WIPE_GUIDANCE))?;
+        let config = EngineConfig {
+            structure: Structure::PRODUCTION,
+            chain_id,
+            app: app_address.as_slice().to_vec(),
+            consensus: consensus_address.as_slice().to_vec(),
+            template_hash: Digest::from_digest(template.hash()).map_err(anyhow::Error::from)?,
+            emulator_version: format_emulator_version(Machine::version()),
+            geometry: geometry.clone(),
+        };
+        match sling_config::stored(&storage.connection)? {
+            Some(pinned) => check_pinned(&storage.state_dir, &pinned, &config)?,
+            None => storage.seed(template, genesis_block_number, &config)?,
+        }
 
         Ok(storage)
+    }
+
+    fn seed(
+        &mut self,
+        template: &Template,
+        genesis_block_number: u64,
+        config: &EngineConfig,
+    ) -> Result<()> {
+        // Clone the image into the store - no 500 MB re-serialization
+        // through machine memory. Cross-filesystem imports degrade to a
+        // sparse copy inside the clone. A crash before the commit below
+        // orphans the directory, which the next seed adopts.
+        let working = self
+            .checkout(template.path())
+            .map_err(anyhow::Error::from)?;
+        let dest = self
+            .commit_clone(working, template.hash())
+            .map_err(anyhow::Error::from)?;
+
+        self.write(|tx| {
+            super::ingest::raise_watermark_in(tx, genesis_block_number)?;
+            super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash(), &dest)?;
+            super::snapshots::insert_template_machine_in(tx, template.hash())?;
+            sling_config::pin(tx, config)?;
+            Ok(())
+        })
     }
 
     /// A writer handle onto an already-initialized database. One
@@ -205,47 +282,6 @@ impl Storage {
         Ok(out)
     }
 
-    fn set_genesis(&mut self, block_number: u64) -> Result<()> {
-        self.write(|tx| super::ingest::raise_watermark_in(tx, block_number))
-    }
-
-    /// Stores the initial machine into the content-addressed store
-    /// and registers it as both the epoch-0 boundary and the template
-    /// (filesystem first, then one transaction for the rows).
-    fn set_initial_machine(
-        &mut self,
-        source_machine_path: &Path,
-    ) -> Result<cartesi_machine::types::Hash> {
-        assert!(
-            source_machine_path.is_dir(),
-            "machine path `{}` must be an existing directory",
-            source_machine_path.display()
-        );
-
-        assert_pristine_uarch(source_machine_path)?;
-
-        // Hash through a private load (cheap: the image ships valid
-        // hash sidecars), then clone the image into the store - no
-        // 500 MB re-serialization through machine memory. Cross-
-        // filesystem imports degrade to a sparse copy inside the
-        // clone.
-        let state_hash = RollupsMachine::new(source_machine_path, 0, 0)?.state_hash()?;
-        let working = self
-            .checkout(source_machine_path)
-            .map_err(anyhow::Error::from)?;
-        let dest_machine_path = self
-            .commit_clone(working, &state_hash)
-            .map_err(anyhow::Error::from)?;
-
-        self.write(|tx| {
-            super::snapshots::insert_snapshot_in(tx, 0, 0, &state_hash, &dest_machine_path)?;
-            super::snapshots::insert_template_machine_in(tx, &state_hash)?;
-            Ok(())
-        })?;
-
-        Ok(state_hash)
-    }
-
     /// The per-epoch scratch directory (dispute logs and artifacts);
     /// filesystem lifecycle, not SQL.
     pub fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf> {
@@ -323,27 +359,43 @@ fn open_reader_connection(db_path: &Path) -> Result<Connection> {
 // State directory layout
 //
 
-/// The template must carry the pristine uarch of the linked emulator, which
-/// is assumed to be the deployed step's (the provenance gate's concern): every
-/// commitment shortcut assumes it at big-cycle boundaries, and every closing
-/// reset restores it, so within the node only the template can break it
-/// (custom uarch code, or an image built by an emulator with another uarch).
-/// Commitments over such a template would be silently wrong, so the node
-/// refuses it once, at import; a reset that changes the root is the test.
-fn assert_pristine_uarch(template: &Path) -> Result<()> {
-    use cartesi_machine::config::runtime::RuntimeConfig;
-    let mut machine = Machine::load(template, &RuntimeConfig::quiet_console())
-        .with_context(|| format!("failed to load template `{}`", template.display()))?;
-    let root = machine.root_hash().map_err(anyhow::Error::from)?;
-    machine.reset_uarch().map_err(anyhow::Error::from)?;
-    if machine.root_hash().map_err(anyhow::Error::from)? != root {
-        return Err(anyhow::anyhow!(
-            "template `{}` does not carry the pristine uarch of this node's emulator \
-             (custom uarch code or another emulator's image); refusing it",
-            template.display()
-        )
-        .into());
-    }
+/// The template was already checked against the chain, so a pinned one that
+/// differs means the directory is not this deployment's: a foreign or old one.
+/// App and chain mismatches are likelier a wrong flag.
+fn check_pinned(
+    state_dir: &Path,
+    pinned: &EngineConfig,
+    given: &EngineConfig,
+) -> anyhow::Result<()> {
+    let dir = state_dir.display();
+    ensure!(
+        pinned.app == given.app,
+        "state directory `{dir}` belongs to application {}, not --app-address {}: restart \
+         with the right --app-address or use another --state-dir",
+        alloy::hex::encode_prefixed(&pinned.app),
+        alloy::hex::encode_prefixed(&given.app),
+    );
+    ensure!(
+        pinned.chain_id == given.chain_id,
+        "state directory `{dir}` belongs to chain {}, not --web3-chain-id {}: restart with \
+         the right --web3-chain-id or use another --state-dir",
+        pinned.chain_id,
+        given.chain_id,
+    );
+    ensure!(
+        pinned.template_hash == given.template_hash,
+        "state directory `{dir}` was seeded from template {}, but the given template is {}: \
+         the directory belongs to another deployment or is an old one; use another \
+         --state-dir or wipe it",
+        pinned.template_hash,
+        given.template_hash,
+    );
+    ensure!(
+        pinned == given,
+        "state directory `{dir}` was built for another consensus, emulator or tournament \
+         geometry: stored {pinned:?}, given {given:?}; {}",
+        schema::WIPE_GUIDANCE
+    );
     Ok(())
 }
 
@@ -403,26 +455,107 @@ mod tests {
     }
 
     #[test]
-    fn initialize_refuses_a_template_without_the_pristine_uarch() {
+    fn template_inspection_refuses_a_non_pristine_uarch() {
         let dir = tempfile::tempdir().unwrap();
         let template = dir.path().join("template");
         // Any uarch edit a reset would undo; custom uarch code moves the pc.
         store_template(&template, |machine| {
             machine.write_reg(CM_REG_UARCH_PC, 0x700000).unwrap();
         });
-        let error = Storage::initialize(
-            &dir.path().join("state"),
-            &template,
-            0,
-            Address::ZERO,
-            Address::ZERO,
-            &TournamentGeometry::two_level(),
-        )
-        .map(|_| ())
-        .expect_err("a non-pristine uarch must be refused");
+        let error = Template::inspect(&template).expect_err("a non-pristine uarch must be refused");
         assert!(
             format!("{error:#}").contains("pristine uarch"),
             "unexpected error: {error:#}"
         );
+    }
+
+    #[test]
+    fn template_inspection_refuses_a_missing_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = Template::inspect(&dir.path().join("missing")).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("not an existing directory"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    fn initialize_at(
+        state_dir: &Path,
+        template: &Path,
+        genesis_block_number: u64,
+        app: Address,
+        chain_id: u64,
+    ) -> Result<Storage> {
+        Storage::initialize(
+            state_dir,
+            &Template::inspect(template).unwrap(),
+            genesis_block_number,
+            app,
+            Address::ZERO,
+            chain_id,
+            &TournamentGeometry::two_level(),
+        )
+    }
+
+    /// The template matched the chain before initialization, so a pinned
+    /// one that differs is a foreign or old directory, not a wrong flag.
+    #[test]
+    fn a_different_template_on_a_pinned_dir_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let (first, second) = (dir.path().join("first"), dir.path().join("second"));
+        store_template(&first, |_| {});
+        store_template(&second, |machine| {
+            machine
+                .write_memory(cartesi_machine::constants::ar::RAM_START, &[0xA5])
+                .unwrap();
+        });
+        let state_dir = dir.path().join("state");
+        initialize_at(&state_dir, &first, 0, Address::ZERO, 1).unwrap();
+
+        let error = initialize_at(&state_dir, &second, 0, Address::ZERO, 1).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--state-dir"),
+            "unexpected error: {error:#}"
+        );
+        let second_hash = Template::inspect(&second).unwrap().hash;
+        let imported = snapshots_path(&state_dir).join(format!("0x{}", hex::encode(second_hash)));
+        assert!(
+            !imported.exists(),
+            "a refused template must not be imported"
+        );
+    }
+
+    #[test]
+    fn a_different_app_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        let state_dir = dir.path().join("state");
+        let mut storage =
+            initialize_at(&state_dir, &template, 0, Address::repeat_byte(0xaa), 1).unwrap();
+
+        let error =
+            initialize_at(&state_dir, &template, 100, Address::repeat_byte(0xbb), 1).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--app-address"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(storage.latest_processed_block().unwrap(), 0);
+    }
+
+    #[test]
+    fn a_different_chain_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        let state_dir = dir.path().join("state");
+        let mut storage = initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
+
+        let error = initialize_at(&state_dir, &template, 100, Address::ZERO, 2).unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--web3-chain-id"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(storage.latest_processed_block().unwrap(), 0);
     }
 }

@@ -22,7 +22,7 @@ use cartesi_rollups_prt_node::engine::{
 };
 use cartesi_rollups_prt_node::merkle::Digest;
 use cartesi_rollups_prt_node::storage::{
-    DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Storage,
+    DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Storage, Template,
 };
 
 /// Five minutes of clock per tree height unit: the inclusion budget each
@@ -575,10 +575,11 @@ fn two_input_epoch(
     ];
     let mut storage = Storage::initialize(
         &scratch(scratch_root, tag)?,
-        image,
+        &Template::inspect(image)?,
         0,
         Address::ZERO,
         Address::ZERO,
+        0,
         &bench_geometry()?,
     )?;
     let rows: Vec<StorageInput> = inputs
@@ -1216,8 +1217,15 @@ mod versus {
             ],
             &structure,
         )?;
-        let mut storage =
-            Storage::initialize(&state, image, 0, Address::ZERO, Address::ZERO, &geometry)?;
+        let mut storage = Storage::initialize(
+            &state,
+            &Template::inspect(image)?,
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            0,
+            &geometry,
+        )?;
         let rows: Vec<StorageInput> = (0..args.gap_inputs)
             .map(|i| StorageInput {
                 id: InputId {
