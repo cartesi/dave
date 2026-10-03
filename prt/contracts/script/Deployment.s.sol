@@ -123,9 +123,10 @@ contract DeploymentScript is BaseDeploymentScript {
     /// Coordinate: an entry's block time is the interval of what
     /// `block.number` counts, which on OP Stack chains is the L2 block and on
     /// Arbitrum chains the parent chain's block, so Arbitrum One and Sepolia
-    /// take Ethereum's and Sepolia's 12 s (and their addresses). Fee: refunds
-    /// price `gasleft` deltas at `tx.gasprice`, so an L2's parent-chain data
-    /// fee is not refunded.
+    /// take Ethereum's and Sepolia's 12 s (and their addresses); the node does
+    /// not start there. Fee: refunds price execution gas only (a `gasleft`
+    /// delta plus intrinsic and calldata units, at a capped gas price), so an
+    /// L2's parent-chain data fee is not refunded.
     function _registerChains() internal {
         _registerChain(1, ChainKind.MAINNET, Milliseconds.wrap(12000));
         _registerChain(10, ChainKind.MAINNET, Milliseconds.wrap(2000));
