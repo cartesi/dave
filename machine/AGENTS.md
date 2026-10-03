@@ -25,8 +25,9 @@ would never load it, hence this file.
   version; the guard test is
   `cartesi-rollups/node/src/engine/constants.rs`.
 - Release acquisition and image-generation pins are spread across
-  `machine/script/cartesi-machine-source.sh`, CI, `test/programs/`'s justfile,
-  and the nix devshell flake outside this repo. Semantic version guards also
+  `machine/script/cartesi-machine-source.sh`, CI, the per-image producers
+  under `test/programs/script/`, and the nix devshell flake outside this
+  repo. Semantic version guards also
   exist in the Rust wrapper and node tests. Drift between them is a standing
   hazard (`docs/build-system.md`); search for the current version during a bump
   and rebuild the machine images under `test/programs/`.

@@ -3,7 +3,7 @@
 Dave is Cartesi's permissionless, interactive fraud-proof system, currently
 implemented on top of the Permissionless Refereed Tournaments (PRT) algorithm.
 This repository holds the on-chain dispute contracts, two off-chain clients
-(the Rust validator node and the Lua testing/reference client), the Cartesi Machine
+(the Rust validator node and the Lua test client), the Cartesi Machine
 integration, and the test infrastructure that ties them together.
 
 > The code is the source of truth. The papers, the comments, and these docs
@@ -30,8 +30,8 @@ The current nested boundaries are `prt/contracts/AGENTS.md`,
 ```
 prt/contracts/       Solidity dispute contracts - SECURITY-CRITICAL trust
                      boundary. Deep context in prt/contracts/AGENTS.md.
-prt/client-lua/      PRT reference client, sybil test actor, and executable
-                     oracle for commitment construction.
+prt/client-lua/      PRT Lua client: e2e sybil actor and executable oracle
+                     for commitment construction.
 test/e2e/            Lua-orchestrated end-to-end tests. Spawns the real Rust
                      node plus dishonest sybils against anvil.
 docs/papers/         The original PRT and Dave papers. Dave's successor
@@ -50,7 +50,8 @@ cartesi-rollups/
 machine/             Cartesi Machine: emulator + solidity-step submodules and
                      the Rust bindings that link against the emulator. A
                      cross-implementation seam; see machine/AGENTS.md.
-test/programs/       Machine images used by tests (echo, yield, honeypot).
+test/programs/       Machine images used by tests (echo, yield, opt-in
+                     honeypot) and the stress image for measurements.
 docs/                The knowledge base. Start at docs/README.md.
 ```
 
@@ -89,8 +90,8 @@ docs/                The knowledge base. Start at docs/README.md.
   scenarios.
 - `docs/glossary.md` - the project vocabulary (ustep, ureset, barch,
   meta-cycle, dangling commitment, and the span-vs-mask naming trap).
-- `docs/build-system.md` - how setup and builds work, and open design
-  questions (bindings generation, emulator dependency).
+- `docs/build-system.md` - how setup and builds work, the open bindings
+  question, and the resolved emulator-provider policy with its reasons.
 - `docs/prt-refund-accounting.md` - the work-reserve and terminal-conservation
   argument.
 - `docs/prt-contract-testing.md` - Foundry test ownership and evidence rules.

@@ -4,7 +4,7 @@ Dave is a permissionless, interactive fraud-proof system. This repo contains the
 
 * Solidity smart contracts;
 * validator node in Rust;
-* Lua reference client and adversarial test actors;
+* a Lua commitment oracle and adversarial test actors;
 * dispute algorithm specification.
 
 ---

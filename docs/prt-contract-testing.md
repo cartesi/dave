@@ -20,7 +20,8 @@ just prt-contracts::coverage
 just rollups-contracts::test
 ```
 
-The state-transition suites require the `machine/step` submodule and FFI:
+The state-transition suites require the `machine/step` submodule, FFI, and
+the yield machine image (`just programs::build-programs`):
 
 ```bash
 just prt-contracts::test-stf
@@ -43,6 +44,7 @@ exclude the `*FfiTest` contracts deliberately.
 | `test/accounting/` | Reserve algebra, exact refund formula, and callback behavior |
 | `test/characterization/` | Frozen historical three-level behavior |
 | `test/config/` | Canonical and generic parameter-table validation |
+| `test/devnet/` | The devnet-only two-level deployment script (`DEVNET_GEOMETRY=two-level`) and its test |
 | `test/fixtures/` | Injected geometry, small trees, independent models, and test-only transitions |
 | `test/gas/` | Retained production refund witnesses |
 | `test/properties/` | Match parity, lifecycle, recursion, population, and delay properties |
@@ -278,9 +280,8 @@ persisted event stream across the boundary.
 Storage layout and raw Match and Clock encoding are internal in the current
 non-upgradeable design. There is no supported state migration or raw-storage
 client. Solidity tests reach raw Match, Clock, and topology state through the
-white-box probe in `test/fixtures/TournamentInspector.sol`; one clock-engineering
-E2E fixture has its own narrow raw Clock probe under `test/e2e/support/`. Their
-slot constants must follow intentional layout changes; they do not turn the
+white-box probe in `test/fixtures/TournamentInspector.sol`. Its slot
+constants must follow intentional layout changes; they do not turn the
 current layout into a compatibility promise. Clone-argument decoding and the
 independently derived closure and finish predicates remain useful oracles
 rather than echoes of the observer views.

@@ -179,7 +179,8 @@ just prt-contracts::coverage
 just rollups-contracts::test
 ```
 
-State-transition tests require the `machine/step` submodule and FFI:
+State-transition tests require the `machine/step` submodule, FFI, and the
+yield machine image (`just programs::build-programs`):
 
 ```bash
 just prt-contracts::test-stf
@@ -208,7 +209,6 @@ Do not claim more than the maintained evidence establishes:
   inner matches pause both parent clocks and delegate their obligation;
 - a well-formed table does not prove that clients build the same commitments;
 - non-Ethereum time and fee conformance is not established;
-- state-transition halt and exception semantics are owned by separate work;
 - the leaf-proof refund is not a universal proof-class gas ceiling; and
 - archived review findings and test counts describe their recorded revision,
   not every future change.

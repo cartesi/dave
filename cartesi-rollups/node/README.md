@@ -35,11 +35,11 @@ The dispute engine (formerly the `cartesi-prt-core` crate):
   prepares contract mutation requests.
 - `merkle/` - the tree builders shared by commitment construction.
 
-The Rust node is the reference implementation. The Lua client
-(`prt/client-lua/`) mirrors the same commitment construction and honest
-strategy as a testing companion - the e2e tests cross-check the two
-every epoch, and the Lua module shape makes sybil actors cheap to
-script. Keep them in agreement.
+The Rust node is the only honest dispute client. The Lua client
+(`prt/client-lua/`) is its testing companion: its commitment construction
+is an independent oracle that the e2e tests cross-check every epoch and
+that must agree with the node's, and its player is the e2e sybil actor,
+which needs to agree with the node only well enough to steer disputes.
 
 ## Build (release)
 

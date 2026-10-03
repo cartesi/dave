@@ -7,8 +7,8 @@ clients that play them.
   (security-critical; deep context in [contracts/AGENTS.md](contracts/AGENTS.md)).
 - [cartesi-rollups/node/](../cartesi-rollups/node/) - the Rust rollups node,
   including the dispute actor and tournament synchronization code.
-- [client-lua/](client-lua/) - the Lua client: reference implementation
-  and test actor.
+- [client-lua/](client-lua/) - the Lua client: an independent
+  commitment-construction oracle and the e2e sybil actor.
 - [test/e2e/rollups/](../test/e2e/rollups/) - the Lua-orchestrated
   end-to-end suites
   (see [docs/test-harness.md](../docs/test-harness.md)).
