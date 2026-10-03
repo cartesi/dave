@@ -478,9 +478,10 @@ last match deletion. It is canonically zero for `MATCHES_ACTIVE` and
 `AWAITING_CLOSURE`, and remains fixed at the exact finish instant for every
 terminal standing.
 
-If no commitment remains, the tournament has finished without a winner. A root
-in that state settles nothing. A parent may eventually eliminate a no-winner
-child.
+If no commitment remains, the tournament has finished without a winner. A
+root in that state reports `ROOT_FAILED`; what follows is its consumer's
+concern (Dave's consensus refuses to stage it, epoch-lifecycle.md). A parent
+may eventually eliminate a no-winner child.
 
 ## Clock model
 
@@ -690,8 +691,8 @@ winner payment succeeds does the contract send the entire post-payment balance
 to the zero address. That residual may be zero when every possible match
 consumes its complete configured reserve. If the balance is zero, recovery
 skips the recipient call and completes defensively. Nothing invokes recovery
-automatically; it is an explicit, permissionless call, and no progress or
-settlement path depends on it.
+automatically; it is an explicit, permissionless call, and no tournament
+progress path depends on it.
 
 A commitment root can be joined only once, so copying the correct root first
 intentionally claims that capped recipient slot; all progress and defense
@@ -711,9 +712,10 @@ the burn rule covers the balance present during successful recovery. If a
 nonzero recipient payment is rejected, recovery returns `false`, burns nothing,
 and preserves both the claimer and the full balance for retry. This idempotence
 and retry behavior are required because recovery is permissionless. Parent
-propagation deliberately does not settle the child balance, and result staging
-performs no recovery at all: no value-moving call rides any progress or
-settlement path, so a winning claimer's callback cannot interfere with them.
+propagation deliberately does not settle the child balance: no value-moving
+call rides a tournament progress path, so a winning claimer's callback cannot
+interfere with one. A consumer that reads the result must keep the same rule;
+Dave's consensus does (cartesi-rollups/contracts/AGENTS.md).
 
 Terminal recipient code has the same 50,000-gas execution ceiling and no
 return-data copy. An EOA, delegated EOA, or smart-wallet receive path that

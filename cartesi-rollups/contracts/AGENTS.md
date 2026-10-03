@@ -40,7 +40,12 @@ truth.
   liveness depends on the immutable sentry-manager key.
 - `notForeclosed(appContract)` gates all four mutators (stage, claim,
   accept, rotate): a foreclosed application freezes epoch progress and
-  sentry rotation. Foreclosure is owned by the application layer.
+  sentry rotation. Foreclosure belongs to the application layer: its
+  guardian calls `Application.foreclose()`, irreversibly. The guardian is
+  the last line for what the tournament cannot settle or got wrong (a
+  no-winner root, a terminal application's epoch, a result decided outside
+  the PRT model); the claim staging period is its reaction window
+  (docs/epoch-lifecycle.md).
 - InputBox integrity and the tournament factory's configuration are
   assumed. This contract is the application's
   `IOutputsMerkleRootValidator` and each tournament's `IDataProvider`;
@@ -114,11 +119,16 @@ just bind                  # after any interface change
 ```
 
 Honest coverage statement: `DaveConsensus` has no dedicated Foundry unit
-suite today. Behavior coverage lives in `test/DaveAppFactory.t.sol`
-(construction), the leaf-proof gas FFI fixture (`test/gas/`), the node's
-integration tests, and the Lua e2e scenarios. Do not mistake
-compile-plus-e2e for unit evidence when changing staging, sentry, or
-settlement logic; adding focused tests with such a change is expected.
+suite today. Its behavior is exercised through `test/DaveAppFactory.t.sol`
+(construction, stage and accept, `wasInputFinalized`, staging reverts on bad
+proofs, root failure, sentry rotation, a winner exhausting the payment
+callback), the leaf-proof gas FFI fixture (`test/gas/`), the node's
+integration tests, and the e2e smoke. `test/NodeProofs.t.sol` and
+`test/NodeWitnesses.t.sol` check that the contracts' verifiers and the step
+accept the node's proofs and witnesses, without running `DaveConsensus`. Do
+not mistake any of these for a unit suite when changing staging,
+sentry, or settlement logic; adding focused tests with such a change is
+expected.
 
 ## Explicit non-claims
 

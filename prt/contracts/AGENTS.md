@@ -125,7 +125,7 @@ Top/Middle/Bottom contracts.
 - Each paid join contributes one height-derived match work reserve. Progress
   refunds are bounded subsidies; terminal recovery pays one bond plus a tenth
   of the residual above it and burns the rest only after successful payment.
-  Nothing invokes recovery from a progress or settlement path.
+  No tournament progress path invokes recovery; consumers must not either.
 - Refund and winner callbacks are bounded, copy no return data, and cannot make
   completed progress depend on recipient acceptance. A failed terminal payment
   preserves the full state for retry.

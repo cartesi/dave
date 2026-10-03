@@ -45,6 +45,8 @@ Merkle root (zero at genesis), and the root tournament address.
    cursor advance to the next epoch. Other participants may already be working
    on that epoch while this node finishes its refunds.
 
+## Consensus layer: staging, sentries and foreclosure
+
 All four mutating entry points (stage, sentry claim, accept, sentry
 rotation) are gated by `notForeclosed(appContract)`: a foreclosed
 application freezes epoch progress entirely. Check foreclosure status
@@ -75,6 +77,21 @@ The node explicitly recovers its winning bonds from the root and linked inner
 tournaments. Its local epoch lifecycle includes those refunds; the contract's
 settlement lifecycle remains independent. A foreign claimant's payment and a
 no-winner tournament's retained balance do not prevent local completion.
+
+The trust at this layer, in one place. Under the tournament's assumptions
+(dispute-game.md), one live honest node makes the honest claim win the root.
+DaveConsensus stages that claim only if its final state settles (a manual
+`RX_ACCEPTED` yield) and accepts it once every sentry agrees or the claim
+staging period ends; sentries shorten the wait and can neither veto nor
+corrupt it. Everything the tournament cannot settle or may have gotten
+wrong belongs to the application's guardian: a root without a winner, a
+terminal application's epoch (defended, never stageable), and a result
+decided outside the tournament's model, such as censorship beyond `C`. The
+guardian calls `Application.foreclose()` (rollups-contracts,
+`onlyGuardian`), which freezes the application irreversibly; the claim
+staging period is its reaction window. This section and
+cartesi-rollups/contracts/AGENTS.md move with DaveConsensus if it leaves
+this repository.
 
 ## Node data flow
 

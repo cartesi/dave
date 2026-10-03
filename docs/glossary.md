@@ -130,8 +130,10 @@ level. Terms marked (code) appear verbatim in identifiers.
   input index where an epoch ends.
 - sealed epoch: epoch whose input set is frozen and whose tournament
   exists; the thing validators defend.
-- settlement: posting the winning result to DaveConsensus, which also
-  seals the next epoch.
+- settlement: staging the root winner's final state on DaveConsensus with a
+  machine validity proof, then accepting it once every sentry agrees or the
+  claim staging period ends; acceptance records the outputs root and seals
+  the next epoch.
 - hero / sybil (tests): the honest player under test / a dishonest player
   defending a corrupted commitment. Hero is also the node's name for its
   dispute module (`cartesi-rollups/node/src/hero`, formerly `strategy`
