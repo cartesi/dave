@@ -84,10 +84,13 @@ carry no backlog (reviews/README.md).
 
 ## Contracts and assurance
 
-- An independent honest-survival model (R19) before the external audit.
+- An independent honest-survival model (R19) before the external audit:
+  [plans/r19-honest-survival.md](plans/r19-honest-survival.md).
   (dispute-game.md)
 - Prepare the external contracts audit: scope, trust boundaries, non-claims,
-  freeze and audit identity. (prt/contracts/AGENTS.md)
+  the pre-audit items below, freeze and audit identity:
+  [plans/audit-readiness.md](plans/audit-readiness.md).
+  (prt/contracts/AGENTS.md)
 - Run the full-stack leaf-proof gas witnesses
   (`rollups-contracts::test-prt-leaf-gas`) in CI: `rollups-contracts::test`
   skips the FFI suites and no workflow calls the recipe; the Tournament-only
@@ -134,4 +137,5 @@ carry no backlog (reviews/README.md).
   add fields if consumers request them.
 - The safety-gate branch stays tabled: the delay lives in DaveConsensus
   staging and sentries, and the branch is kept for its `ITask` genericity.
-- Open: the external audit's scope, firm and date, and whether R19 gates it.
+- Open: the external audit's scope, firm and date, and whether R19 gates it
+  (plans/audit-readiness.md).
