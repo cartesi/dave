@@ -113,7 +113,8 @@ safety, not hygiene:
   silently shift every later commitment. Re-proving contract rules on the
   dispute path buys little against commission: a fabricated value yields an
   action the contract rejects, which the lane skips at estimation with a
-  warning. It does nothing against omission or a lying read: a missing
+  warning, and an error when the same call repeats on the next tick. It does
+  nothing against omission or a lying read: a missing
   finalized log or a false standing can make the Hero wait instead of act,
   and nothing reverts. The fold keeps the guards that stop it from guessing;
   tournament-log completeness and truthful pinned reads otherwise stay
@@ -440,7 +441,13 @@ dangling at inclusion takes the pairing branch, which the harness measured at
 117,262 gas over the estimate, 70% of the cheapest join's estimate. The limit
 stops at the EIP-7825 cap when the estimate fits under it, so the padding
 never makes an admissible call inadmissible; estimation failing other than by
-a revert falls back to 15M. Already-known transactions, underpriced
+a revert falls back to 15M. A call that already reverts at latest is not sent:
+it costs nothing, and the lane warns with its revert reason. The manager logs
+an error when the same call (verb, target and calldata) is skipped on
+consecutive ticks, since the node keeps planning a step it cannot take; one
+skip is routine with several honest nodes on one commitment, when another
+node's copy of the step mines between this node's read and its estimate. The
+node harness fails on any honest skip. Already-known transactions, underpriced
 replacements, and stale nonces are ordinary retry states; every later tick
 rebuilds intent from fresh observation. The mempool or a separately
 configured revert-protecting endpoint arbitrates races and duplicates.
@@ -499,12 +506,10 @@ Error handling and observability:
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
 4. Logging is unstructured and inconsistent between crates.
-6. The lane does not observe receipts or mined revert reasons. Its estimate
-   runs the call at latest first, so a call that already reverts there is not
-   sent: a deterministic self-authored revert costs nothing, is logged each
-   tick, and fails the node harness. A call that passes the estimate and
-   then loses a race before inclusion is still paid for; revert protection at
-   the submission endpoint may catch that, but the node does not require it.
+6. The lane does not observe receipts or mined revert reasons. A call that
+   passes the estimate and then loses a race before inclusion is still paid
+   for; revert protection at the submission endpoint may catch that, but the
+   node does not require it.
 
 Structure:
 

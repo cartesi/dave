@@ -6,13 +6,13 @@ mod recovery;
 
 use self::error::Result;
 use self::recovery::plan_recovery;
-use alloy::primitives::{Address, B256, U256};
+use alloy::primitives::{Address, B256, TxKind, U256, keccak256};
 use alloy::providers::DynProvider;
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use std::{sync::Arc, time::Duration};
 
 use crate::chain::Chain;
-use crate::provider::{LaneRequest, SendReport, TransactionLane};
+use crate::provider::{LaneRequest, SendReport, SendVerdict, TransactionLane};
 use crate::storage::{
     Epoch, LeafProof as StoredLeafProof, MachineValidityProof as StoredMachineValidityProof,
     Storage,
@@ -33,7 +33,12 @@ pub struct EpochManager<AS: ArenaSender> {
     storage: Storage,
     epoch_hero: Option<Hero<AS>>,
     shutdown: ShutdownSignal,
+    /// The calls the previous tick skipped as reverting at latest.
+    reverted: Vec<CallKey>,
 }
+
+/// A call's identity across ticks: its verb, target and calldata.
+type CallKey = (String, Option<TxKind>, B256);
 
 struct EpochTick {
     epoch: u64,
@@ -72,6 +77,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             storage,
             epoch_hero: None,
             shutdown,
+            reverted: Vec::new(),
         })
     }
 
@@ -97,6 +103,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
 
     pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<Ticked> {
         let Some(tick) = self.plan_tick(chain).await? else {
+            self.reverted.clear();
             return Ok(Ticked {
                 done: false,
                 reports: Vec::new(),
@@ -116,11 +123,28 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 tick.epoch
             );
         } else if !tick.wave.is_empty() {
+            let calls = tick.wave.iter().map(call_key).collect();
             reports = self
                 .transaction_lane
                 .submit_wave(tick.wave)
                 .await
                 .map_err(crate::hero::error::ReactError::from)?;
+            let (reverted, repeated) = repeated_reverts(&self.reverted, calls, &reports);
+            // The lane warns of each skip with its reason. Once is routine
+            // with several honest nodes on one commitment: another node's
+            // copy of the step mined between this node's read and its
+            // estimate. The same call again on the next tick is not.
+            for (label, to, _) in repeated {
+                let to = to.and_then(|kind| kind.to().copied()).unwrap_or_default();
+                error!(
+                    "{label} to {to} reverts at latest on consecutive ticks: the node \
+                     keeps planning a step it cannot take, and a dispute clock may be running"
+                );
+            }
+            self.reverted = reverted;
+        }
+        if reports.is_empty() {
+            self.reverted.clear();
         }
         Ok(Ticked {
             done: tick.done,
@@ -484,6 +508,32 @@ impl<AS: ArenaSender> EpochManager<AS> {
     }
 }
 
+fn call_key((label, request): &LaneRequest) -> CallKey {
+    let input = request.input.input().map(keccak256).unwrap_or_default();
+    (label.clone(), request.to, input)
+}
+
+/// The calls this tick skipped as reverting at latest (one report per call,
+/// in order), and those of them the previous tick skipped too.
+fn repeated_reverts(
+    previous: &[CallKey],
+    calls: Vec<CallKey>,
+    reports: &[SendReport],
+) -> (Vec<CallKey>, Vec<CallKey>) {
+    let reverted: Vec<_> = calls
+        .into_iter()
+        .zip(reports)
+        .filter(|(_, report)| report.verdict == SendVerdict::Reverts)
+        .map(|(call, _)| call)
+        .collect();
+    let repeated = reverted
+        .iter()
+        .filter(|call| previous.contains(call))
+        .cloned()
+        .collect();
+    (reverted, repeated)
+}
+
 fn to_leaf_proof(proof: StoredLeafProof) -> DaveConsensus::LeafProof {
     DaveConsensus::LeafProof {
         dataBlock: B256::from(proof.data_block),
@@ -523,6 +573,48 @@ mod tests {
     };
     use cartesi_prt_contracts::tournament::Tournament;
     use std::path::Path;
+
+    #[test]
+    fn repeated_reverts_escalate_only_on_consecutive_ticks() {
+        let call = |label: &str, input: u8| -> CallKey {
+            (
+                label.to_string(),
+                Some(TxKind::Call(Address::repeat_byte(0x10))),
+                B256::repeat_byte(input),
+            )
+        };
+        let report = |verdict| SendReport {
+            label: String::new(),
+            nonce: 0,
+            tx_hash: B256::ZERO,
+            verdict,
+        };
+        let skipped = [report(SendVerdict::Reverts), report(SendVerdict::Submitted)];
+        let tick = |previous: &[CallKey], calls: Vec<CallKey>| {
+            let count = calls.len();
+            repeated_reverts(previous, calls, &skipped[..count])
+        };
+        let advance = call("advanceMatch", 1);
+
+        // The first skip is a warning only; the same call next tick is not.
+        let (first, repeated) = tick(&[], vec![advance.clone()]);
+        assert!(repeated.is_empty());
+        let (second, repeated) = tick(&first, vec![advance.clone()]);
+        assert_eq!(repeated, vec![advance.clone()]);
+        // A sent call is not a skip.
+        let (sent, repeated) = repeated_reverts(
+            &second,
+            vec![call("joinTournament", 2), advance.clone()],
+            &skipped,
+        );
+        assert!(repeated.is_empty());
+        assert_eq!(sent, vec![call("joinTournament", 2)]);
+        // A tick without it resets, and a lost race on the next step of the
+        // same verb is another call.
+        let (none, _) = tick(&second, vec![]);
+        assert!(tick(&none, vec![advance.clone()]).1.is_empty());
+        assert!(tick(&second, vec![call("advanceMatch", 3)]).1.is_empty());
+    }
 
     fn proof_leaf(data_byte: u8, sibling_byte: u8) -> LeafProof {
         LeafProof {
