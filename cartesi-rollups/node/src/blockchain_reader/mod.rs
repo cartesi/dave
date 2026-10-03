@@ -1163,7 +1163,7 @@ mod blockchain_reader_tests {
     }
 
     /// Genesis is the application's deployment block, which holds epoch
-    /// 0's seal, and a directory seeded there ingests that seal.
+    /// 0's seal, and a directory seeded from it ingests that seal.
     #[tokio::test]
     #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
     async fn ingestion_starts_at_the_application_deployment() -> Result<()> {

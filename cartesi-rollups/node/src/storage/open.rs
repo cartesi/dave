@@ -38,6 +38,12 @@ pub const DEFAULT_SNAPSHOT_GAP_INPUTS: u64 = 64;
 /// Non-numeric, so the scratch sweep never takes it for an epoch.
 const LOCK_FILE: &str = "node.lock";
 
+/// How far below genesis a new directory's watermark starts. Genesis is
+/// read at latest, so a reorg between the deployment and the first start
+/// can still move the deployment lower, which would strand epoch 0's seal
+/// below a watermark at genesis for good.
+const GENESIS_REORG_MARGIN: u64 = 128;
+
 /// One node process owns a state directory: a second one would sweep the
 /// first's working clones and publish into and collect the same snapshot
 /// store. Startup takes this lock before the first write and holds it for the
@@ -207,9 +213,14 @@ impl Storage {
 
         self.write(|tx| {
             // The watermark is the last processed block, and genesis itself
-            // may hold logs: epoch 0's seal is in the consensus's deployment
-            // block. Block 0 holds no transactions, so saturating is exact.
-            super::ingest::raise_watermark_in(tx, genesis_block_number.saturating_sub(1))?;
+            // holds epoch 0's seal. Any lower start is sound: no application
+            // or consensus log precedes the deployment, so the margin only
+            // widens the first log query with empty blocks. Block 0 holds no
+            // transactions, so saturating is exact.
+            super::ingest::raise_watermark_in(
+                tx,
+                genesis_block_number.saturating_sub(GENESIS_REORG_MARGIN),
+            )?;
             super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash(), &dest)?;
             super::snapshots::insert_template_machine_in(tx, template.hash())?;
             sling_config::pin(tx, config)?;
@@ -589,14 +600,18 @@ mod tests {
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
     }
 
-    /// Genesis holds epoch 0's seal, so it is the first block to ingest.
+    /// Genesis holds epoch 0's seal, and a reorg may yet move it lower, so
+    /// ingestion starts a margin below it, or at the chain's first block.
     #[test]
-    fn seeding_leaves_genesis_to_ingest() {
+    fn seeding_leaves_a_margin_below_genesis_to_ingest() {
         let dir = tempfile::tempdir().unwrap();
         let template = dir.path().join("template");
         store_template(&template, |_| {});
-        let state_dir = dir.path().join("state");
-        let mut storage = initialize_at(&state_dir, &template, 100, Address::ZERO, 1).unwrap();
-        assert_eq!(storage.latest_processed_block().unwrap(), 99);
+        for (genesis, watermark) in [(1000, 872), (100, 0)] {
+            let state_dir = dir.path().join(format!("state-{genesis}"));
+            let mut storage =
+                initialize_at(&state_dir, &template, genesis, Address::ZERO, 1).unwrap();
+            assert_eq!(storage.latest_processed_block().unwrap(), watermark);
+        }
     }
 }

@@ -379,8 +379,9 @@ an earlier block's would need an archive node, so a chunk that ends before `F`
 during catch-up is checked by contiguity alone: a log missing from its tail
 surfaces only later, at the next log of its kind or at `F`, and then stops
 ingestion until the state directory is rebuilt. Until `F` reaches the
-consensus's deployment (an application deployed ahead of its consensus), the
-totals cannot be read and the tick retries.
+consensus's deployment (an application deployed ahead of its consensus, or a
+node started before its deployment finalized), the totals cannot be read and
+the tick retries.
 
 Ingestion starts at genesis, the earlier of the application's and the
 consensus's recorded deployment blocks, so a new application on a long-lived
@@ -388,7 +389,11 @@ InputBox skips the InputBox's history. That is sound because the InputBox
 refuses inputs for an address without code, the consensus seals epoch 0 in
 its constructor, and the application binds its consensus only at
 construction or within its deployment block; were it false, the first input
-index or epoch number would not be 0 and ingestion would refuse it. The
+index or epoch number would not be 0 and ingestion would refuse it. Genesis
+is read at latest, where a reorg before a new directory's first start may
+still move the deployment lower, so the directory's watermark starts 128
+blocks below genesis; with no application or consensus log before the
+deployment, the margin only adds empty blocks to the first log query. The
 initial hash is read at the consensus's deployment block (Process layout).
 Both are `block.number` values, read as RPC block numbers, which is why the
 node does not start on Arbitrum.
