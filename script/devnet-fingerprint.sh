@@ -119,8 +119,10 @@ effective_forge_config() {
     fi
     # The whole configuration, key order aside: an allowlist silently misses
     # a new setting that reaches the deployment; a needless rebuild only
-    # costs time.
-    if ! canonical="$(printf '%s\n' "$raw" | jq -cS . 2>&1)"; then
+    # costs time. The Etherscan key alone comes from the shell
+    # (ETHERSCAN_API_KEY) and only serves verification, so it is pinned to
+    # null, its unset value, which keeps a clean shell's digest.
+    if ! canonical="$(printf '%s\n' "$raw" | jq -cS '.etherscan_api_key = null' 2>&1)"; then
         checker_error "cannot canonicalize the Forge configuration for ${root}: ${canonical##*$'\n'}"
         return 2
     fi

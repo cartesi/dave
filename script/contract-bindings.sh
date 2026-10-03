@@ -44,9 +44,11 @@ for root in "${roots[@]}"; do
     fi
 done
 inputs() {
+    # The Etherscan key alone comes from the shell (ETHERSCAN_API_KEY) and
+    # cannot change a binding, so it is pinned to its unset value.
     cat -- "$self" "${repo_root}"/{prt,cartesi-rollups}/contracts/soldeer.lock &&
         forge --version &&
-        forge config --json &&
+        forge config --json | jq -c '.etherscan_api_key = null' &&
         (cd "$repo_root" && find "${roots[@]}" -type f -name '*.sol' -print0 |
             LC_ALL=C sort -z | xargs -0 sha256sum)
 }

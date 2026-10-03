@@ -169,6 +169,14 @@ expect_status 1 verify "${fixture}/cartesi-rollups/contracts"
 printf '{"remappings":[],"script":"script","src":"src"}\n' \
     >"${fixture}/prt/contracts/.fake-forge-config.json"
 expect_status 0 verify "${fixture}/cartesi-rollups/contracts"
+
+# The Etherscan key follows the shell's ETHERSCAN_API_KEY, not the sources;
+# forge reports null when it is unset.
+for key in '"key"' null; do
+    printf '{"src":"src","script":"script","remappings":[],"etherscan_api_key":%s}\n' \
+        "$key" >"${fixture}/prt/contracts/.fake-forge-config.json"
+    expect_status 0 verify "${fixture}/cartesi-rollups/contracts"
+done
 printf '{"src":"src","script":"script","remappings":[]}\n' \
     >"${fixture}/prt/contracts/.fake-forge-config.json"
 

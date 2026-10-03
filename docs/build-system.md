@@ -77,12 +77,12 @@ made pure-Rust iteration needlessly slow; do not reintroduce that.
 One shared generator (`script/contract-bindings.sh`) owns both modules'
 filters and stamp. The stamp hashes the generator itself (so the exact
 `forge bind` arguments), the Forge version, the whole effective Forge
-configuration, both Soldeer locks, and every Solidity file under the PRT,
-Rollups, and step production source roots. It is broad on purpose: stale
-bindings fail loudly at compile or test time, so the stamp only spares an
-unchanged `forge bind`, and a needless regeneration costs seconds. It excludes
-Just orchestration, build caches, compiler output, and the generated bindings
-themselves.
+configuration but the shell's Etherscan key, both Soldeer locks, and every
+Solidity file under the PRT, Rollups, and step production source roots. It is
+broad on purpose: stale bindings fail loudly at compile or test time, so the
+stamp only spares an unchanged `forge bind`, and a needless regeneration costs
+seconds. It excludes Just orchestration, build caches, compiler output, and
+the generated bindings themselves.
 
 Binding generation points the Foundry test and script roots at nothing, so a
 fixture or deployment-script edit neither recompiles contracts nor invalidates
@@ -114,13 +114,15 @@ ordinary development without constructing the expensive E2E fixtures.
 The devnet receipt is deliberately narrower than the contract worktrees. Its
 input digest covers production and deployment Solidity, installed production
 dependency Solidity and lockfiles, the production `machine/step` sources,
-each project's whole effective Forge configuration, the build and deploy
-drivers, the selected geometry and its devnet-only provider and script, and
-the Forge and Anvil versions. It excludes documentation, other tests,
-measurements, compiler output, broadcasts, and prior deployments. Those files
-cannot change the deployed bundle, and treating them as inputs made doctor
-report false staleness. The receipt separately hashes `state.json` and every
-deployment record, so copying or interrupting a bundle still fails closed.
+each project's whole effective Forge configuration (but the Etherscan key,
+which follows the shell's `ETHERSCAN_API_KEY` and only serves verification),
+the build and deploy drivers, the selected geometry and its devnet-only
+provider and script, and the Forge and Anvil versions. It excludes
+documentation, other tests, measurements, compiler output, broadcasts, and
+prior deployments. Those files cannot change the deployed bundle, and treating
+them as inputs made doctor report false staleness. The receipt separately
+hashes `state.json` and every deployment record, so copying or interrupting a
+bundle still fails closed.
 
 Each persistent test image likewise records the inputs that produced it and
 its semantic stored-machine root. The input digest names one producer script
