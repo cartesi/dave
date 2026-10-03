@@ -53,9 +53,9 @@ The executable will appear at:
 ## Run
 
 Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
-Reads use `--web3-rpc-url`. Raw signed transactions use
-`--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
-name a private relay with revert protection. The signer must be exclusive to
+Reads use `--blockchain-http-endpoint`. Raw signed transactions use
+`--blockchain-http-submit-endpoint`, which defaults to the read endpoint and
+may instead name a private relay with revert protection. The signer must be exclusive to
 one node process because the node owns its nonce sequence. Each tick batches
 the applicable dispute or cleanup action, settlement step, and all available
 bond recoveries at consecutive nonces from the latest mined count. The next
@@ -69,7 +69,8 @@ The completion cursor is bound to one claimant, so changing signer requires a
 fresh state directory. A changed node version or schema also requires a fresh
 directory under the node's rebuild policy.
 
-Fund the whole pending batch. With the default `GAS_LIMIT=15_000_000`, a pool
+Fund the whole pending batch. With the default
+`CARTESI_SLING_BLOCKCHAIN_GAS_LIMIT=15_000_000`, a pool
 may require each transaction's full gas limit at its max fee, plus its call
 value. These requirements accumulate across the batch, and nested tournaments
 each require their own join bond.
@@ -79,7 +80,7 @@ Here are its arguments:
 ```
 Arguments of Cartesi PRT
 
-Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --machine-path <MACHINE_PATH> <COMMAND>
+Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --template-path <TEMPLATE_PATH> <COMMAND>
 
 Commands:
   pk       private-key signer
@@ -88,23 +89,23 @@ Commands:
 
 Options:
       --app-address <APP_ADDRESS>
-          address of application [env: APP_ADDRESS=]
-      --machine-path <MACHINE_PATH>
-          path to machine template image [env: MACHINE_PATH=]
-      --web3-rpc-url <WEB3_RPC_URL>
-          blockchain read gateway endpoint URL [env: WEB3_RPC_URL=] [default: http://127.0.0.1:8545]
-      --web3-submit-rpc-url <WEB3_SUBMIT_RPC_URL>
-          raw-transaction submission endpoint URL; defaults to the read gateway [env: WEB3_SUBMIT_RPC_URL=]
-      --web3-chain-id <WEB3_CHAIN_ID>
-          blockchain chain id [env: WEB3_CHAIN_ID=] [default: 31337]
-      --sleep-duration-seconds <SLEEP_DURATION_SECONDS>
-          polling sleep interval [env: SLEEP_DURATION_SECONDS=] [default: 30]
+          address of application [env: CARTESI_SLING_APP_ADDRESS=]
+      --template-path <TEMPLATE_PATH>
+          path to machine template image [env: CARTESI_SLING_TEMPLATE_PATH=]
+      --blockchain-http-endpoint <BLOCKCHAIN_HTTP_ENDPOINT>
+          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT=] [default: http://127.0.0.1:8545]
+      --blockchain-http-submit-endpoint <BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT>
+          raw-transaction submission endpoint URL; defaults to the read gateway [env: CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT=]
+      --blockchain-id <BLOCKCHAIN_ID>
+          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID=] [default: 31337]
+      --polling-interval <POLLING_INTERVAL>
+          polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL=] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
-          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: SNAPSHOT_GAP_INPUTS=] [default: 64]
-      --state-dir <STATE_DIR>
-          [env: STATE_DIR=] [default: /var/folders/kf/1rg78mtx0c7f81_n7t6x6c6r0000gn/T/]
+          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS=] [default: 64]
+      --data-dir <DATA_DIR>
+          [env: CARTESI_SLING_DATA_DIR=] [default: /tmp]
       --long-block-range-error-codes <LONG_BLOCK_RANGE_ERROR_CODES>
-          error codes to retry `get_logs` with shorter block range [env: LONG_BLOCK_RANGE_ERROR_CODES=] [default: -32005 -32600 -32602 -32616]
+          error codes to retry `get_logs` with shorter block range [env: CARTESI_SLING_LONG_BLOCK_RANGE_ERROR_CODES=] [default: -32005 -32600 -32602 -32616]
   -h, --help
           Print help
 ```
