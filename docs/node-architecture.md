@@ -158,12 +158,13 @@ contract keep it out of model. P1 also holds only inside the trust model, and
 a broken trusted assumption may stop every node at once: finalized and
 complete RPC data; a stable parameters provider (the Hero panics on a level
 that left the pinned table); and a template and guest that yield through
-well-formed requests (a template preset with a malformed request panics the
-runner, while a guest's oversized yield throws and the runner retries it
-forever). One failed standing read or finalized fold fails the Hero's whole
-tick, and a failed refund scan holds the epoch's completion; an audit of the
-node's panics and retry loops found no data the contracts can produce that
-fails any of them deterministically.
+well-formed requests (a template preset with a malformed request stops the
+node at startup, in `Template::inspect`, before anything is written, while a
+guest's oversized yield throws and the runner retries it forever). One failed
+standing read or finalized fold fails the Hero's whole tick, and a failed
+refund scan holds the epoch's completion; an audit of the node's panics and
+retry loops found no data the contracts can produce that fails any of them
+deterministically.
 
 Workers retry a failed tick with a warning that carries the whole error chain:
 a transient provider or storage error costs one polling interval, and a
