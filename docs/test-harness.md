@@ -28,7 +28,10 @@ e2e suite shrinks.
 - The node's workers against a chain: the in-crate anvil harness
   (`src/harness/`, `just test-node-harness`): the sender, the epoch
   lifecycle (settle, stage, cleanup, bond recovery), the Hero against
-  adversaries, restarts and timeouts, with the test owning the clock.
+  adversaries, restarts and timeouts, with the test owning the clock. The
+  adversary is the tail adversary (glossary), and its disputes run on an
+  empty epoch, so every build there is one idle span; a steered divergence
+  point would let it dispute active spans in-process (todo.md).
 - End to end (this document): only what needs the node as a process, real
   signals and an independent Lua lineage.
 
@@ -97,7 +100,12 @@ The reference implementation, the released v0.21.0 `cartesi-machine` CLI,
 no longer gates every e2e epoch: its answers are checked below e2e, where the
 node's runner, leaves and the release corpus are compared with it
 (`cartesi-rollups/node/tests/engine_machine.rs`, `just
-test-reference-cli-goldens`).
+test-reference-cli-goldens`). Those tests identify the CLI by its
+`--version` line, which cannot tell v0.21.0 from unreleased upstream builds
+(the `feature/prt` branch, PR #390) that report the same version, so once
+the development pin leaves v0.21.0 they need its package digest (todo.md).
+Where the CLI disagrees with the step it is no reference (computation-hash.md,
+the CLI exclusions).
 
 ## Trust bases of the assertions
 
@@ -461,6 +469,11 @@ record):
   disarms the kill-point scenarios that depend on it.
 
 ## Adding a scenario
+
+First route the test to the cheapest layer that can establish it ("What each
+layer establishes", above; the add-e2e-scenario skill): lifecycle and dispute
+behavior to the node harness, commitment values to `engine_machine` and
+Foundry. Only what needs the node as a process lands here:
 
 1. Pick or build a machine program under `test/programs/` (see its
    justfile; images are built with the `cartesi-machine` CLI).

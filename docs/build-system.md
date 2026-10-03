@@ -234,6 +234,14 @@ must update every matching guard and artifact together with both machine
 submodules and regenerated program images; search for the current version
 rather than treating the acquisition list as exhaustive.
 
+Development may pin unreleased upstream commits; anything Dave ships links a
+tagged emulator release. Upstream is at arm's length: nothing on Dave's
+critical path waits for an upstream release, and the asks stand in
+[todo.md](todo.md). Upstream PR #390 changes the pristine uarch hash and the
+proof format, so every machine state hash moves: adopting it is not a pin
+bump but a coordinated upgrade of the emulator, solidity-step,
+`CartesiStateTransition` and both clients, in a new deployment generation.
+
 `just test-computation-hash-corpus` is the explicit emulator release gate. It
 downloads the pinned v0.21 corpus and checks its SHA-256. One test replays the
 complete mcycle and uarch manifest through the release CLI; a separate test

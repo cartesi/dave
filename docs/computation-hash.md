@@ -337,6 +337,28 @@ agreed and were both wrong): a divergence between any two is settled by
 proving the transition through Solidity, and a golden is regenerated only
 after its differential passes.
 
+Where the v0.21.0 CLI disagrees with the step, the step wins and the case is
+a named exclusion rather than a reference answer, until a tagged release
+carries the fix (todo.md, Upstream):
+
+- Seam 1: the rejecting period's uarch hash keeps the physical root at the
+  closing reset (the node's bulk collector shares this; the seam-1 guard
+  steps that cycle). After either seam with more inputs to come, the CLI
+  ends the epoch and pads. The unreleased upstream c1280ed4 fixes both.
+- A non-pristine uarch: `uarch-near-limit-tail` is out of model (above;
+  the unreleased 22b4431 makes it error-no-hash), and a uarch cycle overflow
+  or a uarch halting at `UARCH_CYCLE_MAX` throws where the step defines an
+  identity step (no upstream fix yet).
+- An oversized input throws where the step is a no-op (c1280ed4's host-send
+  hunk); `InputBox` caps inputs at 2^16 bytes, so only synthetic vectors
+  reach it.
+
+Two v0.21 emulator traits shape Dave's tests and leaf builds without
+changing any value: it flocks the files it creates without close-on-exec, so
+tests that spawn anvil run serially (the justfile's `test-node-harness`), and
+its hash tree goes parallel by core count rather than by work, so per-step
+leaf hashing runs serially (`runtime_config`, `engine/machine_stf.rs`).
+
 Any divergence between (1)/(2) and (3) means an honest node loses a
 dispute it should have won. The e2e tests cross-check (1) against (2)
 every epoch (`test/e2e/rollups/test_env.lua`, `epoch_settlement`), and

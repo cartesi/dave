@@ -69,7 +69,8 @@ level. Terms marked (code) appear verbatim in identifiers.
   seam 1 an `RX_REJECTED` yield still reverts at the closing reset; at seam
   2 an `RX_ACCEPTED` yield still takes the next input, because the step
   reads only the pending yield. Dave follows the step at both; the v0.21.0
-  collector and CLI do not (computation-hash.md).
+  collector diverges at seam 1 and the v0.21.0 CLI at both
+  (computation-hash.md, the CLI exclusions).
 - collect API, bulk collector (code: `Collector::Bulk`): the emulator's
   `cm_collect_uarch_cycle_root_hashes` and `cm_collect_mcycle_root_hashes`,
   which run a span and return its sampled roots in one call (wrapped in
