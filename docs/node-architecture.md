@@ -434,10 +434,16 @@ The lane is stateless. For every submission it reads the account's mined nonce
 at Latest, obtains a fresh EIP-1559 fee estimate, and signs the batch at
 consecutive nonces from that base. It submits each raw transaction to the
 configured endpoint in order; a rejected submission does not discard the tail.
-It does not wait for a receipt. Already-known transactions, underpriced
+It does not wait for a receipt. Each gas limit is the estimate at latest plus
+half again, at least 150,000: a join or win that finds a rival's commitment
+dangling at inclusion takes the pairing branch, which the harness measured at
+117,262 gas over the estimate, 70% of the cheapest join's estimate. The limit
+stops at the EIP-7825 cap when the estimate fits under it, so the padding
+never makes an admissible call inadmissible; estimation failing other than by
+a revert falls back to 15M. Already-known transactions, underpriced
 replacements, and stale nonces are ordinary retry states; every later tick
-rebuilds intent from fresh observation. The mempool or a separately configured
-revert-protecting endpoint arbitrates races and duplicates. The signer must be
+rebuilds intent from fresh observation. The mempool or a separately
+configured revert-protecting endpoint arbitrates races and duplicates. The signer must be
 exclusive to one node instance and funded for the whole pending batch's fee
 envelopes and call values. Nested tournaments require their own join bonds.
 
@@ -468,12 +474,11 @@ Error handling and observability:
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
 4. Logging is unstructured and inconsistent between crates.
-5. The lane sets each gas limit at half again its estimate at latest, or 15M
-   when estimation fails other than by a revert. A pool may require balance
-   for `gas_limit * max_fee_per_gas + value`, not expected gas use; join value
-   is therefore additional to the fee envelope. A batch needs enough balance
-   for its cumulative fee envelopes and values, including nested join bonds.
-   A calibrated operating funding floor remains pre-mainnet work.
+5. A pool may require balance for `gas_limit * max_fee_per_gas + value`, not
+   expected gas use; join value is therefore additional to the fee envelope.
+   A batch needs enough balance for its cumulative fee envelopes and values,
+   including nested join bonds. A calibrated operating funding floor remains
+   pre-mainnet work.
 6. The lane does not observe receipts or mined revert reasons. Its estimate
    runs the call at latest first, so a call that already reverts there is not
    sent: a deterministic self-authored revert costs nothing, is logged each

@@ -103,9 +103,11 @@ builds and proving (`prepared ... in ...`), plus any slow tick that built
 without acting, for comparison with the deployed response and commitment
 budgets.
 
-Each transaction's gas limit is half again its estimate at the latest block;
-the largest action, a maximum-input leaf proof, estimates about 5.1M. A call
-that already reverts there is not sent. When estimation fails for another
+Each transaction's gas limit is its estimate at the latest block plus half
+again, at least 150,000 (a join that pairs on inclusion needs 117,262 more
+than its estimate), and stops at the EIP-7825 cap of 16,777,216 when the
+estimate fits under it; the largest action, a maximum-input leaf proof,
+estimates about 5.1M. A call that already reverts there is not sent. When estimation fails for another
 reason the node falls back to 15M. Fund the whole pending batch: a pool may
 require each transaction's full gas limit at its max fee, plus its call value.
 These requirements accumulate across the batch, and nested tournaments each

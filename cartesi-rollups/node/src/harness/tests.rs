@@ -6,9 +6,11 @@
 //! disputes against adversaries.
 
 use super::*;
-use crate::merkle::Digest;
+use crate::{merkle::Digest, provider::gas_limit_for};
 use alloy::{
+    network::TransactionBuilder,
     primitives::{FixedBytes, U256},
+    rpc::types::TransactionRequest,
     sol_types::SolCall,
 };
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{
@@ -377,6 +379,76 @@ async fn the_node_collects_an_abandoned_child_tournament() -> Result<()> {
     assert_eq!(world.honest_calls(ELIMINATE_MATCH).len(), 1);
     assert_eq!(world.honest_calls(ELIMINATE_INNER).len(), 1);
     assert_eq!(world.sealed_epochs().await?.len(), 2);
+    Ok(())
+}
+
+/// The join `adversary` plans next, from its key.
+async fn planned_join(adversary: &mut Adversary) -> Result<TransactionRequest> {
+    let wave = adversary.hero.tick().await?.into_wave();
+    let (_, join) = wave
+        .into_iter()
+        .find(|(label, _)| label == "joinTournament")
+        .context("no join planned")?;
+    Ok(join.with_from(adversary.lane.signer_address()))
+}
+
+/// A join estimated with nothing dangling still lands when a rival's
+/// commitment dangles by inclusion, so it takes the pairing branch: the
+/// largest state move an action meets between its estimate and inclusion,
+/// which the lane's headroom (`gas_limit_for`) must cover. Every level is
+/// measured, since an inner level's shorter proof makes its join cheaper
+/// and the move relatively larger; `--nocapture` prints the estimates
+/// behind the lane's MIN_HEADROOM. Two adversaries play it out; the node
+/// only rolls the epoch.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_join_estimated_alone_still_lands_when_it_pairs() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut one = world.adversary(&node, 1, tail(1, 0xa1), Policy::Rational)?;
+    let mut two = world.adversary(&node, 2, tail(2, 0xb2), Policy::Rational)?;
+    let mut tournament = world.sealed_epochs().await?[0].tournament;
+    for level in 0..world.levels() {
+        let join = planned_join(&mut two).await?;
+        assert_eq!(join.to, Some(tournament.into()));
+        let alone = world.provider.estimate_gas(join.clone()).latest().await?;
+        one.turn(&mut world).await?;
+        let pairing = world.provider.estimate_gas(join.clone()).latest().await?;
+        eprintln!(
+            "level {level}: join estimate {alone} alone, {pairing} pairing ({:+})",
+            i128::from(pairing) - i128::from(alone)
+        );
+        two.lane
+            .submit_wave(vec![(
+                "joinTournament".to_string(),
+                join.with_gas_limit(gas_limit_for(alone)),
+            )])
+            .await?;
+        world.mine(1).await?;
+        assert!(world.calls(2, JOIN).last().context("no join")?.success);
+        assert_eq!(world.matches_created(tournament).await?.len(), 1);
+        assert!(pairing <= gas_limit_for(alone));
+
+        if level + 1 < world.levels() {
+            let mut child = None;
+            for _ in 0..DISPUTE_ROUNDS {
+                for adversary in [&mut one, &mut two] {
+                    adversary.turn(&mut world).await?;
+                    child = world.inner_tournaments(tournament).await?.pop();
+                    if child.is_some() {
+                        break;
+                    }
+                }
+                if child.is_some() {
+                    break;
+                }
+            }
+            tournament = child.context("no inner tournament")?.childTournament;
+            // A Hero joins a child once its creation is finalized.
+            world.mine(2).await?;
+        }
+    }
     Ok(())
 }
 

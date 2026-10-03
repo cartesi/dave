@@ -228,6 +228,12 @@ As of the 2026-10-02 calibration, Ethereum Mainnet's
 diagnostic occupied 30.28% of it. Treat that as dated evidence, not a
 permanent constant.
 
+The node pads each estimate by half again, at least 150,000 units, and stops
+the limit at the cap (`gas_limit_for` in
+`cartesi-rollups/node/src/provider.rs`). A retained maximum above about
+11.18M units (the cap over 1.5) therefore loses part of its headroom under
+the cap.
+
 ## 5. Change an allocation
 
 For one action family:

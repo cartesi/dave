@@ -163,6 +163,37 @@ pub type LaneRequest = (String, TransactionRequest);
 /// proof, is about 5.1M) and stays below the EIP-7825 transaction cap.
 const FALLBACK_GAS_LIMIT: u64 = 15_000_000;
 
+/// EIP-7825's per-transaction gas cap: a pool on a chain past Osaka admits
+/// nothing above it.
+const TX_GAS_CAP: u64 = 1 << 24;
+const _: () = assert!(FALLBACK_GAS_LIMIT <= TX_GAS_CAP);
+
+/// The least headroom over an estimate. It covers the pairing branch, the
+/// largest state move between an estimate and inclusion: a join or one of
+/// the three win paths that finds a rival's commitment dangling by
+/// inclusion stores a match and starts its clocks. The harness measured
+/// that move at 117,262 gas on every level's first match, 70% of the
+/// cheapest join's estimate, so half the estimate alone runs a join out of
+/// gas; this adds a quarter as margin.
+const MIN_HEADROOM: u64 = 150_000;
+
+/// The gas limit for an estimate at latest: half the estimate again, at
+/// least [`MIN_HEADROOM`], for drift before inclusion (cold slots, a refund
+/// that was zero, the pairing branch). Unused gas is not charged, but a
+/// pool reserves the whole limit at the max fee against the balance.
+///
+/// The limit stops at the EIP-7825 cap, which never lowers it below its
+/// estimate. An estimate above the cap keeps its headroom: no EIP-7825
+/// chain admits it anyway, and a chain without the cap needs it.
+pub(crate) fn gas_limit_for(estimate: u64) -> u64 {
+    let padded = estimate.saturating_add((estimate / 2).max(MIN_HEADROOM));
+    if estimate <= TX_GAS_CAP {
+        padded.min(TX_GAS_CAP)
+    } else {
+        padded
+    }
+}
+
 /// The node signer's stateless transaction lane.
 ///
 /// Nonces come from the account's mined count at the `latest` block,
@@ -316,18 +347,16 @@ impl TransactionLane {
         Ok(reports)
     }
 
-    /// The estimate at latest with half again as headroom, or `None` when
-    /// the call reverts there. State can move before inclusion (a dangling
-    /// commitment to re-pair, a refund that was zero), and unused gas is
-    /// not charged. Any other estimation failure falls back to the flat
-    /// limit: a flaky endpoint must not hold back a dispute action, and a
-    /// real problem such as an underfunded signer still fails loudly at
-    /// submission.
+    /// The padded estimate at latest ([`gas_limit_for`]), or `None` when
+    /// the call reverts there. Any other estimation failure falls back to
+    /// the flat limit: a flaky endpoint must not hold back a dispute action,
+    /// and a real problem such as an underfunded signer still fails loudly
+    /// at submission.
     async fn gas_limit(&self, label: &str, request: &TransactionRequest) -> Option<u64> {
         let mut probe = request.clone();
         probe.set_from(self.signer_address);
         match self.read_provider.estimate_gas(probe).latest().await {
-            Ok(estimate) => Some(estimate.saturating_add(estimate / 2)),
+            Ok(estimate) => Some(gas_limit_for(estimate)),
             Err(error) if is_revert(&error) => {
                 warn!("{label} is not sent: it reverts at latest: {error}");
                 None
@@ -489,6 +518,22 @@ mod tests {
             max_priority_fee_per_gas: 9,
         };
         assert_eq!(normalize_fees(skewed).max_fee_per_gas, 9);
+    }
+
+    #[test]
+    fn gas_headroom_never_lifts_an_admissible_estimate_past_the_cap() {
+        assert_eq!(gas_limit_for(21_000), 21_000 + MIN_HEADROOM);
+        // Half the estimate takes over from the floor.
+        assert_eq!(gas_limit_for(300_000), 450_000);
+        assert_eq!(gas_limit_for(400_000), 600_000);
+        // The maximum-input leaf proof of the 2026-10-02 calibration.
+        assert_eq!(gas_limit_for(5_079_603), 7_619_404);
+        assert_eq!(gas_limit_for(12_000_000), TX_GAS_CAP);
+        assert_eq!(gas_limit_for(TX_GAS_CAP), TX_GAS_CAP);
+        // Above the cap nothing is admitted on an EIP-7825 chain; a chain
+        // without the cap keeps the headroom.
+        assert_eq!(gas_limit_for(20_000_000), 30_000_000);
+        assert_eq!(gas_limit_for(u64::MAX), u64::MAX);
     }
 
     #[test]
@@ -736,7 +781,7 @@ mod tests {
             .get_transaction_by_hash(reports[1].tx_hash)
             .await?
             .context("the payment is pending")?;
-        assert_eq!(sent.gas_limit(), 21_000 + 21_000 / 2);
+        assert_eq!(sent.gas_limit(), gas_limit_for(21_000));
         Ok(())
     }
 

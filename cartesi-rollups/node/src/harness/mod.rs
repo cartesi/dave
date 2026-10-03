@@ -99,8 +99,8 @@ impl World {
             .context("anvil has no head")?;
         provider.anvil_set_time(head.header.timestamp).await?;
         provider.anvil_set_block_timestamp_interval(1).await?;
-        // Gas limits are half again their estimates, 15M on fallback; let a
-        // whole wave fit one block.
+        // Gas limits are padded estimates, 15M on fallback; let a whole wave
+        // fit one block.
         provider.anvil_set_block_gas_limit(1_000_000_000).await?;
 
         let operator = wallet_provider(&anvil, OPERATOR);
