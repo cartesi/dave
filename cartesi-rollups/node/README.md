@@ -56,8 +56,8 @@ The executable will appear at:
 ## Run
 
 Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
-Reads use `--web3-rpc-url`. Raw signed transactions use
-`--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
+Reads use `--blockchain-http-endpoint`. Raw signed transactions use
+`--blockchain-http-submit-endpoint`, which defaults to the read endpoint and may instead
 name a private relay with revert protection: honest nodes that share a
 commitment race on every step, and without it each pays for its reverted
 copies of the steps another node landed first. The relay must not land
@@ -80,7 +80,7 @@ through `tryRecoveringBond`, which pays the recorded claimer. A changed node
 version, schema, or commitment semantics requires a fresh directory under the
 node's rebuild policy. The first
 start pins a directory to its application, chain and template, and every start
-checks the `--machine-path` image against the application's on-chain initial
+checks the `--template-path` image against the application's on-chain initial
 hash; a mismatch is refused before anything is written, and so is a matching
 image that is not paused at a manual accepted yield, from which no epoch can
 start.
@@ -101,7 +101,7 @@ once, as safely as SIGKILL. A restart refetches the live tournaments' logs.
 Upgrade or rebuild the state directory between disputes: a fresh directory
 rebuilds every engaged level's commitment on the dispute clock.
 
-Put `--state-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
+Put `--data-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
 `reflink=1`). Every input clones a stored machine; a reflinked clone shares
 unchanged extents, while elsewhere (ext4) the emulator falls back to sparse
 copies, which stay correct but cost disk and clone time in proportion to the
@@ -154,7 +154,7 @@ Here are its arguments:
 ```
 Arguments of Cartesi PRT
 
-Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --machine-path <MACHINE_PATH> --state-dir <STATE_DIR> <COMMAND>
+Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --template-path <TEMPLATE_PATH> --data-dir <DATA_DIR> <COMMAND>
 
 Commands:
   pk       private-key signer
@@ -163,21 +163,21 @@ Commands:
 
 Options:
       --app-address <APP_ADDRESS>
-          address of application [env: APP_ADDRESS=]
-      --machine-path <MACHINE_PATH>
-          path to machine template image [env: MACHINE_PATH=]
-      --web3-rpc-url <WEB3_RPC_URL>
-          blockchain read gateway endpoint URL [env: WEB3_RPC_URL=] [default: http://127.0.0.1:8545]
-      --web3-submit-rpc-url <WEB3_SUBMIT_RPC_URL>
-          raw-transaction submission endpoint URL; defaults to the read gateway [env: WEB3_SUBMIT_RPC_URL=]
-      --web3-chain-id <WEB3_CHAIN_ID>
-          blockchain chain id [env: WEB3_CHAIN_ID=] [default: 31337]
-      --sleep-duration-seconds <SLEEP_DURATION_SECONDS>
-          polling sleep interval [env: SLEEP_DURATION_SECONDS=] [default: 30]
+          address of application [env: CARTESI_SLING_APP_ADDRESS=]
+      --template-path <TEMPLATE_PATH>
+          path to machine template image [env: CARTESI_SLING_TEMPLATE_PATH=]
+      --blockchain-http-endpoint <BLOCKCHAIN_HTTP_ENDPOINT>
+          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT=] [default: http://127.0.0.1:8545]
+      --blockchain-http-submit-endpoint <BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT>
+          raw-transaction submission endpoint URL; defaults to the read gateway [env: CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT=]
+      --blockchain-id <BLOCKCHAIN_ID>
+          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID=] [default: 31337]
+      --polling-interval <POLLING_INTERVAL>
+          polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL=] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
-          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: SNAPSHOT_GAP_INPUTS=] [default: 64]
-      --state-dir <STATE_DIR>
-          node state (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: STATE_DIR=]
+          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS=] [default: 64]
+      --data-dir <DATA_DIR>
+          node state (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR=]
   -h, --help
           Print help
 ```
