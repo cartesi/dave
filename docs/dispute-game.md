@@ -605,9 +605,10 @@ one delegation per inner level on a correct commitment's active path; each
 child return refunds its delegation. On Ethereum mainnet the three-level table
 gives one week plus 85 minutes and the two-level table one week plus 75
 minutes. The independent
-`prt/measure_constants` emulator benchmark and the Rust `just measure-constants`
-generator show how root slowdown and the commitment budget determine
-tournament strides and heights. On Ethereum `G` is 25 blocks. One
+`prt/measure_constants` emulator benchmark and the Rust
+`just measure-level-constants` generator show how root slowdown and the
+commitment budget determine tournament strides and heights. On Ethereum `G`
+is 25 blocks. One
 root-to-leaf descent with one match at each level spans 92 tree heights and can
 earn at most 7 hours 45 minutes of discounts, one at each successful response
 plus one for the leaf match's win.

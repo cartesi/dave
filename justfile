@@ -9,6 +9,7 @@ mod rollups-contracts 'cartesi-rollups/contracts'
 mod rollups-tests 'test/e2e/rollups'
 mod programs 'test/programs'
 mod machine 'machine'
+mod geometry 'prt/measure_constants'
 
 # Recipe lines with pipes fail honestly instead of reporting the
 # last stage's status (no recipe here pipes to head/tail, where
@@ -258,7 +259,7 @@ measure-node-vs-emulator *ARGS: bind
       --out docs/measurements/node-vs-emulator.md "$@"
 
 # derive tournament level constants (docs/measurements/constants.md)
-measure-constants *ARGS: bind
+measure-level-constants *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
     cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
       --machine test/programs/stress/machine-image --constants \

@@ -1,9 +1,10 @@
 # Emulator constants benchmark
 
 This is the independent emulator-level reference harness for exploring PRT
-tournament geometry. The Rust node's `just measure-constants` remains the
-current generator for `docs/measurements/constants.md`; use this harness as a
-second measurement method when changing the deployed geometry.
+tournament geometry. The Rust node's `just measure-level-constants` remains
+the current generator for `docs/measurements/constants.md`; use this harness as
+a second measurement method when changing the deployed geometry. Its recipes
+are the root justfile's `geometry` module.
 
 The harness uses the checksum-pinned `test/programs/linux.bin` and
 `rootfs.ext2`. For every selected workload it starts stress-ng, waits until its
@@ -25,22 +26,20 @@ List them or cheaply validate their active, warmed state without running the
 multi-minute benchmark:
 
 ```bash
-just list-workloads
-just check-fixtures             # all workloads
-just check-fixtures nop malloc  # selected workloads
+just geometry::list-workloads
+just geometry::check-fixtures             # all workloads
+just geometry::check-fixtures nop malloc  # selected workloads
 ```
 
 Benchmark runs require an explicit selection:
 
 ```bash
-just benchmark nop
-just benchmark crypt heapsort
-just benchmark all
+just geometry::benchmark nop
+just geometry::benchmark crypt heapsort
+just geometry::benchmark all
 ```
 
-Run these commands from this directory, or pass its Justfile with
-`just -f prt/measure_constants/justfile ...` from the repository root. The
-default sample is 120 seconds per timed phase, the commitment budget is
+The default sample is 120 seconds per timed phase, the commitment budget is
 30 minutes, and the accepted root slowdown is 10. Override them explicitly
 when studying another policy:
 
@@ -48,7 +47,7 @@ when studying another policy:
 DAVE_SAMPLE_SECONDS=300 \
 DAVE_COMMITMENT_BUDGET_MINUTES=60 \
 DAVE_ROOT_SLOWDOWN=5 \
-just benchmark matrix-3d
+just geometry::benchmark matrix-3d
 ```
 
 Results are evidence, not deployable constants by themselves. Record the

@@ -371,7 +371,7 @@ minutes. These are per-match cumulative
 ceilings, not values deposited into a clock or a whole-tournament maximum.
 
 The independent `prt/measure_constants` emulator harness and the Rust
-`just measure-constants` generator expose the two inputs that shape the level
+`just measure-level-constants` generator expose the two inputs that shape the level
 layout: maximum acceptable root slowdown and the time budget for constructing
 an inner commitment. Both derive strides and heights bottom-up; the Rust
 generator owns the current checked-in result and caveats in
@@ -411,7 +411,7 @@ measured validly:
 - Everything here is hardware-relative. A derived constant carries
   the machine it was measured on; use a reference machine or an
   explicit slack factor, and keep every derivation re-runnable
-  (`just measure-constants`; `just measure` / `just measure-stress`;
+  (`just measure-level-constants`; `just measure` / `just measure-stress`;
   docs/measurements/constants.md; docs/measurements/measurements*.md).
 
 The emulator reference harness starts each selected stress-ng worker, reaches a
