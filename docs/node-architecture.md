@@ -114,11 +114,11 @@ safety, not hygiene:
   dispute path buys little against commission: a fabricated value yields an
   action the contract rejects, which the lane skips at estimation with a
   warning, and an error when the same call repeats on the next tick. It does
-  nothing against omission or a lying read: a missing
-  finalized log or a false standing can make the Hero wait instead of act,
-  and nothing reverts. The fold keeps the guards that stop it from guessing;
-  tournament-log completeness and truthful pinned reads otherwise stay
-  trusted RPC properties.
+  nothing against omission or a lying read: a missing finalized log or a
+  false standing can make the Hero wait instead of act, and nothing reverts.
+  The fold keeps the guards that stop it from guessing; tournament-log
+  completeness and truthful pinned reads otherwise stay trusted RPC
+  properties.
 - When the two conflict, split the check: keep a panic only for what
   corruption alone can reach, and move what chain data can reach off the
   clock path. f371381c did this after a terminal application panicked every

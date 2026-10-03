@@ -599,10 +599,11 @@ fn normalize_fees(mut fees: Eip1559Estimation) -> Eip1559Estimation {
     fees
 }
 
-// The pool and revert wordings below are geth's, erigon's and anvil's;
-// other clients' are a lead. An unmatched replacement rejection logs an
-// error and skips the max-tip retry; an unmatched revert falls back to the
-// flat gas limit and pays the revert on chain. Neither stalls the lane.
+// The pool and revert wordings below are checked against geth and anvil;
+// erigon's and other clients' are a lead. An unmatched replacement
+// rejection logs an error and skips the max-tip retry; an unmatched revert
+// falls back to the flat gas limit and pays the revert on chain. Neither
+// stalls the lane.
 fn is_revert(error: &TransportError) -> bool {
     error
         .as_error_resp()

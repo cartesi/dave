@@ -68,8 +68,10 @@ carry no backlog (reviews/README.md).
   tick; Solid, which keeps a missed finalized log until a restart; bond
   recovery, which runs serially before every wave; the reader's `expect`s on
   finalized log data; the terminal-application hold, which has no
-  `settles()` test for a `TX_EXCEPTION` yield. (node-architecture.md,
-  failure policy)
+  `settles()` test for a `TX_EXCEPTION` yield. A retry loop that should page
+  reuses the epoch manager's consecutive-tick rule (`repeated_reverts`: a
+  warning first, an error on the next tick). (node-architecture.md, failure
+  policy)
 - Pin the settle asserts' staging and accept reads to the Hero's observed
   head (or to finalized): read at a fresh latest, a tip reorg may fire them
   once without a node bug (a lead). (epoch-lifecycle.md, settlement
