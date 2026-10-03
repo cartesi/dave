@@ -70,8 +70,8 @@ storage.
 
 The commitment is a Merkle tree whose leaf at position `m` is the machine
 root hash after applying transition `m`. The state before leaf 0 is not in
-the tree; it rides along as the commitment's implicit hash
-(`MachineCommitment.implicit_hash`) and is what parties implicitly agree on
+the tree; it rides along as the commitment's implicit hash (the Lua
+client's `MerkleTree.implicit_hash`) and is what parties implicitly agree on
 at the start.
 
 Transition `m` is one of three shapes, selected by where `m` falls

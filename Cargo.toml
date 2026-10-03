@@ -57,7 +57,7 @@ alloy = { version = "2.0", features = [
   "signers",
   "sol-types",
 ] }
-alloy-transport = { version = "2.0", features = ["throttle"] }
+alloy-transport = "2.0"
 alloy-chains = { version = "0.2" }
 reqwest = { version = "0.13", features = ["http2"] }
 ruint = "1.12"

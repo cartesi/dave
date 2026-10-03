@@ -113,8 +113,6 @@ fn leafs_with_uarch(leafs: Vec<Leaf>, log2_stride_count: u64) -> Vec<(Arc<Merkle
 /// A `computation hash`: a merkle tree over a set of machine steps.
 #[derive(Clone, Debug)]
 pub struct MachineCommitment {
-    #[allow(dead_code)]
-    pub implicit_hash: Digest,
     pub merkle: Arc<MerkleTree>,
 }
 
@@ -162,7 +160,7 @@ impl MachineCommitmentBuilder {
                 )?;
                 assert!(!leafs.is_empty());
             }
-            build_machine_commitment_from_leafs(leafs, initial_state)?
+            build_machine_commitment_from_leafs(leafs)?
         };
 
         Ok(commitment)
@@ -170,10 +168,7 @@ impl MachineCommitmentBuilder {
 }
 
 /// Builds a [MachineCommitment] from leafs.
-pub fn build_machine_commitment_from_leafs<L>(
-    leafs: Vec<(L, u64)>,
-    initial_state: Digest,
-) -> Result<MachineCommitment>
+pub fn build_machine_commitment_from_leafs<L>(leafs: Vec<(L, u64)>) -> Result<MachineCommitment>
 where
     L: Into<Arc<MerkleTree>>,
 {
@@ -183,10 +178,7 @@ where
     }
     let tree = builder.build();
 
-    Ok(MachineCommitment {
-        implicit_hash: initial_state,
-        merkle: tree,
-    })
+    Ok(MachineCommitment { merkle: tree })
 }
 
 /// Builds a [MachineCommitment] from a [MachineInstance] and a base cycle.

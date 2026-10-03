@@ -550,8 +550,3 @@ logs each action's preparation time, commitment builds included.
 Error handling and observability:
 
 4. Logging is unstructured and inconsistent between crates.
-
-Structure:
-
-8. Commented-out code blocks kept as reference (the test-scaffolding
-   `instance.rs` snapshot logic) and disabled/empty tests.

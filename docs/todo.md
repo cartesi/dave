@@ -69,7 +69,6 @@ carry no backlog (reviews/README.md).
   into a common-mode panic. `InvalidBisectingHeight` must keep its bound of
   2, not relax to nonzero. (node-architecture.md, failure policy)
 - Structured logging (debt 4). (node-architecture.md)
-- Delete the commented-out reference code (debt 8). (node-architecture.md)
 
 ## Contracts and assurance
 

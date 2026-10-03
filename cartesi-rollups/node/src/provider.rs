@@ -101,8 +101,6 @@ pub(crate) async fn create_signer(
 }
 
 async fn create_client(url: &Url) -> RpcClient {
-    // let throttle = alloy_transport::layers::ThrottleLayer::new(20);
-
     let retry = RetryBackoffLayer::new(
         5,   // max_rate_limit_retries
         200, // initial_backoff_ms
@@ -124,7 +122,6 @@ async fn create_client(url: &Url) -> RpcClient {
     let is_local = transport.guess_local();
 
     RpcClient::builder()
-        // .layer(throttle)
         .layer(retry)
         .transport(transport, is_local)
 }

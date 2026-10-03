@@ -81,44 +81,6 @@ impl MachineInstance {
         })
     }
 
-    /*
-        pub fn take_snapshot(&mut self, base_cycle: u64, db: &EpochData) -> Result<()> {
-            let mask = arithmetic::max_uint(
-                cartesi_machine::constants::rollup::LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
-            );
-            if db.handle_rollups && ((base_cycle & mask) == 0) && !self.is_yielded()? {
-                // don't snapshot a machine state that's freshly fed with input without advance
-                return Ok(());
-            }
-
-            let snapshot_path = db.work_path.join(format!("{}", base_cycle));
-            if !snapshot_path.exists() {
-                self.machine.store(&snapshot_path)?;
-            }
-            Ok(())
-        }
-
-        // load inner machine with snapshot, update cycle, keep everything else the same
-        pub fn load_snapshot(&mut self, snapshot_path: &Path, snapshot_cycle: u64) -> Result<()> {
-            debug!("load snapshot from {}", snapshot_path.display());
-            let runtime_config = RuntimeConfig::quiet_console();
-            let mut machine = Machine::load(Path::new(snapshot_path), &runtime_config)?;
-
-            let cycle = machine.mcycle()?;
-            debug!("cycle: {}, start_cycle: {}", cycle, self.start_cycle);
-
-            // Machine can not go backward behind the initial machine
-            assert!(cycle >= self.start_cycle);
-            self.cycle = snapshot_cycle;
-
-            assert_eq!(machine.ucycle()?, 0);
-
-            self.machine = machine;
-
-            Ok(())
-        }
-    */
-
     pub fn advance_rollups(&mut self, meta_cycle: U256, db: &EpochData) -> Result<()> {
         assert!(self.is_yielded()?);
 
