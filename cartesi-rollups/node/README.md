@@ -58,7 +58,9 @@ The executable will appear at:
 Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
 Reads use `--web3-rpc-url`. Raw signed transactions use
 `--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
-name a private relay with revert protection. The signer must be exclusive to
+name a private relay with revert protection: honest nodes that share a
+commitment race on every step, and without it each pays for its reverted
+copies of the steps another node landed first. The signer must be exclusive to
 one node process because the node owns its nonce sequence. Each tick batches
 the applicable dispute or cleanup action, settlement step, and all available
 bond recoveries at consecutive nonces from the latest mined count. The next

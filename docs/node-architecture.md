@@ -440,8 +440,9 @@ half again, at least 150,000: a join or win that finds a rival's commitment
 dangling at inclusion takes the pairing branch, which the harness measured at
 117,262 gas over the estimate, 70% of the cheapest join's estimate. The limit
 stops at the EIP-7825 cap when the estimate fits under it, so the padding
-never makes an admissible call inadmissible; estimation failing other than by
-a revert falls back to 15M. A call that already reverts at latest is not sent:
+never makes an admissible call inadmissible (a fork that lifts the cap leaves
+the clamp conservative, never harmful); estimation failing other than by a
+revert falls back to 15M. A call that already reverts at latest is not sent:
 it costs nothing, and the lane warns with its revert reason. The manager logs
 an error when the same call (verb, target and calldata) is skipped on
 consecutive ticks, since the node keeps planning a step it cannot take; one
@@ -450,7 +451,13 @@ node's copy of the step mines between this node's read and its estimate. The
 node harness fails on any honest skip. Already-known transactions, underpriced
 replacements, and stale nonces are ordinary retry states; every later tick
 rebuilds intent from fresh observation. The mempool or a separately
-configured revert-protecting endpoint arbitrates races and duplicates.
+configured revert-protecting endpoint arbitrates races and duplicates. The
+lane observes no receipts, so a call that passes its estimate and loses a
+race before inclusion is paid for. Every contested step races among the
+honest nodes that share a commitment, so each may pay for the reverts of
+steps another won, a reverted leaf proof's calldata included. A
+revert-protecting endpoint behind `--web3-submit-rpc-url` avoids that cost;
+the node recommends one and does not require it.
 
 A slot the pool turns down on price is signed once more at the quote's max
 fee with the tip raised to it. geth replaces only on 10% more of both fees,
@@ -506,10 +513,6 @@ Error handling and observability:
    observations, but invariant `expect`s remain and still need a dedicated
    panic-surface audit.
 4. Logging is unstructured and inconsistent between crates.
-6. The lane does not observe receipts or mined revert reasons. A call that
-   passes the estimate and then loses a race before inclusion is still paid
-   for; revert protection at the submission endpoint may catch that, but the
-   node does not require it.
 
 Structure:
 

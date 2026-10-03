@@ -82,7 +82,6 @@ carry no backlog (reviews/README.md).
   and the `children` expect in `engine/dispute.rs`. (node-architecture.md,
   failure policy)
 - Structured logging (debt 4). (node-architecture.md)
-- The receipt-blind lane's remaining gaps (debt 6). (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
 - Check that the Latest tail descends from Solid's finalized block, by parent
   hashes, instead of trusting a number range (debt 10; today the estimate
