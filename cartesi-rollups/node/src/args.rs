@@ -221,15 +221,15 @@ pub struct NodeConfig {
 impl fmt::Display for NodeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.address_book)?;
-        writeln!(f, "Machine path: {}", self.machine_path.display())?;
+        writeln!(f, "Template path: {}", self.machine_path.display())?;
         writeln!(f, "Signer address: {}", self.signer_address)?;
         writeln!(f, "Chain Id: {} ({})", self.chain_id, self.chain_id as u64)?;
         writeln!(f, "Ethereum read gateway: <redacted>")?;
         writeln!(f, "Ethereum submit gateway: <redacted>")?;
-        writeln!(f, "State directory: {}", self.state_dir.display())?;
+        writeln!(f, "Data directory: {}", self.state_dir.display())?;
         writeln!(
             f,
-            "Sleep duration: {} seconds",
+            "Polling interval: {} seconds",
             self.sleep_duration.as_secs()
         )?;
         write!(f, "Long block range error codes: [")?;
