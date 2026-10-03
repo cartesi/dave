@@ -84,8 +84,6 @@ carry no backlog (reviews/README.md).
 - A calibrated operating funding floor (debt 5), and receipt-blind lane
   gaps with escalation of a repeated identical intent (debt 6).
   (node-architecture.md)
-- A background builder the Hero polls, so a long build stops holding the
-  manager (debt 7). (node-architecture.md)
 - Delete the commented-out reference code (debt 8). (node-architecture.md)
 - Check that the Latest tail descends from Solid's finalized block, by parent
   hashes, instead of trusting a number range (debt 10; today the estimate

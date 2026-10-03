@@ -278,6 +278,18 @@ async fn the_node_wins_by_proving_the_divergent_transition() -> Result<()> {
         &mut world,
         &mut [&mut adversary],
         DISPUTE_ROUNDS,
+        |world, _| Ok(!world.honest_calls(WIN_LEAF).is_empty()),
+    )
+    .await?;
+    // Each level's commitment was built by the one assembly that first
+    // reached it, which then observed again; the root's too, since an
+    // empty epoch leaves the frontier no window rows to serve. This pins
+    // the branch, not freshness: the harness mines nothing during a build.
+    assert_eq!(node.manager.reobservations(), world.levels());
+    node.run_with(
+        &mut world,
+        &mut [&mut adversary],
+        DISPUTE_ROUNDS,
         |_, storage| completed(storage, 0),
     )
     .await?;

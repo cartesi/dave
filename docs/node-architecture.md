@@ -411,6 +411,25 @@ epoch. Other participants can advance the chain meanwhile. Operation accepts
 this modest participation delay within the dispute allowance; there is no
 promise that recovery never delays another action.
 
+The Hero's machine work runs inside the manager's tick: commitment builds
+while it assembles its path, proofs and descents while it prepares. It hands
+the runtime worker off, so the reader and runner keep running, and nothing
+deadline-bearing waits on the manager meanwhile. That rests on the
+single-path Hero, not on a test: it has one engaged match per level, and a
+cold build starts only after the seal that created its level mined, so none
+of its own actions is pending; settlement is planned only after a win; and
+refunds have no deadline (`tryRecoveringBond` has no time arm). A tick whose
+assembly ran machine work observes the chain again before planning, once,
+and that assembly reuses the build: the action, its head, the join's Solid
+and any cleanup come from a view newer than the build, so a child that
+finalized meanwhile is joined at once. A stop request cuts the work short
+(Process layout). Two cases do put a build on the Hero's clock: a fresh state
+directory while a dispute is engaged rebuilds every engaged level's
+commitment, so upgrade or rebuild between disputes; and a reorg that drops a
+seal mid-build leaves the node silent until the build ends. The tick's refund
+scan keeps the finalized head sampled before the build, so on a pruned
+provider it may fail once after a long build and retry on the next tick.
+
 The lane is stateless. For every submission it reads the account's mined nonce
 at Latest, obtains a fresh EIP-1559 fee estimate, and signs the batch at
 consecutive nonces from that base. It submits each raw transaction to the
@@ -469,16 +488,6 @@ Error handling and observability:
 
 Structure:
 
-7. The reader uses async recursion for dynamic tournament discovery. The
-   Hero's machine work (commitment builds, proofs) runs inside the epoch
-   manager task. It hands its runtime worker off first, so the other tasks
-   keep running, but the manager itself waits: a long leaf build delays that
-   epoch's refund and cleanup planning and wave submission (the only path
-   that resubmits or reprices pending transactions). The
-   action that follows rests on an observation as old as the build; that a
-   stale action can only revert is a lead resting on the contracts' state
-   checks, not a verified claim. A background builder the Hero polls would
-   remove both; it remains open.
 8. Commented-out code blocks kept as reference (the test-scaffolding
    `instance.rs` snapshot logic) and disabled/empty tests.
 

@@ -438,6 +438,14 @@ impl<AS: ArenaSender> EpochManager<AS> {
         Ok(None)
     }
 
+    /// The current Hero's repeated observations (Hero::tick).
+    #[cfg(test)]
+    pub(crate) fn reobservations(&self) -> usize {
+        self.epoch_hero
+            .as_ref()
+            .map_or(0, |hero| hero.reobservations())
+    }
+
     async fn react_dispute(&mut self, chain: &Chain, epoch: &Epoch) -> Result<HeroTick> {
         if self.epoch_hero.is_none() {
             let storage = Storage::new(self.storage.state_dir())?;

@@ -68,6 +68,17 @@ pub struct Hero<AS: ArenaSender> {
     anchors: EpochAnchors,
     root_tournament: Address,
     reader: StateReader,
+    #[cfg(test)]
+    reobservations: usize,
+}
+
+/// One observation: the latest foam, its standings, and the Hero's path
+/// assembled on it, local commitments included.
+struct Observation {
+    head: ChainHead,
+    foam: Dispute,
+    standings: HashMap<Address, TournamentStanding>,
+    context: HeroContext,
 }
 
 impl<AS: ArenaSender> Hero<AS> {
@@ -153,7 +164,15 @@ impl<AS: ArenaSender> Hero<AS> {
             anchors,
             root_tournament,
             reader,
+            #[cfg(test)]
+            reobservations: 0,
         })
+    }
+
+    /// Ticks whose observation was repeated after a build.
+    #[cfg(test)]
+    pub(crate) fn reobservations(&self) -> usize {
+        self.reobservations
     }
 
     pub async fn tick(&mut self) -> Result<HeroTick> {
@@ -162,20 +181,28 @@ impl<AS: ArenaSender> Hero<AS> {
         // material) and proving to submission; operators compare it with
         // the deployed budgets.
         let started = Instant::now();
-        let (latest_head, foam) = self.reader.fetch_from_root(self.root_tournament).await?;
+        let trips = self.source.trips();
+        let mut observed = self.observe().await?;
+        if self.source.trips() != trips {
+            // Assembly ran machine work (tens of minutes for a two-level
+            // leaf) while the chain moved on: a child may have finalized for
+            // the join, and the head may have left a pruned provider's state
+            // window. Plan from a fresh observation, whose assembly reuses
+            // the build. Once: act on it even if it built again.
+            debug!("assembly ran machine work; observing again before planning");
+            #[cfg(test)]
+            {
+                self.reobservations += 1;
+            }
+            observed = self.observe().await?;
+        }
+        let Observation {
+            head: latest_head,
+            foam,
+            standings: foam_standings,
+            context: foam_context,
+        } = observed;
         let chain = self.reader.chain().clone();
-        let foam_standings = read_standings(&chain, &foam, latest_head).await?;
-        let foam_context = HeroContext::assemble(
-            &chain,
-            latest_head,
-            self.epoch,
-            &self.anchors,
-            &foam,
-            &foam_standings,
-            &mut self.source,
-        )
-        .await
-        .map_err(anyhow::Error::from)?;
         let foam_decision = plan_hero(foam_context.snapshot());
 
         // Joining commits to the epoch's computation. Latest may suppress a
@@ -261,6 +288,29 @@ impl<AS: ArenaSender> Hero<AS> {
             wave.push(request);
         }
         Ok(HeroTick::new(result, wave))
+    }
+
+    async fn observe(&mut self) -> Result<Observation> {
+        let (head, foam) = self.reader.fetch_from_root(self.root_tournament).await?;
+        let chain = self.reader.chain().clone();
+        let standings = read_standings(&chain, &foam, head).await?;
+        let context = HeroContext::assemble(
+            &chain,
+            head,
+            self.epoch,
+            &self.anchors,
+            &foam,
+            &standings,
+            &mut self.source,
+        )
+        .await
+        .map_err(anyhow::Error::from)?;
+        Ok(Observation {
+            head,
+            foam,
+            standings,
+            context,
+        })
     }
 
     fn gc_request(

@@ -665,6 +665,12 @@ impl DisputeSource<Positioner> {
     pub fn stop_on(&mut self, shutdown: ShutdownSignal) {
         self.factory_mut().shutdown = shutdown;
     }
+
+    /// Rulers positioned so far: one per build or recompute that ran
+    /// the machine. Cached and frontier-served nodes take none.
+    pub fn trips(&self) -> usize {
+        self.factory().spawned
+    }
 }
 
 impl Positioner {

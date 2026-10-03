@@ -272,8 +272,7 @@ impl<F: RulerFactory> DisputeSource<F> {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn factory(&self) -> &F {
+    pub(super) fn factory(&self) -> &F {
         &self.factory
     }
 
