@@ -563,10 +563,10 @@ mod tests {
     };
     use crate::tournament::EthArenaSender;
     use alloy::{
-        network::EthereumWallet,
+        network::{EthereumWallet, TransactionBuilder},
         primitives::{Bytes, TxKind},
         providers::{Provider, ProviderBuilder},
-        rpc::types::{Block, Log},
+        rpc::types::{Block, Log, TransactionRequest},
         signers::local::PrivateKeySigner,
         sol_types::SolCall,
         transports::mock::Asserter,
@@ -576,13 +576,15 @@ mod tests {
 
     #[test]
     fn repeated_reverts_escalate_only_on_consecutive_ticks() {
-        let call = |label: &str, input: u8| -> CallKey {
-            (
+        let call_to = |label: &str, to: u8, input: u8| {
+            call_key(&(
                 label.to_string(),
-                Some(TxKind::Call(Address::repeat_byte(0x10))),
-                B256::repeat_byte(input),
-            )
+                TransactionRequest::default()
+                    .with_to(Address::repeat_byte(to))
+                    .with_input(vec![input]),
+            ))
         };
+        let call = |label: &str, input: u8| call_to(label, 0x10, input);
         let report = |verdict| SendReport {
             label: String::new(),
             nonce: 0,
@@ -614,6 +616,11 @@ mod tests {
         let (none, _) = tick(&second, vec![]);
         assert!(tick(&none, vec![advance.clone()]).1.is_empty());
         assert!(tick(&second, vec![call("advanceMatch", 3)]).1.is_empty());
+        // Recoveries share verb and calldata; another tournament is another
+        // call.
+        let (recovery, _) = tick(&[], vec![call_to("tryRecoveringBond", 0x20, 0)]);
+        let other = vec![call_to("tryRecoveringBond", 0x21, 0)];
+        assert!(tick(&recovery, other).1.is_empty());
     }
 
     fn proof_leaf(data_byte: u8, sibling_byte: u8) -> LeafProof {
