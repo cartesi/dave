@@ -11,7 +11,7 @@ use alloy::providers::DynProvider;
 use log::{debug, error, info, trace};
 use std::{sync::Arc, time::Duration};
 
-use crate::chain::Chain;
+use crate::chain::{Chain, ChainHead};
 use crate::provider::{LaneRequest, SendReport, SendVerdict, TransactionLane};
 use crate::storage::{
     Epoch, LeafProof as StoredLeafProof, MachineValidityProof as StoredMachineValidityProof,
@@ -171,11 +171,15 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 match self.react_dispute(chain, &epoch).await {
                     Ok(tick) => {
                         let won = tick.result() == TournamentResult::Won;
+                        let head = tick.head();
                         wave.extend(tick.into_wave());
                         if won {
                             let consensus =
                                 DaveConsensus::new(self.consensus, chain.provider().clone());
-                            match self.plan_settlement(&consensus, epoch.epoch_number).await {
+                            match self
+                                .plan_settlement(&consensus, epoch.epoch_number, head)
+                                .await
+                            {
                                 Ok(step) => wave.extend(step),
                                 Err(e) => log::warn!(
                                     "settlement planning failed, retrying next tick: {e:#}"
@@ -221,8 +225,11 @@ impl<AS: ArenaSender> EpochManager<AS> {
     /// tournament's result, then accepting it once every sentry
     /// agrees or the claim staging period elapses. Each step is
     /// guarded and idempotent; its content derives from finalized
-    /// ingestion while the whether-still-needed guards read latest,
-    /// which is what stops resubmission within a block of inclusion.
+    /// ingestion while the whether-still-needed guards read `head`,
+    /// where the Hero observed its win. That is this tick's latest, so
+    /// a step mined in an earlier tick is still seen; and the settle
+    /// asserts compare local data with the block the win was read at,
+    /// where the winner cannot differ without a node bug.
     /// At most one step is planned so a later settlement step never
     /// queues behind an earlier step from stale state.
     async fn plan_settlement(
@@ -232,17 +239,21 @@ impl<AS: ArenaSender> EpochManager<AS> {
             alloy::network::Ethereum,
         >,
         epoch_number: u64,
+        head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
-        if let Some(step) = self.plan_sentry_claim(dave_consensus, epoch_number).await? {
-            return Ok(Some(step));
-        }
         if let Some(step) = self
-            .plan_stage_tournament_result(dave_consensus, epoch_number)
+            .plan_sentry_claim(dave_consensus, epoch_number, head)
             .await?
         {
             return Ok(Some(step));
         }
-        self.plan_accept_tournament_result(dave_consensus, epoch_number)
+        if let Some(step) = self
+            .plan_stage_tournament_result(dave_consensus, epoch_number, head)
+            .await?
+        {
+            return Ok(Some(step));
+        }
+        self.plan_accept_tournament_result(dave_consensus, epoch_number, head)
             .await
     }
 
@@ -256,10 +267,11 @@ impl<AS: ArenaSender> EpochManager<AS> {
             alloy::network::Ethereum,
         >,
         epoch_number: u64,
+        head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
         let sentry_id = dave_consensus
             .getSentryId(self.signer_address)
-            .block(alloy::eips::BlockId::latest())
+            .block(head.block_id())
             .call()
             .await?;
 
@@ -274,7 +286,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
 
         let current_sealed_epoch = dave_consensus
             .getCurrentSealedEpoch()
-            .block(alloy::eips::BlockId::latest())
+            .block(head.block_id())
             .call()
             .await?;
         if current_sealed_epoch.epochNumber != U256::from(epoch_number) {
@@ -284,7 +296,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
 
         let has_claimed = dave_consensus
             .hasSentryClaimedInEpoch(epoch_number, sentry_id)
-            .block(alloy::eips::BlockId::latest())
+            .block(head.block_id())
             .call()
             .await?;
 
@@ -298,7 +310,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
 
         let can_accept = dave_consensus
             .canAcceptStagedTournamentResult()
-            .block(alloy::eips::BlockId::latest())
+            .block(head.block_id())
             .call()
             .await?;
 
@@ -335,10 +347,11 @@ impl<AS: ArenaSender> EpochManager<AS> {
             alloy::network::Ethereum,
         >,
         epoch_number: u64,
+        head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
         let can_stage = dave_consensus
             .canStageTournamentResult()
-            .block(alloy::eips::BlockId::latest())
+            .block(head.block_id())
             .call()
             .await?;
 
@@ -413,10 +426,11 @@ impl<AS: ArenaSender> EpochManager<AS> {
             alloy::network::Ethereum,
         >,
         epoch_number: u64,
+        head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
         let can_accept = dave_consensus
             .canAcceptStagedTournamentResult()
-            .block(alloy::eips::BlockId::latest())
+            .block(head.block_id())
             .call()
             .await?;
 
@@ -704,6 +718,11 @@ mod tests {
         let provider = ProviderBuilder::new()
             .connect_mocked_client(asserter.clone())
             .erased();
+        let (manager, chain) = manager_on(path, provider);
+        (manager, chain, asserter)
+    }
+
+    fn manager_on(path: &Path, provider: DynProvider) -> (EpochManager<EthArenaSender>, Chain) {
         let signer = PrivateKeySigner::from_bytes(&B256::repeat_byte(0x11)).unwrap();
         let address = signer.address();
         let lane = TransactionLane::new(
@@ -722,7 +741,7 @@ mod tests {
             ShutdownSignal::default(),
         )
         .unwrap();
-        (manager, Chain::new(provider, Vec::new()), asserter)
+        (manager, Chain::new(provider, Vec::new()))
     }
 
     fn push_head(asserter: &Asserter, number: u64) {
@@ -883,7 +902,7 @@ mod tests {
         );
         assert!(
             manager
-                .plan_stage_tournament_result(&consensus, 0)
+                .plan_stage_tournament_result(&consensus, 0, won_at())
                 .await
                 .unwrap()
                 .is_none()
@@ -901,11 +920,132 @@ mod tests {
         );
         assert!(
             manager
-                .plan_accept_tournament_result(&consensus, 0)
+                .plan_accept_tournament_result(&consensus, 0, won_at())
                 .await
                 .unwrap()
                 .is_none()
         );
         assert!(rpc.read_q().is_empty());
+    }
+
+    /// The head a Hero tick observed its win at.
+    fn won_at() -> ChainHead {
+        ChainHead {
+            number: 7,
+            hash: B256::repeat_byte(0x77),
+        }
+    }
+
+    /// Storage whose epoch 0 is sealed without inputs and rolled, so its
+    /// settlement row exists; `adjust` edits the template first.
+    fn rolled_epoch_zero(
+        adjust: impl FnOnce(&mut cartesi_machine::Machine),
+    ) -> (tempfile::TempDir, Storage) {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("_template");
+        crate::storage::sql::test_helper::store_template(&template, adjust);
+        let mut storage = Storage::initialize(
+            dir.path(),
+            &crate::storage::Template::inspect(&template).unwrap(),
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            0,
+            &crate::engine::TournamentGeometry::two_level(),
+        )
+        .unwrap();
+        let epoch = Epoch {
+            epoch_number: 0,
+            input_index_boundary: 0,
+            root_tournament: Address::repeat_byte(1),
+            block_created_number: 1,
+        };
+        storage
+            .insert_consensus_data(1, [].iter(), [&epoch].into_iter())
+            .unwrap();
+        storage.roll_epoch().unwrap();
+        (dir, storage)
+    }
+
+    fn push_sentry_views(asserter: &Asserter, claimed: bool) {
+        push_call::<DaveConsensus::getSentryIdCall>(asserter, &U256::from(1));
+        push_call::<DaveConsensus::getCurrentSealedEpochCall>(
+            asserter,
+            &DaveConsensus::getCurrentSealedEpochReturn {
+                epochNumber: U256::ZERO,
+                inputIndexLowerBound: U256::ZERO,
+                inputIndexUpperBound: U256::ZERO,
+                tournament: Address::repeat_byte(1),
+                isTournamentResultStaged: false,
+                stagingBlockNumber: U256::ZERO,
+                stagedPostEpochMachineStateHash: B256::ZERO,
+                stagedPostEpochOutputsMerkleRoot: B256::ZERO,
+            },
+        );
+        push_call::<DaveConsensus::hasSentryClaimedInEpochCall>(asserter, &claimed);
+    }
+
+    #[tokio::test]
+    async fn settlement_reads_the_block_the_hero_won_at() {
+        let (dir, mut storage) = rolled_epoch_zero(|_| {});
+        let settlement = storage.settlement_info(0).unwrap().unwrap();
+        let (provider, rpc, requests) = crate::chain::recording::recording_provider();
+        let (mut manager, chain) = manager_on(dir.path(), provider);
+        let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+        let staged = |staged: bool| DaveConsensus::canAcceptStagedTournamentResultReturn {
+            isTournamentResultStaged: staged,
+            doAllSentriesAgreeWithStagedTournamentResult: true,
+            isClaimStagingPeriodOver: true,
+            epochNumber: U256::ZERO,
+            stagedPostEpochMachineStateHash: B256::from(settlement.final_state),
+            stagedPostEpochOutputsMerkleRoot: B256::from(settlement.outputs_merkle_root()),
+        };
+        let can_stage = |staged: bool| DaveConsensus::canStageTournamentResultReturn {
+            isFinished: true,
+            isTournamentFailed: false,
+            isTournamentResultStaged: staged,
+            epochNumber: U256::ZERO,
+            winnerCommitment: B256::from(settlement.computation_hash.data()),
+            winnerPostEpochMachineStateHash: B256::from(settlement.final_state),
+        };
+
+        // A sentry that already claimed stages the result.
+        push_sentry_views(&rpc, true);
+        push_call::<DaveConsensus::canStageTournamentResultCall>(&rpc, &can_stage(false));
+        let (label, _) = manager
+            .plan_settlement(&consensus, 0, won_at())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(label, "stageTournamentResult");
+
+        // Once it is staged past its period, nobody claims or stages again.
+        push_sentry_views(&rpc, false);
+        push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &staged(true));
+        push_call::<DaveConsensus::canStageTournamentResultCall>(&rpc, &can_stage(true));
+        push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &staged(true));
+        let (label, _) = manager
+            .plan_settlement(&consensus, 0, won_at())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(label, "acceptStagedTournamentResult");
+        assert!(rpc.read_q().is_empty());
+
+        // Every view is pinned to the won head's hash, a bare EIP-1898 hash
+        // as the reader's pinned reads send it, so a reorg between the
+        // Hero's read and these cannot fire a settle assert.
+        let requests = requests.lock().unwrap();
+        let calls: Vec<_> = requests
+            .iter()
+            .filter(|request| request["method"] == "eth_call")
+            .collect();
+        assert_eq!(calls.len(), 10);
+        for call in calls {
+            assert_eq!(
+                call["params"][1],
+                serde_json::json!(format!("{:#x}", won_at().hash))
+            );
+        }
     }
 }

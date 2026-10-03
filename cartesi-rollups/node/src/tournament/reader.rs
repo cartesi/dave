@@ -412,59 +412,22 @@ async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Option<
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        sync::{Arc, Mutex},
-        task::{Context as TaskContext, Poll},
-    };
-
     use alloy::{
         primitives::{Bytes, Log as PrimitiveLog, U256, keccak256},
-        providers::{Provider, ProviderBuilder},
-        rpc::{
-            client::RpcClient,
-            json_rpc::{RequestPacket, ResponsePacket},
-            types::Block,
-        },
+        rpc::types::Block,
         sol_types::{SolCall, SolEvent},
-        transports::{
-            TransportError, TransportFut,
-            mock::{Asserter, MockTransport},
-        },
+        transports::mock::Asserter,
     };
-    use tower::Service;
 
     use super::*;
     use crate::{
+        chain::recording::{Requests, recording_provider},
         merkle::Digest,
         tournament::{
             dispute::{CommitmentPosition, Event, MatchStatus},
             domain::{TournamentDescriptor, TournamentKind},
         },
     };
-
-    #[derive(Clone, Debug)]
-    struct RecordingTransport {
-        inner: MockTransport,
-        requests: Arc<Mutex<Vec<serde_json::Value>>>,
-    }
-
-    impl Service<RequestPacket> for RecordingTransport {
-        type Response = ResponsePacket;
-        type Error = TransportError;
-        type Future = TransportFut<'static>;
-
-        fn poll_ready(&mut self, context: &mut TaskContext<'_>) -> Poll<Result<(), Self::Error>> {
-            self.inner.poll_ready(context)
-        }
-
-        fn call(&mut self, request: RequestPacket) -> Self::Future {
-            self.requests
-                .lock()
-                .expect("request recording mutex is not poisoned")
-                .push(serde_json::to_value(&request).expect("JSON-RPC request serializes"));
-            self.inner.call(request)
-        }
-    }
 
     fn digest(byte: u8) -> Digest {
         Digest::from([byte; 32])
@@ -689,16 +652,8 @@ mod tests {
         asserter.push_success(&Bytes::from(C::abi_encode_returns(response)));
     }
 
-    fn recording_chain() -> (Chain, Asserter, Arc<Mutex<Vec<serde_json::Value>>>) {
-        let asserter = Asserter::new();
-        let requests = Arc::new(Mutex::new(Vec::new()));
-        let transport = RecordingTransport {
-            inner: MockTransport::new(asserter.clone()),
-            requests: Arc::clone(&requests),
-        };
-        let provider = ProviderBuilder::new()
-            .connect_client(RpcClient::new(transport, true))
-            .erased();
+    fn recording_chain() -> (Chain, Asserter, Requests) {
+        let (provider, asserter, requests) = recording_provider();
         (Chain::new(provider, Vec::new()), asserter, requests)
     }
 
@@ -1071,7 +1026,7 @@ mod tests {
         ];
         let second_root_logs = vec![new_inner_log(root, discovered, 0, id.hash(), child)];
         let child_logs = vec![join_log(child, second_finalized, 0, digest(30))];
-        let log_ranges = |requests: &Arc<Mutex<Vec<serde_json::Value>>>| {
+        let log_ranges = |requests: &Requests| {
             requests
                 .lock()
                 .unwrap()

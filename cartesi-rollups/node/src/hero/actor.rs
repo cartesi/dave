@@ -43,16 +43,23 @@ pub enum TournamentResult {
 #[derive(Clone, Debug)]
 pub struct HeroTick {
     result: TournamentResult,
+    head: ChainHead,
     wave: Vec<LaneRequest>,
 }
 
 impl HeroTick {
-    pub(crate) fn new(result: TournamentResult, wave: Vec<LaneRequest>) -> Self {
-        Self { result, wave }
+    pub(crate) fn new(result: TournamentResult, head: ChainHead, wave: Vec<LaneRequest>) -> Self {
+        Self { result, head, wave }
     }
 
     pub const fn result(&self) -> TournamentResult {
         self.result
+    }
+
+    /// The latest head the result was observed at. Settlement reads its
+    /// views there, so a won root and the staged winner describe one block.
+    pub const fn head(&self) -> ChainHead {
+        self.head
     }
 
     pub fn into_wave(self) -> Vec<LaneRequest> {
@@ -236,7 +243,11 @@ impl<AS: ArenaSender> Hero<AS> {
                     "latest proposed {foam_join:?}, which Solid does not support exactly; retry next tick"
                 );
                 report_slow_tick(started, "the join waits for finality");
-                return Ok(HeroTick::new(TournamentResult::Running, Vec::new()));
+                return Ok(HeroTick::new(
+                    TournamentResult::Running,
+                    latest_head,
+                    Vec::new(),
+                ));
             }
             (solid_context, solid_decision, solid_head)
         } else {
@@ -287,7 +298,7 @@ impl<AS: ArenaSender> Hero<AS> {
         {
             wave.push(request);
         }
-        Ok(HeroTick::new(result, wave))
+        Ok(HeroTick::new(result, latest_head, wave))
     }
 
     async fn observe(&mut self) -> Result<Observation> {

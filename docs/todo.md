@@ -72,10 +72,6 @@ carry no backlog (reviews/README.md).
   reuses the epoch manager's consecutive-tick rule (`repeated_reverts`: a
   warning first, an error on the next tick). (node-architecture.md, failure
   policy)
-- Pin the settle asserts' staging and accept reads to the Hero's observed
-  head (or to finalized): read at a fresh latest, a tip reorg may fire them
-  once without a node bug (a lead). (epoch-lifecycle.md, settlement
-  invariant)
 - After that audit, prune dispute-path validators that re-check what the
   contracts enforce (P1, bounded by P2: keep the checks whose absence makes a
   lie silent). Before pruning one that guards an engine assert, make the

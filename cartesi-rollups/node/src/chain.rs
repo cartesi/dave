@@ -186,6 +186,70 @@ fn matches_any_code(codes: &[String], err: &impl std::fmt::Debug) -> bool {
     codes.iter().any(|code| rendered.contains(code))
 }
 
+/// A mocked provider that records every JSON-RPC request it serves, for
+/// tests that check which block a read is pinned to.
+#[cfg(test)]
+pub(crate) mod recording {
+    use std::{
+        sync::{Arc, Mutex},
+        task::{Context, Poll},
+    };
+
+    use alloy::{
+        providers::{DynProvider, Provider, ProviderBuilder},
+        rpc::{
+            client::RpcClient,
+            json_rpc::{RequestPacket, ResponsePacket},
+        },
+        transports::{
+            TransportError, TransportFut,
+            mock::{Asserter, MockTransport},
+        },
+    };
+    use tower::Service;
+
+    pub(crate) type Requests = Arc<Mutex<Vec<serde_json::Value>>>;
+
+    #[derive(Clone, Debug)]
+    struct RecordingTransport {
+        inner: MockTransport,
+        requests: Requests,
+    }
+
+    impl Service<RequestPacket> for RecordingTransport {
+        type Response = ResponsePacket;
+        type Error = TransportError;
+        type Future = TransportFut<'static>;
+
+        fn poll_ready(&mut self, context: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            self.inner.poll_ready(context)
+        }
+
+        fn call(&mut self, request: RequestPacket) -> Self::Future {
+            self.requests
+                .lock()
+                .expect("request recording mutex is not poisoned")
+                .push(serde_json::to_value(&request).expect("JSON-RPC request serializes"));
+            self.inner.call(request)
+        }
+    }
+
+    /// A provider answering from the asserter's queue, and the requests
+    /// it was sent, in order.
+    pub(crate) fn recording_provider() -> (DynProvider, Asserter, Requests) {
+        let asserter = Asserter::new();
+        let requests = Requests::default();
+        let transport = RecordingTransport {
+            inner: MockTransport::new(asserter.clone()),
+            requests: Arc::clone(&requests),
+        };
+        let provider = ProviderBuilder::new()
+            .connect_client(RpcClient::new(transport, true))
+            .erased();
+        (provider, asserter, requests)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Chain, ChainHead, matches_any_code};

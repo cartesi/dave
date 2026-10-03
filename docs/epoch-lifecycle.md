@@ -216,9 +216,10 @@ Staging is planned only after the local Hero reports the root won. It then
 asserts that the winner's commitment and final state equal the locally
 computed ones, and acceptance asserts the same of the staged final state and
 outputs root; a mismatch there means a node bug or corrupt local state, so it
-panics (node-architecture.md, failure policy). Those reads are taken at latest,
-apart from the Hero's own head; whether a tip reorg between the two can fire
-an assert once without a node bug is a lead. A lost root or a root without a
-winner is an error log every tick and is never staged; a lost root should page
-a human. A won root whose final state does not settle is held with an error
-(the terminal case above).
+panics (node-architecture.md, failure policy). Every settlement read is
+pinned to the latest block where the Hero observed its win, and the contract
+derives the stageable winner from the same standing the Hero reads, so both
+sides describe one block and a tip reorg cannot fire an assert. A lost root or
+a root without a winner is an error log every tick and is never staged; a
+lost root should page a human. A won root whose final state does not settle
+is held with an error (the terminal case above).
