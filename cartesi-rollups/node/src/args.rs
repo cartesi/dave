@@ -317,8 +317,8 @@ impl NodeConfig {
     /// Validates everything it can before the first local write: the
     /// deployment, then the template against the chain's initial hash,
     /// then, under the state-directory lock, the directory's pins and the
-    /// claimant. A refusal leaves a new directory uncreated and an existing
-    /// one untouched.
+    /// claimant. A refused deployment or template creates nothing, and a
+    /// refused pin leaves the existing directory untouched.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = named_chain(args.web3_chain_id)?;
 
@@ -365,7 +365,9 @@ impl NodeConfig {
             &geometry,
         )
         .context("could not open the state directory")?;
-        storage.pin_epoch_claimant(signer_address)?;
+        storage
+            .pin_epoch_claimant(signer_address)
+            .context("the signer (--web3-private-key(-file) or --aws-kms-key-id(-file))")?;
 
         Ok(Self {
             address_book,
@@ -517,8 +519,8 @@ mod tests {
         let state_dir = dir.path().join("state");
         let endpoint = anvil.endpoint();
         let chain_id = anvil.chain_id().to_string();
-        let key = alloy::hex::encode(anvil.keys()[0].to_bytes());
-        let args_for = |app: Address, machine_path: &Path| {
+        let key = |signer: usize| alloy::hex::encode(anvil.keys()[signer].to_bytes());
+        let args_for = |app: Address, machine_path: &Path, signer: usize| {
             PRTArgs::try_parse_from([
                 "cartesi-rollups-prt-node",
                 "--app-address",
@@ -533,15 +535,15 @@ mod tests {
                 state_dir.to_str().unwrap(),
                 "pk",
                 "--web3-private-key",
-                &key,
+                &key(signer),
             ])
             .unwrap()
         };
-        let args = |machine_path: &Path| args_for(book.app, machine_path);
+        let args = |machine_path: &Path| args_for(book.app, machine_path, 0);
         let image = program_path().join("machine-image");
 
         // A contract that is not an application: an error, not a panic.
-        let error = NodeConfig::setup_with(args_for(book.input_box, &image))
+        let error = NodeConfig::setup_with(args_for(book.input_box, &image, 0))
             .await
             .map(|_| ())
             .unwrap_err();
@@ -575,6 +577,17 @@ mod tests {
         // The restart path: the pinned directory reopens without a re-import.
         drop(config);
         NodeConfig::setup_with(args(&image)).await?;
+
+        // Setup pins the claimant, so another signer is refused before any
+        // worker starts.
+        let error = NodeConfig::setup_with(args_for(book.app, &image, 1))
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("--web3-private-key"),
+            "unexpected error: {error:#}"
+        );
         Ok(())
     }
 }
