@@ -456,14 +456,30 @@ contract MatchClocksTest is Test {
         uint64 allowanceTwo = _boundPure(rawAllowanceTwo, 1, MAX_FUZZ_DURATION);
         uint64 envelope = _max(allowanceOne, allowanceTwo);
         uint64 carried = _boundPure(rawCarried, 0, 2 * envelope + 1);
-        _initializePaused(allowanceOne, allowanceTwo);
+        _assertChildReturnWithinThePairEnvelope(
+            allowanceOne, allowanceTwo, carried, joinBudget
+        );
+    }
 
-        uint64 returned = _childReturn(carried, joinBudget);
-
-        uint256 refilled = uint256(carried) + joinBudget;
-        assertEq(returned, refilled < envelope ? refilled : envelope);
-        assertLe(returned, envelope);
-        assertGe(returned, _min(carried, envelope));
+    /// @dev The same property with the carried remainder within the envelope
+    /// and the refill drawn up to twice it, so refills near the gap to the
+    /// envelope, where the return turns from refilling to clamping, are drawn
+    /// often. The full-domain refill above rarely lands there: its partial
+    /// refills are mostly far below the gap.
+    function testFuzzChildReturnBoundedRefillsWithinThePairEnvelope(
+        uint64 rawAllowanceOne,
+        uint64 rawAllowanceTwo,
+        uint64 rawCarried,
+        uint64 rawJoinBudget
+    ) public {
+        uint64 allowanceOne = _boundPure(rawAllowanceOne, 1, MAX_FUZZ_DURATION);
+        uint64 allowanceTwo = _boundPure(rawAllowanceTwo, 1, MAX_FUZZ_DURATION);
+        uint64 envelope = _max(allowanceOne, allowanceTwo);
+        uint64 carried = _boundPure(rawCarried, 0, envelope);
+        uint64 joinBudget = _boundPure(rawJoinBudget, 0, 2 * envelope);
+        _assertChildReturnWithinThePairEnvelope(
+            allowanceOne, allowanceTwo, carried, joinBudget
+        );
     }
 
     function testChildReturnWithoutBudgetCarriesTheRemainder() public {
@@ -496,6 +512,23 @@ contract MatchClocksTest is Test {
         harness.childReturnAllowance(
             Time.Duration.wrap(35), Time.Duration.wrap(20)
         );
+    }
+
+    function _assertChildReturnWithinThePairEnvelope(
+        uint64 allowanceOne,
+        uint64 allowanceTwo,
+        uint64 carried,
+        uint64 joinBudget
+    ) internal {
+        uint64 envelope = _max(allowanceOne, allowanceTwo);
+        _initializePaused(allowanceOne, allowanceTwo);
+
+        uint64 returned = _childReturn(carried, joinBudget);
+
+        uint256 refilled = uint256(carried) + joinBudget;
+        assertEq(returned, refilled < envelope ? refilled : envelope);
+        assertLe(returned, envelope);
+        assertGe(returned, _min(carried, envelope));
     }
 
     function _initializePaused(uint64 allowanceOne, uint64 allowanceTwo)
