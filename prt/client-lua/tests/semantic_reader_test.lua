@@ -653,17 +653,35 @@ return {
         end
     end),
 
-    Test.case("log range cannot return a block past the sampled head", function()
-        local fixture = semantic_fixture()
-        local late = {}
-        for key, field in pairs(fixture.logs.root[3]) do
-            late[key] = field
+    Test.case("log range rejects a log outside its address or blocks", function()
+        local rows = {
+            {
+                message = "log range [9, 12] returned block 13",
+                overrides = { block_number = 13 },
+            },
+            {
+                message = "log range [9, 12] returned block 8",
+                overrides = { block_number = 8 },
+            },
+            {
+                message = "belongs to " .. address(2),
+                overrides = { address = address(2) },
+            },
+        }
+        for _, row in ipairs(rows) do
+            local fixture = semantic_fixture()
+            local stray = {}
+            for key, field in pairs(fixture.logs.root[3]) do
+                stray[key] = field
+            end
+            for key, field in pairs(row.overrides) do
+                stray[key] = field
+            end
+            table.insert(fixture.logs.root, stray)
+            local transport = mock_transport(fixture)
+            Test.error_like(row.message, function()
+                SemanticReader.new(fixture.root, 9, transport):fetch()
+            end)
         end
-        late.block_number = 13
-        table.insert(fixture.logs.root, late)
-        local transport = mock_transport(fixture)
-        Test.error_like("log range [9, 12] returned block 13", function()
-            SemanticReader.new(fixture.root, 9, transport):fetch()
-        end)
     end),
 }
