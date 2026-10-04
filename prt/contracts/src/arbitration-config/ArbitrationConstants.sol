@@ -8,10 +8,10 @@ library ArbitrationConstants {
     uint64 constant LEVELS = 3;
 
     /// @notice Wall-clock seconds granted to build one inner tournament's
-    /// commitment, the same at every inner level. A geometry is generated
-    /// against this budget (prt/measure_constants): changing one changes the
-    /// other. The checked-in three-level table matches 30 minutes in total
-    /// allowance only (docs/dimensioning.md).
+    /// commitment, the same at every inner level. A generated geometry is only
+    /// valid for the budget it was generated against (prt/measure_constants).
+    /// The checked-in three-level table predates the generator and runs with
+    /// 30 minutes as a conservative policy value (docs/dimensioning.md).
     uint64 constant COMMITMENT_BUDGET = 30 minutes;
 
     /// @return base-2 stride between adjacent commitment leaves at `level`

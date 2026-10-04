@@ -614,9 +614,12 @@ Every honest action gets one inclusion `G`, and joining a child also gets the
 build `T`. `ClockBudgets` computes the allowance, with `responseBudget = G` and
 `commitmentBudget = T`, from wall-clock inputs: the deployment's block time and
 censorship budget `C`, `G = 5 minutes`, and `T`, which belongs with the
-tournament geometry (`ArbitrationConstants.COMMITMENT_BUDGET`: 30 minutes for
-the three-level table, 60 for the two-level one), since a generated geometry is
-only valid for the `T` it was generated against. The root allowance holds the root join's inclusion and
+tournament geometry, since a generated geometry is only valid for the `T` it
+was generated against. `ArbitrationConstants.COMMITMENT_BUDGET` is 30 minutes,
+the policy value the canonical three-level table runs with; the devnet-only
+two-level profile deploys its table with 60 minutes
+(`DevnetGeometryDeployment`), and the canonical two-level switch sets the
+constant to 60 together with that table. The root allowance holds the root join's inclusion and
 one delegation per inner level on a correct commitment's active path; each
 child return refunds its delegation. On Ethereum mainnet the three-level table
 gives one week plus 85 minutes and the two-level table one week plus 75
