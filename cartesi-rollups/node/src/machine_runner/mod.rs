@@ -94,9 +94,15 @@ impl MachineRunner {
     }
 
     /// One tick: publishes every ready batch and roll, then returns. A
-    /// stop returns after abandoning the batch in progress.
+    /// stop returns before the next batch or roll, abandoning the batch in
+    /// progress.
     pub fn process_rollup(&mut self) -> Result<()> {
         loop {
+            // Sealed empty epochs roll without an input, so only this check
+            // stops a catch-up through them.
+            if self.shutdown.is_requested() {
+                return Ok(());
+            }
             let plan = self.storage.advance_plan()?;
             match plan_action(&plan, self.storage.snapshot_gap_inputs()) {
                 PlanAction::Idle => return Ok(()),
@@ -192,7 +198,8 @@ impl MachineRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{Input, InputId};
+    use crate::storage::{Epoch, Input, InputId};
+    use alloy::primitives::Address;
 
     fn plan(boundary: u64, input_count: u64, sealed: bool) -> AdvancePlan {
         let available = input_count - boundary;
@@ -231,5 +238,41 @@ mod tests {
         assert_eq!(plan_action(&plan(3, 5, true), 3), PlanAction::Advance);
         assert_eq!(plan_action(&plan(5, 5, true), 3), PlanAction::Roll);
         assert_eq!(plan_action(&plan(3, 9, true), 3), PlanAction::Advance);
+    }
+
+    #[test]
+    fn a_stopped_runner_rolls_no_queued_empty_epoch() {
+        let (_dir, mut storage) = crate::storage::sql::test_helper::setup_storage();
+        let empty: Vec<Epoch> = (0..3)
+            .map(|epoch_number| Epoch {
+                epoch_number,
+                input_index_boundary: 0,
+                root_tournament: Address::ZERO,
+                block_created_number: 1,
+            })
+            .collect();
+        storage
+            .insert_consensus_data(1, [].iter(), empty.iter())
+            .unwrap();
+        let state_dir = storage.state_dir().to_owned();
+        let run = |storage, shutdown| {
+            MachineRunner::new(storage, Duration::ZERO, shutdown)
+                .unwrap()
+                .process_rollup()
+                .unwrap()
+        };
+
+        let stopped = ShutdownSignal::default();
+        stopped.request();
+        run(storage, stopped);
+        let mut check = Storage::new(&state_dir).unwrap();
+        assert!(
+            check.settlement_info(0).unwrap().is_none(),
+            "a stopped runner rolled an epoch"
+        );
+
+        // Without the stop, the same tick rolls every queued epoch.
+        run(Storage::new(&state_dir).unwrap(), ShutdownSignal::default());
+        assert!(check.settlement_info(2).unwrap().is_some());
     }
 }

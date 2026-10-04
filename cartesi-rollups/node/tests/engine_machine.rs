@@ -1131,8 +1131,9 @@ fn run_sealed_epoch(
 }
 
 /// A stop abandons the runner's batch: the runner checks for it before
-/// each input, so a stopped runner commits nothing, and a restarted one
-/// replays the batch and settles exactly as a run that never stopped.
+/// each batch, roll and input, so a stopped runner commits nothing, and a
+/// restarted one replays the batch and settles exactly as a run that never
+/// stopped.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn a_stopped_runner_drops_its_batch_and_a_restart_replays_it() {

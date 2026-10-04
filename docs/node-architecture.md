@@ -78,19 +78,19 @@ fails is the failure policy below.
 
 A stop request stops each worker at its next safe point. The reader drops
 its tick in flight, whose one write, the chunk's commit, follows every await.
-The runner stops before its next input and drops an unfinished batch, which a
-restart replays as after a crash. The manager finishes its tick, so an action
-whose preparation completed still goes out with the tick's recoveries, but
-the Hero's machine work stops early: positioning before its next crossed
-input, and a stride-0 build at least `c + 8 = 28` high (the leaf level of a
-two-level table) before its next bottom-stratum span. Finished spans stay in
-the quartet cache, and the restarted node's build resumes after them.
-Everything else runs to completion: one input's replay, a recompute below
-that height, the leaf and middle builds of the three-level table (seconds to
-minutes, unmeasured), and the tick's RPC calls (the recovery scan,
-estimation, submission). So a stop can drop a due action's preparation,
-which the restarted node prepares again after its Hero refolds the live
-tournaments' logs.
+The runner stops before its next input or epoch roll and drops an unfinished
+batch, which a restart replays as after a crash. The manager finishes its
+tick, so an action whose preparation completed still goes out with the tick's
+recoveries, but the Hero's machine work stops early: positioning before its
+next crossed input, and a stride-0 build at least `c + 8 = 28` high (the leaf
+level of a two-level table) before its next bottom-stratum span. Finished
+spans stay in the quartet cache, and the restarted node's build resumes after
+them. Everything else runs to completion: one input's replay, a recompute
+below that height, the leaf and middle builds of the three-level table
+(seconds to minutes, unmeasured), and the tick's RPC calls (the recovery scan,
+estimation, submission). So a stop can drop a due action's preparation, which
+the restarted node prepares again after its Hero refolds the live tournaments'
+logs.
 
 ## Failure policy
 
