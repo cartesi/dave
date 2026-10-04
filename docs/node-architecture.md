@@ -170,23 +170,27 @@ Workers retry a failed tick with a warning that carries the whole error chain:
 a transient provider or storage error costs one polling interval, and a
 warning that repeats tick after tick is a stall to investigate. A retry loop
 that should page reuses the epoch manager's consecutive-tick rule
-(`repeated_reverts`: a warning first, an error on the next tick). One stall
-needs an operator: a log missing from the tail of a catch-up chunk (rebuild
-the state directory). A tournament event that does not fold onto the reader's
-finalized prefix, or a phase read on the Hero's path that contradicts it, drops
-the prefix, and the next tick refolds from the root's creation block as a
-restart would; any other omitted log that still folds is not detected (RPC
-completeness is trusted). Asserts are for states reachable only through a node
-bug, corrupt local state, a broken trusted assumption, or an already-defeated
-protocol; there, stopping loudly is the alarm. A panic stops every worker,
-refunds included (`lib.rs`, `worker_failure`), and a restart re-plans the same
-step.
+(`repeated_reverts`: a warning first, an error on the next tick). Ingestion
+applies it to its completeness and continuity checks (`repeated_check`):
+failing the same one on consecutive ticks means the provider keeps omitting
+logs (point the node at a complete one), or a stored chunk lacks one. That
+is the one stall a retry never heals: a log missing from the tail of a
+catch-up chunk (rebuild the state directory). A tournament event that does
+not fold onto the reader's finalized prefix, or a phase read on the Hero's
+path that contradicts it, drops the prefix, and the next tick refolds from
+the root's creation block as a restart would; any other omitted log that
+still folds is not detected (RPC completeness is trusted). Asserts are for
+states reachable only through a node bug, corrupt local state, a broken
+trusted assumption, or an already-defeated protocol; there, stopping loudly
+is the alarm. A panic stops every worker, refunds included (`lib.rs`,
+`worker_failure`), and a restart re-plans the same step.
 
 Log levels carry that split. ERROR means an operator must act: a lost or
 winnerless dispute, a won epoch that cannot settle, a rejected submission, a
-batch the signer cannot cover, a call that reverts on consecutive ticks, a
-torn snapshot, a worker exit, or a contract answer the node does not know (an
-unknown bond disposition holds the epoch, and with it the next one). WARN
+batch the signer cannot cover, a call that reverts on consecutive ticks, an
+ingestion check that fails on consecutive ticks, a torn snapshot, a worker
+exit, or a contract answer the node does not know (an unknown bond
+disposition holds the epoch, and with it the next one). WARN
 means the node carries on: the next tick retries, an action is skipped or
 falls back, or best-effort work failed. INFO is protocol progress. Every
 line's target is its module path, so `RUST_LOG` narrows the output to one

@@ -14,7 +14,7 @@ use cartesi_machine::types::Hash;
 use log::{debug, info, trace};
 use std::{fmt, iter::Peekable, time::Duration};
 
-use crate::storage::{Epoch, Input, InputId, Storage};
+use crate::storage::{Epoch, Input, InputId, Storage, StorageError};
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{self, EpochSealed};
 use cartesi_rollups_contracts::{
     i_application::IApplication,
@@ -200,6 +200,7 @@ impl BlockchainReader {
     }
 
     pub async fn execution_loop(mut self, shutdown: ShutdownSignal, chain: Chain) -> Result<()> {
+        let mut failed = None;
         loop {
             // A failed tick is retried, not fatal: the tick is
             // re-derived from finalized state, so a provider hiccup
@@ -210,10 +211,27 @@ impl BlockchainReader {
             // chunk's commit, is synchronous and follows every await.
             let caught_up = tokio::select! { biased;
                 _ = shutdown.requested() => break Ok(()),
-                ticked = self.tick(&chain) => ticked.unwrap_or_else(|e| {
-                    log::warn!("blockchain read failed, retrying next tick: {e:#}");
-                    true
-                }),
+                ticked = self.tick(&chain) => match ticked {
+                    Ok(caught_up) => {
+                        failed = None;
+                        caught_up
+                    }
+                    Err(e) => {
+                        let repeated;
+                        (failed, repeated) = repeated_check(failed, &e);
+                        if repeated {
+                            log::error!(
+                                "blockchain read failed the same log completeness check on \
+                                 consecutive ticks: {e:#}; point --web3-rpc-url at a provider \
+                                 that serves complete logs, and if this persists, rebuild the \
+                                 state directory"
+                            );
+                        } else {
+                            log::warn!("blockchain read failed, retrying next tick: {e:#}");
+                        }
+                        true
+                    }
+                },
             };
 
             // Catch up chunk by chunk without a polling sleep, observing
@@ -475,6 +493,56 @@ async fn onchain_totals(chain: &Chain, book: AddressBook, block: u64) -> Result<
     })
 }
 
+/// Ingestion's completeness and continuity checks. One that fails again on
+/// the next tick means the provider keeps omitting logs, or a chunk already
+/// stored lacks one, and a retry heals neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogCheck {
+    /// Each InputAdded carries the next index.
+    InputIndex,
+    /// A sealed epoch's inputs reach its bound.
+    SealedBound,
+    /// The input count at the finalized head.
+    HeadInputs,
+    /// The last sealed epoch at the finalized head.
+    HeadSealedEpoch,
+    /// New inputs continue the stored ones.
+    StoredInputs,
+    /// New epochs continue the stored ones.
+    StoredEpochs,
+}
+
+impl LogCheck {
+    /// The check `error` reports failing, if any; other failures, such as
+    /// transport errors, are transient.
+    fn failed_by(error: &anyhow::Error) -> Option<Self> {
+        if let Some(incomplete) = error.downcast_ref::<IncompleteLogs>() {
+            return Some(incomplete.check);
+        }
+        match error.downcast_ref::<StorageError>()? {
+            StorageError::InconsistentInput { .. } => Some(Self::StoredInputs),
+            StorageError::InconsistentEpoch { .. } => Some(Self::StoredEpochs),
+            _ => None,
+        }
+    }
+}
+
+/// A failed [`LogCheck`] of the reader's own, typed so the tick loop can
+/// classify it.
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
+struct IncompleteLogs {
+    check: LogCheck,
+    message: String,
+}
+
+/// The check a failed tick failed, and whether the previous tick failed the
+/// same one: the epoch manager's consecutive-tick rule (`repeated_reverts`).
+fn repeated_check(previous: Option<LogCheck>, error: &anyhow::Error) -> (Option<LogCheck>, bool) {
+    let check = LogCheck::failed_by(error);
+    (check, check.is_some() && check == previous)
+}
+
 /// The tail check contiguity cannot make: once ingestion reaches the
 /// finalized head, its totals must be the chain's own there. A provider
 /// that truncates a log response fails the tick before anything is stored,
@@ -482,18 +550,27 @@ async fn onchain_totals(chain: &Chain, book: AddressBook, block: u64) -> Result<
 fn ensure_complete(head: u64, ingested: Totals, onchain: Totals) -> Result<()> {
     anyhow::ensure!(
         ingested.inputs == onchain.inputs,
-        "the InputBox holds {} inputs for the application at block {head}, but ingestion \
-         reaches {}: incomplete InputAdded logs from the provider",
-        onchain.inputs,
-        ingested.inputs
+        IncompleteLogs {
+            check: LogCheck::HeadInputs,
+            message: format!(
+                "the InputBox holds {} inputs for the application at block {head}, but \
+                 ingestion reaches {}: incomplete InputAdded logs from the provider",
+                onchain.inputs, ingested.inputs
+            ),
+        }
     );
     let show = |epoch: Option<u64>| epoch.map_or("none".to_string(), |e| e.to_string());
     anyhow::ensure!(
         ingested.last_sealed_epoch == onchain.last_sealed_epoch,
-        "the consensus's last sealed epoch at block {head} is {}, but ingestion reaches {}: \
-         incomplete EpochSealed logs from the provider",
-        show(onchain.last_sealed_epoch),
-        show(ingested.last_sealed_epoch)
+        IncompleteLogs {
+            check: LogCheck::HeadSealedEpoch,
+            message: format!(
+                "the consensus's last sealed epoch at block {head} is {}, but ingestion \
+                 reaches {}: incomplete EpochSealed logs from the provider",
+                show(onchain.last_sealed_epoch),
+                show(ingested.last_sealed_epoch)
+            ),
+        }
     );
     Ok(())
 }
@@ -517,9 +594,13 @@ fn construct_input_ids<'a>(
         }
         anyhow::ensure!(
             input_added.index == U256::from(*next_index),
-            "InputAdded index {} where {} was expected: incomplete logs from the provider",
-            input_added.index,
-            next_index
+            IncompleteLogs {
+                check: LogCheck::InputIndex,
+                message: format!(
+                    "InputAdded index {} where {} was expected: incomplete logs from the provider",
+                    input_added.index, next_index
+                ),
+            }
         );
         let input = Input {
             id: InputId {
@@ -542,8 +623,13 @@ fn construct_input_ids<'a>(
     if input_index_boundary != u64::MAX {
         anyhow::ensure!(
             *next_index == input_index_boundary,
-            "epoch {epoch_number} seals at input {input_index_boundary}, but only {next_index} \
-             inputs arrived: incomplete logs from the provider"
+            IncompleteLogs {
+                check: LogCheck::SealedBound,
+                message: format!(
+                    "epoch {epoch_number} seals at input {input_index_boundary}, but only \
+                     {next_index} inputs arrived: incomplete logs from the provider"
+                ),
+            }
         );
     }
     // input index in epoch should be reset when a new epoch starts
@@ -848,6 +934,7 @@ mod witness_tests {
             error.to_string().contains("seals at input 3"),
             "unexpected error: {error:#}"
         );
+        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::SealedBound));
         assert_eq!(f.stored(), (5, totals(2, 0)), "nothing is committed");
     }
 
@@ -888,6 +975,7 @@ mod witness_tests {
             error.to_string().contains("incomplete InputAdded logs"),
             "unexpected error: {error:#}"
         );
+        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::HeadInputs));
         assert_eq!(f.stored(), (5, totals(0, 0)), "nothing is committed");
     }
 
@@ -902,6 +990,7 @@ mod witness_tests {
             error.to_string().contains("incomplete EpochSealed logs"),
             "unexpected error: {error:#}"
         );
+        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::HeadSealedEpoch));
         assert_eq!(f.stored(), (5, totals(0, 0)), "nothing is committed");
     }
 
@@ -950,7 +1039,63 @@ mod witness_tests {
             format!("{error:#}").contains("exceeds u64"),
             "unexpected error: {error:#}"
         );
+        assert_eq!(LogCheck::failed_by(&error), None);
         assert_eq!(f.stored(), (5, totals(0, 0)), "nothing is committed");
+    }
+
+    /// An input index gap, and logs that do not continue the stored rows (a
+    /// seal or input dropped at an earlier chunk's tail), fail typed checks;
+    /// a transport failure fails none.
+    #[tokio::test]
+    async fn completeness_and_continuity_failures_are_typed() {
+        let mut f = fixture(0, 1_000);
+        f.head(10, 2, 0);
+        f.inputs(&[1]);
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::InputIndex));
+
+        // Epoch 1's seal was dropped: epoch 2's follows epoch 0's.
+        let mut f = fixture(2, 1_000);
+        f.head(10, 2, 2);
+        f.seals(&[(2, 2)]);
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::StoredEpochs));
+
+        // So input 2, stored as epoch 1's third, is really epoch 2's first.
+        let mut f = fixture(3, 1_000);
+        f.head(10, 4, 2);
+        f.seals(&[(2, 4)]);
+        f.inputs(&[3]);
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::StoredInputs));
+
+        let mut f = fixture(0, 1_000);
+        f.rpc.push_failure_msg("connection refused");
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert_eq!(LogCheck::failed_by(&error), None);
+    }
+
+    #[test]
+    fn a_failed_check_escalates_only_when_it_repeats_on_the_next_tick() {
+        let incomplete = |check| {
+            anyhow::Error::new(IncompleteLogs {
+                check,
+                message: String::new(),
+            })
+        };
+        let transient = anyhow::anyhow!("connection refused");
+
+        // The first failure is a warning only; the same one next tick is not.
+        let (first, repeated) = repeated_check(None, &incomplete(LogCheck::HeadInputs));
+        assert!(!repeated);
+        let (second, repeated) = repeated_check(first, &incomplete(LogCheck::HeadInputs));
+        assert!(repeated);
+        // Another check, or a transient failure between, starts over.
+        assert!(!repeated_check(second, &incomplete(LogCheck::InputIndex)).1);
+        let (cleared, repeated) = repeated_check(second, &transient);
+        assert!(!repeated);
+        assert!(!repeated_check(cleared, &incomplete(LogCheck::HeadInputs)).1);
+        assert!(!repeated_check(cleared, &transient).1);
     }
 
     /// A chunk that ends before the head cannot be checked against it: it

@@ -189,8 +189,9 @@ Options:
   and heals on the next tick. During a cold-start catch-up, a chunk that ends
   before the finalized head is checked for contiguity only, so an input or
   epoch dropped at its tail surfaces later as an index or epoch error that
-  does not heal: point the node at a complete provider and rebuild the state
-  directory.
+  does not heal. Either failure logs an error once it repeats on the next
+  tick: point the node at a provider that serves complete logs, and if the
+  error persists, rebuild the state directory.
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
   canonical three-level table that allowance is about one week and 85 minutes
