@@ -37,7 +37,7 @@ the off-chain clients; the rollups-contracts dependency (`Application`,
 - The deployer's parameter table is trusted: production validates nothing
   on chain beyond code presence and a nonzero allowance and block time
   (below), and a provider's table must be validated before use and stay
-  stable for its factory's lifetime (dispute-game.md:586-588).
+  stable for its factory's lifetime (dispute-game.md:608-610).
 - The base layer may censor the honest party for at most `C` in total per
   root dispute; chain support is stated in prt/contracts/AGENTS.md, "Trust
   boundary and assumptions".

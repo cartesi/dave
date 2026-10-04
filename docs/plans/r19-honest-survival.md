@@ -35,7 +35,7 @@ linked descendants is at most `C`, then:
 
 Both are safety: no wrong root can win. Whether the root finishes at all
 (termination) and how long it takes (the delay bound) are liveness, and stay
-separate non-claims (dispute-game.md:820-824, prt-delay-bound.md).
+separate non-claims (dispute-game.md:845-849, prt-delay-bound.md).
 
 The model must exercise the scenarios the claim quantifies over: budgets
 exactly at the formula (no loose reserve), children contested by Sybils, the
@@ -97,7 +97,7 @@ Paths under `prt/contracts/` unless stated.
 | `test/properties/TournamentLifecycleInvariant.t.sol:26-31` (1,539 lines) | One-level stateful legality and clock accounting (`runningClocks >= floor(K / 2)`) | No survival property; no inner tournaments |
 | `test/properties/RecursiveTournamentLifecycle.t.sol:366-397`, `testFuzzRepeatedDelegationsWithinBudgetDoNotDrain` | Two delegations return the pre-seal clock | Each child is uncontested (`_winChildAloneAfter`, :980-999, joins alone and waits for the deadline); no responses or leaf race in the child; no censorship; one orientation (`CLAIM_ONE`); a loose reserve (`MAX_ALLOWANCE = 200` against `G + F = 35`, :43-50) |
 | Same file, :123 and :344 | The other envelope side, for single delegations | As above |
-| `test/properties/ConcurrentRecursivePopulation.t.sol:101`, `FourLevelRecursiveLifecycle.t.sol:95` | Fixed recursive plumbing traces | Adversarial schedules |
+| `test/properties/ConcurrentRecursivePopulation.t.sol:101`, `FourLevelRecursiveLifecycle.t.sol:96` | Fixed recursive plumbing traces | Adversarial schedules |
 | `test/Tournament.t.sol:1072` | One censorship scenario (a sacrificial leaf cannot amplify censorship) | Everything else |
 | [Clock refill review](../reviews/2026-09-29-prt-clock-refill/REVIEW.md):66-76 | The balance `remaining censorship + (D - d) * F + d * G` | Reasoning, not a checked invariant |
 | The e2e smoke (`test/e2e/rollups/scenarios/simple.lua:26-29`, and the two-level smoke) | The real node beats an eager Sybil at `C = 0` | Scenario evidence, not adversarial schedules |
@@ -105,8 +105,8 @@ Paths under `prt/contracts/` unless stated.
 
 No evidence combines an honest actor, Sybil-populated children, one `C`
 ledger, both orientations end to end, and reserves set exactly at the
-formula. The living docs say so: dispute-game.md:820-824,
-prt-contract-testing.md:139-144, dimensioning.md:360-364, and
+formula. The living docs say so: dispute-game.md:845-849,
+prt-contract-testing.md:143-148, dimensioning.md:360-364, and
 prt-delay-bound.md:156-160 (no honest-validator strategy is imposed). The
 devnet's own claim, that with `C = 0` "clocks cover only the honest path"
 (`script/Deployment.s.sol:166-168`), is what the model checks at `C = 0`.
