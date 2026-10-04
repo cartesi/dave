@@ -15,12 +15,13 @@ lists "a correct participant can submit required transactions before its
 clocks ... expire" as a safety assumption rather than deriving it from
 per-action latencies and `C`.
 
-That gap has already cost one defect: before 2c502f63 each sealed parent
-match against a new Sybil cost the correct party one build, so once `C` was
-spent a few Sybil bonds eliminated it. It was found by reasoning in the
-2026-09-28 robustness review, not by a test. No release tag contains
-2c502f63 or 935dc133 yet. A counterexample found after the contracts are
-frozen for the audit costs a new deployment generation.
+That gap has already cost one defect: before the child-return refill
+(cartesi/dave#287) each sealed parent match against a new Sybil cost the
+correct party one build, so once `C` was spent a few Sybil bonds eliminated
+it. It was found by reasoning in the 2026-09-28 robustness review, not by a
+test. No release tag contains the refill or the same PR's terminal-win
+discount yet. A counterexample found after the contracts are frozen for the
+audit costs a new deployment generation.
 
 ## The claim to establish
 
@@ -167,7 +168,8 @@ which the claim does not cover.
   orientations and one `C` ledger across all levels, with its runs and depth
   recorded.
 - It fails a mutation control: with the child-return refill removed (the
-  pre-2c502f63 rule), a short schedule eliminates the honest commitment.
+  rule before cartesi/dave#287), a short schedule eliminates the honest
+  commitment.
 - A counterexample is a contract finding: stop, reproduce it as a
   regression, and route the fix through the contract-change gate before the
   contracts are frozen for the audit.

@@ -122,16 +122,20 @@ before the freeze.
    allocation, is witnessed only by the 12 full-stack FFI tests in
    `cartesi-rollups/contracts/test/gas/PrtLeafProofGasFfi.t.sol` (the
    maximum input measured 5,040,748), which `rollups-contracts::test`
-   excludes. 3700a1d5 accepted them by a manual run; the `prt-contracts` CI
-   job now runs `just test-prt-gas`, so a change that pushes a leaf proof
-   past its allocation fails CI.
+   excludes. The calldata refund calibration (cartesi/dave#287) accepted
+   them by a manual run; the `prt-contracts` CI job now runs
+   `just test-prt-gas`, so a change that pushes a leaf proof past its
+   allocation fails CI.
 
 The refill review's release-evidence item ("Remaining assurance work", 3) is
-covered elsewhere: the gas calibration by 3700a1d5, active real-machine
-tall-leaf differentials by ec8c7276, dense height-37 performance by
+covered elsewhere: the gas calibration by the calldata refund calibration
+(reviews/2026-10-02-prt-calldata-refund-calibration), active real-machine
+tall-leaf differentials by the leaf builder's active-big-cycle differential
+(cartesi/dave#287), dense height-37 performance by
 measurements/two-level-leaf.md and node-vs-emulator.md with the v0.21
 confirmation in todo.md; full E2E is the per-PR smoke, since dense disputes
-left e2e by design (0a9976a0).
+left e2e by design when the suite was cut to the black-box smoke
+(cartesi/dave#287).
 
 ## Freeze and audit identity
 
@@ -162,16 +166,19 @@ addresses (build-system.md).
 
 ## Ordering
 
-1. This PR: the node debts and R10, and the docs. The contracts are
-   unchanged since b5e3e4ca, whose calibration 3700a1d5 accepted; the
-   deployment script registers the Arbitrum entries at the parent chain's
-   12 s, so their addresses now equal Ethereum's and Sepolia's.
+1. This PR (cartesi/dave#287): the node debts and R10, and the docs. Its
+   calldata refund change set the allocations, and their calibration was
+   accepted under release Forge; the contracts' only later code change, the
+   child-return clamp on the `winInnerTournament` path, stays within them
+   (the Tournament gas witnesses pass). The deployment script registers the
+   Arbitrum entries at the parent chain's 12 s, so their addresses now equal
+   Ethereum's and Sepolia's.
 2. A release candidate for the staging pipeline and testnet. It is a new
-   generation: 2c502f63 changed the `TournamentParameters` row and the clone
-   arguments, so this node cannot start against earlier contracts, and the
-   queued node fixes (the terminal-application hold f371381c, seam 2
-   e282f441, input-index continuity 44245313) reach integrators only with
-   it. The candidate is their main path, not an extra.
+   generation: this PR's child-return refill changed the
+   `TournamentParameters` row and the clone arguments, so this node cannot
+   start against earlier contracts, and this PR's node fixes (the
+   terminal-application hold, seam 2, input-index continuity) reach
+   integrators only with it. The candidate is their main path, not an extra.
 3. R19, in its own PR.
 4. The canonical two-level switch, in its own PR. It changes only the
    provider: the `Tournament` and factory fingerprints hold, the provider's

@@ -125,8 +125,9 @@ safety, not hygiene:
   properties.
 - When the two conflict, split the check: keep a panic only for what
   corruption alone can reach, and move what chain data can reach off the
-  clock path. f371381c did this after a terminal application panicked every
-  node at the roll, which would have let a fabricated claim win uncontested.
+  clock path. The terminal-application fix (cartesi/dave#287) did this after
+  a terminal application panicked every node at the roll, which would have
+  let a fabricated claim win uncontested.
 
 Apart from the two accepted halts and the trust model below, chain data
 reaches no panic on the dispute path until a wrong epoch has settled: the Hero
