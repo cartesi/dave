@@ -30,12 +30,12 @@ function helper.exists(file)
     return ok, err
 end
 
-function helper.remove_file(file)
-    print("Removing file: ", file)
-    local success, err = os.remove(file)
-    if not success then
-        -- Ignore the error or handle it if needed
-        print("Error removing file: ", file, err) -- Optional: print the error message
+--- Remove a file or a whole directory tree (machine snapshots are
+--- directories, which os.remove refuses while they hold files).
+function helper.remove_tree(path)
+    local quoted = "'" .. path:gsub("'", "'\\''") .. "'"
+    if not os.execute("rm -rf -- " .. quoted) then
+        print("Error removing: ", path)
     end
 end
 
