@@ -275,4 +275,42 @@ mod tests {
         run(Storage::new(&state_dir).unwrap(), ShutdownSignal::default());
         assert!(check.settlement_info(2).unwrap().is_some());
     }
+
+    /// The tick's own check runs before a batch starts, so only the batch's
+    /// check bounds a stop to one input's execution; calling `advance` with
+    /// a stop already requested is the deterministic way to reach it.
+    #[test]
+    fn a_stopped_batch_executes_no_further_input() {
+        let (_dir, mut storage) = crate::storage::sql::test_helper::setup_storage();
+        let inputs: Vec<Input> = (0..2)
+            .map(|input_index_in_epoch| Input {
+                id: InputId {
+                    epoch_number: 0,
+                    input_index_in_epoch,
+                },
+                data: vec![],
+            })
+            .collect();
+        let sealed = Epoch {
+            epoch_number: 0,
+            input_index_boundary: 2,
+            root_tournament: Address::ZERO,
+            block_created_number: 1,
+        };
+        storage
+            .insert_consensus_data(1, inputs.iter(), [&sealed].into_iter())
+            .unwrap();
+        let state_dir = storage.state_dir().to_owned();
+        let plan = storage.advance_plan().unwrap();
+        assert_eq!(plan.inputs.len(), 2);
+
+        let stopped = ShutdownSignal::default();
+        stopped.request();
+        let mut runner = MachineRunner::new(storage, Duration::ZERO, stopped).unwrap();
+        assert!(!runner.advance(plan).unwrap(), "a stopped batch committed");
+        let mut check = Storage::new(&state_dir).unwrap();
+        for input in 1..=2 {
+            assert!(check.snapshot_hash(0, input).unwrap().is_none());
+        }
+    }
 }
