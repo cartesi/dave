@@ -177,3 +177,8 @@ Code:
   deployed interfaces require coordinated cross-implementation validation.
 - Treat dated plans and reviews as provenance. Confirm their conclusions
   against current code and living documentation before acting on them.
+- Do not write this repository's commit hashes in tracked files outside
+  `docs/reviews/`. It merges by rebase, which rewrites every hash, so one
+  written on a branch names nothing on main. Name the change and cite its
+  pull request; a record that needs an exact state gives the tree hash
+  (`git rev-parse <commit>^{tree}`).

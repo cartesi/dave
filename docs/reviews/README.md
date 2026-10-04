@@ -16,6 +16,12 @@ Current behavior belongs in the living documents indexed by
 have a line in [`docs/todo.md`](../todo.md) or an owner in a current design
 document or runbook. Do not use a dated review directory as a hidden backlog.
 
+Records cite pull requests and commit subjects, not this repository's commit
+hashes: it merges by rebase, which rewrites every hash. For an exact measured
+state, give the tree hash (`git rev-parse <commit>^{tree}`), which a rebase
+onto an unchanged main keeps. Older records keep the hashes they were written
+with, and some of those name nothing on main.
+
 ## Reviews
 
 - [`2026-07-09-e2e-suite-economics/`](2026-07-09-e2e-suite-economics/) - e2e

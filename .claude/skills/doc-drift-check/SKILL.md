@@ -13,13 +13,16 @@ Procedure, per document:
 
 1. Extract every pointer-type claim: file paths, module names, function
    and type names, table/schema lists, command names, counts ("21
-   scenarios"), and cross-references to other docs.
+   scenarios"), cross-references to other docs, and commit hashes.
 2. Verify each against the tree (Glob/Grep, `just --list`). For claims
    about behavior shape (control flow, gating, ordering), read the
    named code - do not trust the doc's paraphrase.
 3. Fix what drifted. Prefer fixes that cannot rot again: replace counts
    with "see <file> for the current list", link the authoritative file
-   instead of restating its contents.
+   instead of restating its contents. Replace each of this repository's
+   commit hashes with the change's name and its pull request, since rebase
+   merges rewrite them (AGENTS.md, "Change discipline"); frozen records
+   under `docs/reviews/` keep theirs.
 4. Check status claims: work a doc calls planned may have landed (check
    git log); state it in the present tense and delete its line from
    `docs/todo.md`. A known debt the code no longer has is deleted, not
