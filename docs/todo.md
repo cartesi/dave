@@ -81,10 +81,8 @@ carry no backlog (reviews/README.md).
   addresses, so it rides the next deployment bundle (normally the next
   generation). (computation-hash.md)
 - Review contract code shaped for tests (`Deployment.s.sol`'s
-  `commitmentBudget` parameter, which only the devnet script uses), say that
-  on-chain geometry validation is test-only, and make the canonical validator
-  test check the real rows: it runs its refill check with `T = 0`.
-  (prt-contract-testing.md)
+  `commitmentBudget` parameter, which only the devnet script uses), and say
+  that on-chain geometry validation is test-only. (prt-contract-testing.md)
 - Write a deployment runbook: chains, parameters, broadcast, address
   verification against the release asset, post-deploy checks.
   (build-system.md, deployment generations)

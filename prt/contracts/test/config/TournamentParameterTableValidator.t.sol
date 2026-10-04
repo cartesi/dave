@@ -6,6 +6,7 @@ pragma solidity ^0.8.17;
 import {Test} from "forge-std-1.9.6/src/Test.sol";
 
 import {ArbitrationConstants} from "prt-contracts/arbitration-config/ArbitrationConstants.sol";
+import {CanonicalTournamentParametersProvider} from "prt-contracts/arbitration-config/CanonicalTournamentParametersProvider.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
 
@@ -21,24 +22,29 @@ contract TournamentParameterTableValidatorTest is Test {
         VALIDATOR = new TournamentParameterTableValidatorHarness();
     }
 
-    function testCurrentCanonicalTableIsValid() public view {
+    /// The provider's own rows on Ethereum (12 s blocks, five-minute
+    /// inclusion), so the refill check runs with the geometry's commitment
+    /// budget. Without censorship the root allowance must hold exactly the
+    /// pending delegations, the tightest case.
+    function testCurrentCanonicalTableIsValid() public {
+        uint64[2] memory censorshipSeconds = [uint64(1 weeks), 0];
         uint64 levels = ArbitrationConstants.LEVELS;
-        TournamentParameters[] memory table = _table(levels);
-        for (uint64 row; row < levels; ++row) {
-            table[row] = _row(
-                levels,
-                ArbitrationConstants.log2step(row),
-                ArbitrationConstants.height(row),
-                25,
-                50_825
+        for (uint256 i; i < censorshipSeconds.length; ++i) {
+            CanonicalTournamentParametersProvider provider = new CanonicalTournamentParametersProvider(
+                12_000, censorshipSeconds[i], 5 minutes
             );
+            TournamentParameters[] memory table = _table(levels);
+            for (uint64 row; row < levels; ++row) {
+                table[row] = provider.tournamentParameters(row);
+            }
+            assertGt(Time.Duration.unwrap(table[0].commitmentBudget), 0);
+
+            (uint64 actualLevels, uint64 totalLog2Span) =
+                VALIDATOR.validate(table, 92);
+
+            assertEq(actualLevels, levels);
+            assertEq(totalLog2Span, 92);
         }
-
-        (uint64 actualLevels, uint64 totalLog2Span) =
-            VALIDATOR.validate(table, 92);
-
-        assertEq(actualLevels, levels);
-        assertEq(totalLog2Span, 92);
     }
 
     function testSafeFourLevelMiniatureIsValid() public view {

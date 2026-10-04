@@ -88,15 +88,15 @@ before the freeze.
    canonical provider rejects only a zero root allowance or block time. The
    whole-table validator lives in `test/fixtures/`. Its canonical test,
    `testCurrentCanonicalTableIsValid`
-   (`test/config/TournamentParameterTableValidator.t.sol:24-42`), passes
-   literal budgets and, through `_row` (:452-467), a zero commitment budget,
-   so its refill check runs with `T = 0`; `testCanonicalProviderRowsAndTiling`
-   compares the provider with `ClockBudgets` itself. Make the canonical test
-   validate the provider's real rows for each registered chain, and state
-   the table as trusted configuration. A root allowance short by one refill
-   is a fixed loss of `T + 2G` (tolerance falls from `C` to `C - (T + 2G)`),
-   decisive only near `C = 0`; an accumulating drain needs per-row or
-   understated budgets.
+   (`test/config/TournamentParameterTableValidator.t.sol`), validates the
+   canonical provider's own rows at Ethereum's 12 s blocks, with one week of
+   censorship and with none, where the root allowance must hold exactly the
+   pending delegations, so its refill check runs with the real `T`;
+   `testCanonicalProviderRowsAndTiling` compares the provider with
+   `ClockBudgets` itself. State the table as trusted configuration. A root
+   allowance short by one refill is a fixed loss of `T + 2G` (tolerance
+   falls from `C` to `C - (T + 2G)`), decisive only near `C = 0`; an
+   accumulating drain needs per-row or understated budgets.
 4. The deployment path, and a runbook it lacks. `deploy.sh` runs three Forge
    scripts in order (PRT, the rollups-contracts dependency, Dave); every
    address is CREATE2 with a zero salt over the full initcode
