@@ -127,7 +127,8 @@ impl AddressBook {
     }
 
     /// A new state directory's watermark, the last block ingestion treats
-    /// as processed: below genesis, which holds epoch 0's seal, and at most
+    /// as processed: below genesis, the first block that can hold the
+    /// application's logs (epoch 0's seal included), and at most
     /// `finalized`, a finalized head sampled before this book read the
     /// deployment blocks at latest. A deployment not yet finalized at that
     /// sample can reorg only into blocks above it; a finalized one cannot
