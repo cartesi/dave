@@ -8,13 +8,20 @@ own cost unrefunded, the largest cost an honest prover cannot avoid. Every
 allocation was remeasured, and the witnesses became one-sided: each asserts
 its reviewed minimum fits the allocation, and the exact-recommendation pins
 and their retained-headroom constants are gone. This calibration also
-discharges the one owed since 2c502f63 and 935dc133.
+discharges the one owed since the child-return refill and the terminal-win
+discount ("fix(prt): refill the winner a child returns for its delegation"
+and "fix(prt): let a leaf proof or timeout win earn one inclusion", both in
+cartesi/dave#287).
 
 ## Environment
 
-- Candidate: the commit that adds this record, on top of 4b72c0ea. The
-  accepted run is at 6d5caebb, whose contracts, `machine/step` and
-  dependencies are unchanged since that commit.
+- Candidate: the commit that adds this record, "fix(prt)!: refund calldata
+  and recalibrate every allocation" (cartesi/dave#287). The accepted run is
+  at a later commit of the same PR, "refactor(node): stop rejecting
+  standings and timeouts on combined rules", whose contracts, `machine/step`
+  and dependencies are unchanged since the candidate. Its tree
+  (`git rev-parse <commit>^{tree}`) is
+  `b9d674faac7d64b2f5ec1fc9b2f9781e416afba0`.
 - Forge: the measurements were first taken with a nixpkgs `1.5.1-dev`
   source build, which the guard treats as diagnostic. The accepted run used
   the official `1.5.1-v1.5.1` release (commit b0a9dd9c, maxperf), now what
@@ -118,7 +125,7 @@ block gas limit was not re-queried.
 
 ## Acceptance
 
-Accepted: `just measure-prt-gas` on the clean tree at 6d5caebb under the
-release Forge, with no diagnostic override, exits 0 with no warning; all 30
-witnesses pass. Every one of its 186 reported values, including the
-complete-call diagnostics, equals the source build's.
+Accepted: `just measure-prt-gas` on the clean accepted tree (Environment)
+under the release Forge, with no diagnostic override, exits 0 with no
+warning; all 30 witnesses pass. Every one of its 186 reported values,
+including the complete-call diagnostics, equals the source build's.
