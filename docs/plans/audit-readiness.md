@@ -15,8 +15,8 @@ at the commit that added this file; re-check them.
   with their interfaces.
 - The deployment scripts: `prt/contracts/script/Deployment.s.sol` and
   `BaseDeploymentScript.sol`; `cartesi-rollups/contracts/script/`
-  `Deployment.s.sol`, `deploy.sh`, `deploy-mainnets.sh` and
-  `deploy-testnets.sh`.
+  `Deployment.s.sol`, `deploy.sh`, `deploy-mainnets.sh`, `deploy-testnets.sh`
+  and `deploy-experimental.sh`.
 - `machine/step` (the generated Solidity uarch, solidity-step v0.15.0): in
   scope, or trusted as upstream with `CartesiStateTransition` as the seam
   (an open question).
@@ -103,7 +103,8 @@ before the freeze.
    (`prt/contracts/script/BaseDeploymentScript.sol:53-64`); Dave's script
    finds the PRT factory by name
    (`cartesi-rollups/contracts/script/Deployment.s.sol:17`); release CI only
-   simulates deployment and publishes the addresses as a release asset
+   simulates deployment and publishes the addresses as release assets, one
+   for Ethereum and Sepolia and one for the experimental chains
    (`.github/workflows/build.yml:422-431`). `docs/runbooks/` holds only the
    gas runbook. Write a deployment runbook: chains, parameters, broadcast,
    address verification against the release asset, post-deploy checks (a

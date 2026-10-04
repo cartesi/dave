@@ -426,16 +426,29 @@ jobs:
         env:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-contract-artifacts.tar.gz
 
-      - name: Simulate deployment to every registered chain (only Ethereum is supported)
+      # Each archive takes the deployments directory as its simulation left
+      # it (hence the rm), so the deploy scripts stay the only chain lists.
+      - name: Simulate deployment to the supported chains (Ethereum and Sepolia)
         working-directory: ./cartesi-rollups/contracts
         run: |
-          ./script/deploy-testnets.sh
           ./script/deploy-mainnets.sh
+          ./script/deploy-testnets.sh
 
-      - name: Compress testnet and mainnet deployment simulation artifacts
+      - name: Compress supported chain deployment addresses
         run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments
         env:
           FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-deployment-addresses.tar.gz
+
+      - name: Simulate deployment to the experimental chains
+        working-directory: ./cartesi-rollups/contracts
+        run: |
+          rm -rf deployments
+          ./script/deploy-experimental.sh
+
+      - name: Compress experimental chain deployment addresses
+        run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments
+        env:
+          FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-experimental-deployment-addresses.tar.gz
 
       - name: Build devnet
         run: |

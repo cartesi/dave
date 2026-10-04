@@ -12,9 +12,10 @@ carry no backlog (reviews/README.md).
   `TournamentParameters` row and the clone arguments, so this node cannot
   start against earlier contracts. The release notes name the generation,
   its addresses, geometry and bonds, and say that only Ethereum is supported:
-  the Arbitrum entries now share Ethereum's and Sepolia's addresses, are
-  experimental, and the node does not start there. (build-system.md,
-  CHANGELOG.md)
+  the deployment-addresses asset now holds only Ethereum and Sepolia, the
+  experimental chains ship in their own asset, and the Arbitrum entries share
+  Ethereum's and Sepolia's addresses and the node does not start there.
+  (build-system.md, CHANGELOG.md)
 
 ## Before the canonical two-level switch (a later PR)
 

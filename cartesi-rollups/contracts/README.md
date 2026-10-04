@@ -43,14 +43,17 @@ You may want to consult the [Forge script documentation] for options.
 ./script/deploy.sh  # [options...]
 ```
 
-`./script/deploy-mainnets.sh` and `./script/deploy-testnets.sh` deploy to every
-registered chain, and the release ships every chain's addresses, but only
-Ethereum (mainnet and Sepolia) is supported. OP Mainnet, Base and their Sepolia
-testnets are experimental. Arbitrum One and Arbitrum Sepolia are experimental
-and the node does not run there: their `block.number` is the parent chain's
-block number, so their clocks are calibrated to its 12 s slot, their addresses
-equal Ethereum's and Sepolia's, and an application's `DaveConsensus` claim
-staging period counts parent-chain blocks. See the clock model in
+Only Ethereum is supported. `./script/deploy-mainnets.sh` deploys to Ethereum
+Mainnet and `./script/deploy-testnets.sh` to Ethereum Sepolia; the release's
+`deployment-addresses` asset holds those two chains.
+`./script/deploy-experimental.sh` deploys to the other registered chains, whose
+addresses ship in the separate `experimental-deployment-addresses` asset. OP
+Mainnet, Base and their Sepolia testnets are experimental. Arbitrum One and
+Arbitrum Sepolia are experimental and the node does not start there: their
+`block.number` is the parent chain's block number, so their clocks are
+calibrated to its 12 s slot, their addresses equal Ethereum's and Sepolia's, and
+an application's `DaveConsensus` claim staging period counts parent-chain
+blocks. See the clock model in
 [`docs/dispute-game.md`](../../docs/dispute-game.md#clock-model).
 
 [Forge script documentation]: https://www.getfoundry.sh/reference/forge/script#forge-script
