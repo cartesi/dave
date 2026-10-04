@@ -117,11 +117,10 @@ local function event_new_inner(id_hash, child)
     }
 end
 
-local function chain_head(number, byte, parent_byte)
+local function chain_head(number, byte)
     return {
         number = number,
         hash = digest(byte):hex_string(),
-        parent_hash = digest(parent_byte):hex_string(),
     }
 end
 
@@ -195,14 +194,14 @@ local function semantic_fixture()
     local id_hash = one:join(two)
     local agree_state = digest(40)
 
-    local block9 = chain_head(9, 209, 208)
-    local finalized = chain_head(10, 210, 209)
-    local block11 = chain_head(11, 211, 210)
-    local head = chain_head(12, 212, 211)
+    local block9 = chain_head(9, 209)
+    local block10 = chain_head(10, 210)
+    local block11 = chain_head(11, 211)
+    local head = chain_head(12, 212)
     local transaction12 = digest(112):hex_string()
 
     local logs = {
-        root_range = {
+        root = {
             raw_log {
                 address = root,
                 block = 9,
@@ -215,14 +214,12 @@ local function semantic_fixture()
             raw_log {
                 address = root,
                 block = 10,
-                block_hash = finalized.hash,
+                block_hash = block10.hash,
                 transaction_index = 0,
                 log_index = 0,
                 event =
                     event_commitment_joined(two, final_two, submitter),
             },
-        },
-        root_11 = {
             raw_log {
                 address = root,
                 block = 11,
@@ -261,8 +258,6 @@ local function semantic_fixture()
                     id_hash, digest(35), digest(36), 0, 23
                 ),
             },
-        },
-        root_12 = {
             raw_log {
                 address = root,
                 block = 12,
@@ -273,7 +268,7 @@ local function semantic_fixture()
                 event = event_new_inner(id_hash, child),
             },
         },
-        child_12 = {
+        child = {
             raw_log {
                 address = child,
                 block = 12,
@@ -330,9 +325,6 @@ local function semantic_fixture()
         one = one,
         two = two,
         child_candidate = child_candidate,
-        block9 = block9,
-        finalized = finalized,
-        block11 = block11,
         head = head,
         logs = logs,
         responses = responses,
@@ -342,7 +334,6 @@ end
 local function mock_transport(fixture)
     local calls = {
         ranges = {},
-        exact = {},
         observer = {},
         final_checks = 0,
     }
@@ -350,22 +341,8 @@ local function mock_transport(fixture)
         final_head = fixture.head,
     }
 
-    function transport.get_head(_, tag)
-        if tag == "finalized" then
-            return fixture.finalized
-        end
-        assert(tag == "latest")
+    function transport.get_head()
         return fixture.head
-    end
-
-    function transport.get_block_by_hash(_, hash)
-        if hash == fixture.block11.hash then
-            return fixture.block11
-        end
-        if hash == fixture.finalized.hash then
-            return fixture.finalized
-        end
-        error("unexpected ancestry hash " .. tostring(hash))
     end
 
     function transport:get_block_by_number(number)
@@ -378,25 +355,10 @@ local function mock_transport(fixture)
         table.insert(calls.ranges, { address = at, from = from, to = to })
         Test.equal(#requested_topics, 6)
         if at == fixture.root then
-            return fixture.logs.root_range
+            return fixture.logs.root
         end
         Test.equal(at, fixture.child)
-        return {}
-    end
-
-    function transport.get_logs_at_block(_, at, block, requested_topics)
-        table.insert(calls.exact, { address = at, block = block.number })
-        Test.equal(#requested_topics, 6)
-        if at == fixture.root and block.number == 11 then
-            return fixture.logs.root_11
-        end
-        if at == fixture.root and block.number == 12 then
-            return fixture.logs.root_12
-        end
-        if at == fixture.child and block.number == 12 then
-            return fixture.logs.child_12
-        end
-        return {}
+        return fixture.logs.child
     end
 
     function transport.observer_call(_, at, view, argument, observation_head)
@@ -596,11 +558,15 @@ return {
             Domain.TournamentStanding.AWAITING_CLOSURE
         )
         Test.equal(#calls.ranges, 2)
-        Test.equal(#calls.exact, 4)
+        for _, range in ipairs(calls.ranges) do
+            Test.equal(range.from, 9)
+            Test.equal(range.to, fixture.head.number,
+                "log range escaped the sampled head")
+        end
         Test.equal(calls.final_checks, 1)
         for _, call in ipairs(calls.observer) do
             Test.equal(call.head.hash, fixture.head.hash,
-                "observer call escaped the sampled exact head")
+                "observer call escaped the sampled head")
             Test.equal(call.head.number, fixture.head.number)
         end
     end),
@@ -608,30 +574,15 @@ return {
     Test.case("reader rejects a head that changes before return", function()
         local fixture = semantic_fixture()
         local transport = mock_transport(fixture)
-        transport.final_head = chain_head(12, 250, 211)
+        transport.final_head = chain_head(12, 250)
         Test.error_like("no longer canonical", function()
-            SemanticReader.new(fixture.root, 9, transport):fetch()
-        end)
-    end),
-
-    Test.case("reader proves finalized membership in latest ancestry", function()
-        local fixture = semantic_fixture()
-        local transport = mock_transport(fixture)
-        function transport.get_head(_, tag)
-            if tag == "finalized" then
-                return chain_head(10, 250, 209)
-            end
-            assert(tag == "latest")
-            return fixture.head
-        end
-        Test.error_like("not on latest-head ancestry", function()
             SemanticReader.new(fixture.root, 9, transport):fetch()
         end)
     end),
 
     Test.case("global log normalization rejects malformed provenance", function()
         local fixture = semantic_fixture()
-        local base = fixture.logs.root_11[1]
+        local base = fixture.logs.root[3]
         local function copy(overrides)
             local value = {}
             for key, field in pairs(base) do
@@ -702,20 +653,16 @@ return {
         end
     end),
 
-    Test.case("exact-tail log hash must match sampled ancestry", function()
+    Test.case("log range cannot return a block past the sampled head", function()
         local fixture = semantic_fixture()
-        fixture.logs.root_12[1].block_hash = digest(250):hex_string()
+        local late = {}
+        for key, field in pairs(fixture.logs.root[3]) do
+            late[key] = field
+        end
+        late.block_number = 13
+        table.insert(fixture.logs.root, late)
         local transport = mock_transport(fixture)
-        Test.error_like("wrong exact block", function()
-            SemanticReader.new(fixture.root, 9, transport):fetch()
-        end)
-    end),
-
-    Test.case("finalized range cannot smuggle an unfinalized log", function()
-        local fixture = semantic_fixture()
-        table.insert(fixture.logs.root_range, fixture.logs.root_11[1])
-        local transport = mock_transport(fixture)
-        Test.error_like("finalized range [9, 10] returned block 11", function()
+        Test.error_like("log range [9, 12] returned block 13", function()
             SemanticReader.new(fixture.root, 9, transport):fetch()
         end)
     end),

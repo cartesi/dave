@@ -21,8 +21,9 @@ Layout:
   plus `merkle/`).
 - `player/domain.lua`, `fold.lua`, and `adapter.lua` - the typed semantic
   boundary over structural events and observer views.
-- `player/semantic_reader.lua` - one finalized/latest observation with
-  exact-hash tail logs, EIP-1898 point calls, and a final canonicality check.
+- `player/semantic_reader.lua` - one latest-head observation: structural logs
+  through the sampled head, EIP-1898 point calls pinned to it, and a final
+  canonicality check. It proves no ancestry; the e2e anvil does not reorg.
 - `player/context.lua`, `planner.lua`, `fulfiller.lua`, and `dispatcher.lua` -
   actor-relative projection, pure policy, local material construction, and
   the single transaction dispatch seam.

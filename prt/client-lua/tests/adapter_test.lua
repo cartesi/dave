@@ -18,7 +18,6 @@ local function head()
     return {
         number = 12,
         hash = digest(240):hex_string(),
-        parent_hash = digest(239):hex_string(),
     }
 end
 

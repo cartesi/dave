@@ -3,12 +3,14 @@ local Fold = require "player.fold"
 local Hash = require "cryptography.hash"
 local bint = require "utils.bint" (256)
 
--- Reorg-safe semantic observation boundary.
+-- Semantic observation boundary of the e2e sybil actor.
 --
--- The reader owns one coherent sample: finalized F, latest H, a proof that F
--- is on H's ancestry, every structural log through H, and all observer calls
--- pinned to H with EIP-1898 requireCanonical. It returns nothing if H changes
--- before the last canonicality check.
+-- One fetch samples the latest head H, reads the structural logs of the root
+-- and its recursively discovered children from the root's creation block
+-- through H.number, and pins every observer call to H with EIP-1898
+-- requireCanonical. It fails if H is no longer canonical at the end. It
+-- proves no ancestry below H: its only chain is the e2e anvil, which has no
+-- reorg scenarios, and reorg-safe reading is the Rust node's job.
 local SemanticReader = {}
 SemanticReader.__index = SemanticReader
 
@@ -130,10 +132,6 @@ local function normalize_head(head, name)
     return {
         number = nonnegative_integer(head.number, name .. " number"),
         hash = normalize_hash(head.hash, name .. " hash"),
-        parent_hash = normalize_hash(
-            head.parent_hash,
-            name .. " parent hash"
-        ),
     }
 end
 
@@ -470,151 +468,40 @@ local function normalize_logs(raw_logs)
     return logs
 end
 
-local function sample_ancestry(transport)
-    local finalized = normalize_head(
-        transport:get_head("finalized"),
-        "sampled finalized head"
-    )
-    local head = normalize_head(
-        transport:get_head("latest"),
-        "sampled latest head"
-    )
-    assert(finalized.number <= head.number,
-        string.format(
-            "finalized head %d is ahead of latest head %d",
-            finalized.number,
-            head.number
-        ))
-
-    local descending = { head }
-    local cursor = head
-    while cursor.number > finalized.number do
-        local parent = normalize_head(
-            transport:get_block_by_hash(cursor.parent_hash),
-            "sampled ancestry parent"
-        )
-        assert(parent.hash == cursor.parent_hash,
-            "sampled ancestry parent hash disagrees with child")
-        assert(parent.number + 1 == cursor.number,
-            "sampled ancestry block numbers are not contiguous")
-        table.insert(descending, parent)
-        cursor = parent
-    end
-
-    local ancestry = {}
-    for index = #descending, 1, -1 do
-        table.insert(ancestry, descending[index])
-    end
-    assert(same_head(ancestry[1], finalized),
-        "sampled finalized head is not on latest-head ancestry")
-    assert(same_head(ancestry[#ancestry], head),
-        "sampled ancestry does not end at latest head")
-    assert(#ancestry == head.number - finalized.number + 1,
-        "sampled ancestry has the wrong length")
-    return finalized, head, ancestry
-end
-
-local function validate_batch_address(logs, address, context)
+local function validate_range_batch(logs, address, from, to)
     for index, log in ipairs(logs) do
-        local normalized_address = normalize_address(
-            log.address,
-            context .. " log address"
-        )
-        assert(normalized_address == address,
+        local log_address = normalize_address(log.address, "range log address")
+        assert(log_address == address,
             string.format(
-                "%s log %d belongs to %s, expected %s",
-                context,
+                "range log %d belongs to %s, expected %s",
                 index,
-                normalized_address,
+                log_address,
                 address
             ))
-    end
-end
-
-local function validate_finalized_batch(logs, address, from, finalized)
-    validate_batch_address(logs, address, "finalized-range")
-    for index, log in ipairs(logs) do
-        local block = nonnegative_integer(
-            log.block_number,
-            "finalized-range log block"
-        )
-        assert(block >= from and block <= finalized.number,
+        local block = nonnegative_integer(log.block_number, "range log block")
+        assert(block >= from and block <= to,
             string.format(
-                "finalized range [%d, %d] returned block %d at index %d",
+                "log range [%d, %d] returned block %d at index %d",
                 from,
-                finalized.number,
+                to,
                 block,
                 index
             ))
-        if block == finalized.number then
-            assert(normalize_hash(
-                log.block_hash,
-                "finalized-boundary log hash"
-            ) == finalized.hash,
-                "finalized-boundary log belongs to another block hash")
-        end
     end
 end
 
-local function validate_exact_batch(logs, address, block)
-    validate_batch_address(logs, address, "exact-block")
-    for index, log in ipairs(logs) do
-        assert(nonnegative_integer(
-            log.block_number,
-            "exact-block log block"
-        ) == block.number,
-            string.format(
-                "exact block %d returned another block at index %d",
-                block.number,
-                index
-            ))
-        assert(normalize_hash(
-            log.block_hash,
-            "exact-block log hash"
-        ) == block.hash,
-            "unfinalized log belongs to the wrong exact block")
+local function fetch_address_logs(transport, address, creation_block, head, topics)
+    if creation_block > head.number then
+        return {}
     end
-end
-
-local function fetch_address_logs(
-    transport,
-    address,
-    creation_block,
-    finalized,
-    ancestry,
-    topics
-)
-    local logs = {}
-    if creation_block <= finalized.number then
-        local finalized_logs = transport:get_logs_range(
-            address,
-            creation_block,
-            finalized.number,
-            topics
-        )
-        assert(type(finalized_logs) == "table",
-            "finalized-range log response must be a table")
-        validate_finalized_batch(
-            finalized_logs,
-            address,
-            creation_block,
-            finalized
-        )
-        for _, log in ipairs(finalized_logs) do
-            table.insert(logs, log)
-        end
-    end
-    for _, block in ipairs(ancestry) do
-        if block.number > finalized.number and block.number >= creation_block then
-            local tail = transport:get_logs_at_block(address, block, topics)
-            assert(type(tail) == "table",
-                "exact-block log response must be a table")
-            validate_exact_batch(tail, address, block)
-            for _, log in ipairs(tail) do
-                table.insert(logs, log)
-            end
-        end
-    end
+    local logs = transport:get_logs_range(
+        address,
+        creation_block,
+        head.number,
+        topics
+    )
+    assert(type(logs) == "table", "log range response must be a table")
+    validate_range_batch(logs, address, creation_block, head.number)
     return logs
 end
 
@@ -626,13 +513,7 @@ local function rebuild_fold(root, logs)
     return fold
 end
 
-local function discover_fold(
-    transport,
-    root,
-    creation_block,
-    finalized,
-    ancestry
-)
+local function discover_fold(transport, root, creation_block, head)
     local streams = {}
     local fetched = {}
     local fold = Fold.new(root)
@@ -656,8 +537,7 @@ local function discover_fold(
                 transport,
                 address,
                 creation_block,
-                finalized,
-                ancestry,
+                head,
                 EVENT_TOPIC_LIST
             )
             fetched[address] = true
@@ -691,13 +571,15 @@ function SemanticReader.from_endpoint(root, creation_block, endpoint)
 end
 
 function SemanticReader:fetch()
-    local finalized, head, ancestry = sample_ancestry(self.transport)
+    local head = normalize_head(
+        self.transport:get_head(),
+        "sampled latest head"
+    )
     local fold = discover_fold(
         self.transport,
         self.root,
         self.creation_block,
-        finalized,
-        ancestry
+        head
     )
     local observations = Adapter.observe_fold(
         self.transport,
@@ -712,7 +594,6 @@ function SemanticReader:fetch()
     assert(same_head(current, head),
         "sampled latest head is no longer canonical")
     return {
-        finalized = finalized,
         head = head,
         fold = fold,
         observations = observations,
@@ -723,9 +604,8 @@ local BLOCK_JQ = [[
 if . == null
     or (.number | type) != "string"
     or (.hash | type) != "string"
-    or (.parentHash | type) != "string"
 then error("malformed block response")
-else [.number, .hash, .parentHash] | @tsv
+else [.number, .hash] | @tsv
 end
 ]]
 
@@ -770,28 +650,17 @@ function CastTransport:_block(method, identifier)
     local raw = self:_rpc(method, identifier, "false")
     local fields = split_tabs(
         jq_checked(raw, BLOCK_JQ, true),
-        3,
+        2,
         method
     )
     return {
         number = parse_quantity(fields[1], method .. " block number"),
         hash = normalize_hash(fields[2], method .. " block hash"),
-        parent_hash =
-            normalize_hash(fields[3], method .. " parent hash"),
     }
 end
 
-function CastTransport:get_head(tag)
-    assert(tag == "finalized" or tag == "latest",
-        "unsupported chain-head tag " .. tostring(tag))
-    return self:_block("eth_getBlockByNumber", tag)
-end
-
-function CastTransport:get_block_by_hash(hash)
-    return self:_block(
-        "eth_getBlockByHash",
-        normalize_hash(hash, "requested block hash")
-    )
+function CastTransport:get_head()
+    return self:_block("eth_getBlockByNumber", "latest")
 end
 
 function CastTransport:get_block_by_number(number)
@@ -854,18 +723,6 @@ function CastTransport:get_logs_range(address, from, to, topics)
         address,
         quantity(from),
         quantity(to),
-        topic_filter(topics)
-    )
-    return decode_log_rows(self:_rpc("eth_getLogs", filter))
-end
-
-function CastTransport:get_logs_at_block(address, block, topics)
-    address = normalize_address(address, "log-filter address")
-    block = normalize_head(block, "exact log-filter block")
-    local filter = string.format(
-        [[{"address":"%s","blockHash":"%s","topics":%s}]],
-        address,
-        block.hash,
         topic_filter(topics)
     )
     return decode_log_rows(self:_rpc("eth_getLogs", filter))
@@ -934,6 +791,5 @@ end
 
 SemanticReader.CastTransport = CastTransport
 SemanticReader.normalize_logs = normalize_logs
-SemanticReader.normalize_hash = normalize_hash
 
 return SemanticReader
