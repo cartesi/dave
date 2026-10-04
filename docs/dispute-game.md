@@ -388,8 +388,8 @@ often this happens, one Sybil bond each, but not the latencies. Each
 occurrence can cost up to one `G` of `C` even when both actions land within
 their own `G`: the review's trace lost a match at `C = 0` with every inclusion
 inside its bound. It costs nothing only if the proof and its fallback claim
-land within one `G` of the seal, an operating assumption whose adoption R19
-decides (todo.md). Letting `winLeafMatch` settle as the timeout win the
+land within one `G` of the seal, an operating assumption the R19 model states
+explicitly (todo.md). Letting `winLeafMatch` settle as the timeout win the
 classifier selects was judged not worth revising the disjoint verbs.
 
 A non-leaf match resolves when its linked child finishes:

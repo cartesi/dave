@@ -31,12 +31,16 @@ linked descendants is at most `C`, then:
 
 1. the honest commitment's clock never expires in any tournament it enters,
    and it is never eliminated; and
-2. the root finishes with the honest commitment as its winner, carrying the
-   correct final state.
+2. if the root finishes, its winner carries the correct final state.
 
-This is a safety property: whether a wrong root can win. How long the root
-takes to finish is the separate liveness question (the delay bound), which
-stays a non-claim (dispute-game.md:820-824, prt-delay-bound.md).
+Both are safety: no wrong root can win. Whether the root finishes at all
+(termination) and how long it takes (the delay bound) are liveness, and stay
+separate non-claims (dispute-game.md:820-824, prt-delay-bound.md).
+
+The model must exercise the scenarios the claim quantifies over: budgets
+exactly at the formula (no loose reserve), children contested by Sybils, the
+honest commitment in both orientations, and one censorship allowance `C`
+shared by the root and all its descendants.
 
 ## The honest strategy
 
@@ -111,8 +115,8 @@ devnet's own claim, that with `C = 0` "clocks cover only the honest path"
 
 1. A paper argument first: an inductive potential argument per tournament
    and per delegation, starting from the review's balance, with every
-   latency assumption and the CF-01 choice explicit. It covers any level
-   count and any population.
+   latency assumption explicit, CF-01's included. It covers any level count
+   and any population.
 2. Then a Foundry stateful invariant on production bytecode:
    - A handler over `SmallTwoLevelTournament` (test/fixtures) with
      `ProofSelectedStateTransition`, so the honest commitment's leaves are
@@ -125,8 +129,8 @@ devnet's own claim, that with `C = 0` "clocks cover only the honest path"
    - Adversary actions: join Sybils at either level and in either
      final-state class, respond slowly, time out, seal, re-pair, censor.
    - Invariants: the honest commitment is never eliminated, and its clock
-     covers the ghost obligation of its pending actions; at the end, the
-     root winner carries the honest final state.
+     covers the ghost obligation of its pending actions; whenever the root
+     finishes, its winner carries the honest final state.
    - Runs at `C = 0`, where any leak is a loss, and at a small positive `C`;
      with the honest commitment as commitment one and as commitment two.
 3. Escalate to an exhaustive model (extending `BoundedOneLevelDelayModel` to
@@ -138,32 +142,30 @@ Two levels first: it is the shape of the generation to be audited (the
 canonical switch is a later PR). The paper argument should not depend on
 `L`.
 
-## Open choice: CF-01
+## CF-01: the accepted tradeoff and its latency assumption
 
 A leaf proof in flight when the opponent's shorter clock expires reverts,
 and the survivor needs a separate timeout claim (dispute-game.md, CF-01).
-The model must say which of these it does:
-
-- Exclude it by assumption: the honest proof plus its fallback timeout claim
-  land within `G` of the seal (proof-plus-fallback latency `< G`). Then it
-  costs nothing, and the assumption becomes a measured operator requirement
-  (todo.md, before a two-level release). The worst case today is estimated
-  at 2 to 2.5 minutes against a five-minute `G` (a lead, not measured).
-- Charge it: each occurrence costs `max(0, d1 + d2 - G)` against `C`; the
-  adversary chooses how many occur, one Sybil leaf match and one bond each.
-
-The analysis recommends excluding it by assumption and adding one test that
-charges it, for the record; that test would be the first in-repository
-CF-01 trace. The owner decides.
+It stays the accepted tradeoff: nothing is added to eliminate it. The model
+states its latency assumption explicitly instead: the honest proof plus its
+fallback timeout claim land within `G` of the seal (proof-plus-fallback
+latency `< G`), under which CF-01 costs nothing. That assumption is a
+measured operator requirement (todo.md, before a two-level release); the
+worst case today is estimated at 2 to 2.5 minutes against a five-minute `G`
+(a lead, not measured). Beyond it, each occurrence would cost
+`max(0, d1 + d2 - G)` of `C`, for one Sybil leaf match and one bond each,
+which the claim does not cover.
 
 ## Acceptance criteria
 
 - The argument is written into dispute-game.md with the claim, the strategy,
-  the adversary, the ledger, the CF-01 choice and every assumption, and
-  someone other than its author has reviewed it.
+  the adversary, the ledger, the CF-01 latency assumption and every other
+  assumption, and someone other than its author has reviewed it.
 - The invariant lives under `prt/contracts/test/properties/`, runs in
   `just prt-contracts::test-disputes` (so in CI) at `C = 0` and at a small
-  positive `C`, in both orientations, with its runs and depth recorded.
+  positive `C`, with formula budgets, Sybil-contested children, both
+  orientations and one `C` ledger across all levels, with its runs and depth
+  recorded.
 - It fails a mutation control: with the child-return refill removed (the
   pre-2c502f63 rule), a short schedule eliminates the honest commitment.
 - A counterexample is a contract finding: stop, reproduce it as a
@@ -173,9 +175,10 @@ CF-01 trace. The owner decides.
 ## Where the results land
 
 - dispute-game.md: split "Remaining liveness work" (:820-824) into a safety
-  result (honest survival under `C`, with its assumptions) and the liveness
-  non-claim (the delay bound), and restate the assumption at :28 as derived
-  from the latency bounds.
+  result (honest survival, and a correct winner if the root finishes, under
+  `C`, with its assumptions) and the liveness non-claims (termination and
+  the delay bound), and restate the assumption at :28 as derived from the
+  latency bounds.
 - prt-contract-testing.md: replace the "No current model combines ..."
   paragraph (:139-144) with the new invariant.
 - dimensioning.md:360-364 and prt-delay-bound.md, where they call the

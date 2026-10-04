@@ -54,8 +54,10 @@ From prt/contracts/AGENTS.md ("Explicit non-claims"),
 cartesi-rollups/contracts/AGENTS.md ("Explicit non-claims") and
 dispute-game.md:
 
-- No general recursive liveness proof or delay bound; honest survival under
-  `C` is open until R19 lands ([r19-honest-survival.md](r19-honest-survival.md)).
+- No general recursive liveness proof: neither termination nor a delay
+  bound, and R19 claims neither. Honest survival under `C`, and a correct
+  winner if the root finishes, are open until R19 lands
+  ([r19-honest-survival.md](r19-honest-survival.md)).
 - The accepted CF-01 leaf handover limitation (dispute-game.md, "Resolution
   and winner re-entry").
 - A well-formed table does not prove that clients build the same
