@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::blockchain_reader::AddressBook;
+use crate::chain::Chain;
 use crate::engine::{Level, Structure, TournamentGeometry};
 use crate::storage::{StateDirLock, Storage, StorageError, Template};
 use alloy::{
@@ -326,6 +327,12 @@ impl NodeConfig {
             .await
             .context("--web3-rpc-url")?;
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await?;
+        // Sampled before the deployment blocks are read: it bounds a new
+        // directory's watermark (AddressBook::initial_watermark).
+        let finalized = Chain::new(provider.clone(), Vec::new())
+            .finalized_block_number()
+            .await
+            .context("--web3-rpc-url: failed to read the finalized block")?;
         let address_book = AddressBook::new(args.app_address, &provider)
             .await
             .with_context(|| {
@@ -367,7 +374,7 @@ impl NodeConfig {
         let mut storage = Storage::initialize(
             &args.state_dir,
             &template,
-            address_book.genesis_block_number,
+            address_book.initial_watermark(finalized),
             address_book.app,
             address_book.consensus,
             chain_id as u64,

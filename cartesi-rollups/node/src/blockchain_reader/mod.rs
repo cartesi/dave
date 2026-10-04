@@ -126,6 +126,18 @@ impl AddressBook {
         })
     }
 
+    /// A new state directory's watermark, the last block ingestion treats
+    /// as processed: below genesis, which holds epoch 0's seal, and at most
+    /// `finalized`, a finalized head sampled before this book read the
+    /// deployment blocks at latest. A deployment not yet finalized at that
+    /// sample can reorg only into blocks above it; a finalized one cannot
+    /// move. No application or consensus log precedes the deployment, so a
+    /// lower start only adds empty blocks to the first log query, and block
+    /// 0 holds no transactions, so saturating is exact.
+    pub fn initial_watermark(&self, finalized: u64) -> u64 {
+        self.genesis_block_number.saturating_sub(1).min(finalized)
+    }
+
     /// The initial state from epoch 0's EpochSealed, which the consensus
     /// emits in its own deployment block.
     async fn initial_hash(
@@ -538,6 +550,31 @@ fn construct_input_ids<'a>(
     *next_input_index_in_epoch = 0;
 
     Ok(inputs)
+}
+
+#[cfg(test)]
+mod address_book_tests {
+    use super::*;
+
+    #[test]
+    fn the_initial_watermark_stays_below_genesis_and_the_finalized_sample() {
+        let book = AddressBook {
+            app: Address::ZERO,
+            consensus: Address::ZERO,
+            tournament_factory: Address::ZERO,
+            input_box: Address::ZERO,
+            initial_hash: [0; 32],
+            genesis_block_number: 1000,
+        };
+        assert_eq!(book.initial_watermark(5000), 999, "a finalized deployment");
+        assert_eq!(book.initial_watermark(1000), 999);
+        assert_eq!(book.initial_watermark(900), 900, "an unfinalized one");
+        let at_zero = AddressBook {
+            genesis_block_number: 0,
+            ..book
+        };
+        assert_eq!(at_zero.initial_watermark(5000), 0);
+    }
 }
 
 #[cfg(test)]
@@ -1163,12 +1200,17 @@ mod blockchain_reader_tests {
     }
 
     /// Genesis is the application's deployment block, which holds epoch
-    /// 0's seal, and a directory seeded from it ingests that seal.
+    /// 0's seal, and a directory seeded right below it, the highest seed,
+    /// for a finalized deployment, ingests that seal.
     #[tokio::test]
     #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
     async fn ingestion_starts_at_the_application_deployment() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let chain = Chain::new(provider.clone(), Vec::new());
+        // finality trails latest by two blocks
+        mine_blocks(&provider, 3).await?;
+        let watermark = address_book.initial_watermark(chain.finalized_block_number().await?);
+        assert_eq!(watermark, address_book.genesis_block_number - 1);
 
         let latest = chain.latest_block_number().await?;
         let seals = chain
@@ -1191,15 +1233,13 @@ mod blockchain_reader_tests {
         let storage = Storage::initialize(
             dir.path(),
             &crate::storage::Template::inspect(&template)?,
-            address_book.genesis_block_number,
+            watermark,
             address_book.app,
             address_book.consensus,
             0,
             &crate::engine::TournamentGeometry::two_level(),
         )?;
         let mut reader = BlockchainReader::new(storage, address_book, Duration::ZERO);
-        // finality trails latest by two blocks
-        mine_blocks(&provider, 3).await?;
         while !reader.tick(&chain).await? {}
 
         let sealed = reader.storage.last_sealed_epoch()?.map(|e| e.epoch_number);

@@ -38,14 +38,6 @@ pub const DEFAULT_SNAPSHOT_GAP_INPUTS: u64 = 64;
 /// Non-numeric, so the scratch sweep never takes it for an epoch.
 const LOCK_FILE: &str = "node.lock";
 
-/// How far below genesis a new directory's watermark starts. Genesis is
-/// read at latest, so a reorg between the deployment and the first start
-/// can still move the deployment lower, which would strand epoch 0's seal
-/// below a watermark at genesis for good. A reorg moves a block down by
-/// less than its depth, which finality bounds: Ethereum's unfinalized span
-/// is two to three epochs (64 to 96 slots) while the chain finalizes.
-const GENESIS_REORG_MARGIN: u64 = 128;
-
 /// One node process owns a state directory: a second one would sweep the
 /// first's working clones and publish into and collect the same snapshot
 /// store. Startup takes this lock before the first write and holds it for the
@@ -156,12 +148,13 @@ impl Storage {
     /// with this start's before anything is written, so a wrong flag leaves
     /// it untouched: no watermark raise, no template import. A new one gets
     /// the template stored (filesystem first), then one transaction for the
-    /// genesis watermark, the epoch-0 boundary, the template row and the pin,
-    /// so a pinned directory is always a seeded one.
+    /// initial watermark (the last block treated as processed, below epoch
+    /// 0's seal), the epoch-0 boundary, the template row and the pin, so a
+    /// pinned directory is always a seeded one.
     pub fn initialize(
         state_dir: &Path,
         template: &Template,
-        genesis_block_number: u64,
+        initial_watermark: u64,
         app_address: Address,
         consensus_address: Address,
         chain_id: u64,
@@ -190,7 +183,7 @@ impl Storage {
         };
         match sling_config::stored(&storage.connection)? {
             Some(pinned) => check_pinned(&storage.state_dir, &pinned, &config)?,
-            None => storage.seed(template, genesis_block_number, &config)?,
+            None => storage.seed(template, initial_watermark, &config)?,
         }
 
         Ok(storage)
@@ -199,7 +192,7 @@ impl Storage {
     fn seed(
         &mut self,
         template: &Template,
-        genesis_block_number: u64,
+        initial_watermark: u64,
         config: &EngineConfig,
     ) -> Result<()> {
         // Clone the image into the store - no 500 MB re-serialization
@@ -214,15 +207,7 @@ impl Storage {
             .map_err(anyhow::Error::from)?;
 
         self.write(|tx| {
-            // The watermark is the last processed block, and genesis itself
-            // holds epoch 0's seal. Any lower start is sound: no application
-            // or consensus log precedes the deployment, so the margin only
-            // widens the first log query with empty blocks. Block 0 holds no
-            // transactions, so saturating is exact.
-            super::ingest::raise_watermark_in(
-                tx,
-                genesis_block_number.saturating_sub(GENESIS_REORG_MARGIN),
-            )?;
+            super::ingest::raise_watermark_in(tx, initial_watermark)?;
             super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash(), &dest)?;
             super::snapshots::insert_template_machine_in(tx, template.hash())?;
             sling_config::pin(tx, config)?;
@@ -525,14 +510,14 @@ mod tests {
     fn initialize_at(
         state_dir: &Path,
         template: &Path,
-        genesis_block_number: u64,
+        initial_watermark: u64,
         app: Address,
         chain_id: u64,
     ) -> Result<Storage> {
         Storage::initialize(
             state_dir,
             &Template::inspect(template).unwrap(),
-            genesis_block_number,
+            initial_watermark,
             app,
             Address::ZERO,
             chain_id,
@@ -577,7 +562,7 @@ mod tests {
         let mut storage =
             initialize_at(&state_dir, &template, 0, Address::repeat_byte(0xaa), 1).unwrap();
 
-        // A genesis beyond the seeding margin, so a stray seed would show.
+        // A nonzero watermark, so a stray seed would show.
         let error =
             initialize_at(&state_dir, &template, 1000, Address::repeat_byte(0xbb), 1).unwrap_err();
         assert!(
@@ -603,18 +588,15 @@ mod tests {
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
     }
 
-    /// Genesis holds epoch 0's seal, and a reorg may yet move it lower, so
-    /// ingestion starts a margin below it, or at the chain's first block.
+    /// The caller bounds the watermark (AddressBook::initial_watermark);
+    /// seeding stores it as given.
     #[test]
-    fn seeding_leaves_a_margin_below_genesis_to_ingest() {
+    fn seeding_starts_ingestion_after_the_initial_watermark() {
         let dir = tempfile::tempdir().unwrap();
         let template = dir.path().join("template");
         store_template(&template, |_| {});
-        for (genesis, watermark) in [(1000, 872), (100, 0)] {
-            let state_dir = dir.path().join(format!("state-{genesis}"));
-            let mut storage =
-                initialize_at(&state_dir, &template, genesis, Address::ZERO, 1).unwrap();
-            assert_eq!(storage.latest_processed_block().unwrap(), watermark);
-        }
+        let state_dir = dir.path().join("state");
+        let mut storage = initialize_at(&state_dir, &template, 1000, Address::ZERO, 1).unwrap();
+        assert_eq!(storage.latest_processed_block().unwrap(), 1000);
     }
 }

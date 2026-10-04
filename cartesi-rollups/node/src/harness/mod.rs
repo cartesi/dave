@@ -451,7 +451,9 @@ impl World {
         Storage::initialize(
             state_dir.path(),
             &Template::inspect(&program_path().join("machine-image"))?,
-            self.book.genesis_block_number,
+            // Anvil does not reorg, so a sample after discovery is as good.
+            self.book
+                .initial_watermark(self.chain.finalized_block_number().await?),
             self.book.app,
             self.book.consensus,
             self.anvil.chain_id(),

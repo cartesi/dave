@@ -45,7 +45,7 @@ template, emulator and table) before anything is written, and the claimant is
 pinned before any worker starts. A mismatch names the flag to fix
 (`--app-address`, `--web3-chain-id`, the signer's), calls the directory another
 deployment's or an old one (the template), or asks for a rebuild (consensus,
-emulator, table). A new directory is seeded in one transaction: the genesis
+emulator, table). A new directory is seeded in one transaction: the initial
 watermark, the epoch-0 boundary, the template row and the pins. So a deployment
 or flag these checks reject cannot create or alter local state, and a restart
 never imports the template again. The runner samples each window at the pinned
@@ -393,12 +393,12 @@ its constructor, and the application binds its consensus only at
 construction or within its deployment block; were it false, the first input
 index or epoch number would not be 0 and ingestion would refuse it. Genesis
 is read at latest, where a reorg before a new directory's first start may
-still move the deployment lower, so the directory's watermark starts 128
-blocks below genesis; with no application or consensus log before the
-deployment, the margin only adds empty blocks to the first log query. A
-reorg moves a block down by less than its depth, and 128 exceeds Ethereum's
-unfinalized span while the chain finalizes; a deeper move, during a finality
-stall, still strands epoch 0's seal until the directory is rebuilt. The
+still move the deployment, so startup samples the finalized head before it
+reads the deployment blocks and seeds the watermark at the lower of genesis
+minus one and that sample. A deployment finalized at the sample cannot move,
+and one that was not can reorg only into blocks above it, so epoch 0's seal
+stays above the watermark; with no application or consensus log before the
+deployment, a lower start only adds empty blocks to the first log query. The
 initial hash is read at the consensus's deployment block (Process layout).
 Both are `block.number` values, read as RPC block numbers, which is why the
 node does not start on Arbitrum.
