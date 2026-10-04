@@ -279,9 +279,10 @@ adversarial traces, and the finite-state model are recorded in
   `0 < returned <= max(r1, r2) <= r1 + r2` and
   `returned <= maxAllowance`. The formula holds for every input: a carried
   remainder above the envelope is unreachable (the child's allowance is the
-  envelope, and nothing in a child adds time) and would clamp to it rather
-  than revert, since a revert would block the winner's propagation until the
-  child became eliminable, eliminating the correct side with its opponent.
+  envelope, and no clock in a child exceeds its allowance, refills from deeper
+  returns included) and would clamp to it rather than revert, since a revert
+  would block the winner's propagation until the child became eliminable,
+  eliminating the correct side with its opponent.
   The refill pays back the build, the join, and
   the propagation, so the number of delegations a correct commitment faces
   does not drain its clock as long as each takes at most `T + G` to join and

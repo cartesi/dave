@@ -156,10 +156,11 @@ library MatchClocks {
     /// child's own allowance, so no clock mass is created. Both parent clocks
     /// stay paused at their post-seal remainders while the child runs, which
     /// makes the envelope exact here. A carried remainder above the envelope
-    /// is unreachable, since the child's allowance is the envelope and nothing
-    /// in the child adds time. It is clamped rather than reverted: a revert
-    /// would block the winner's propagation until the child became eliminable,
-    /// and elimination removes both sides, the correct one included.
+    /// is unreachable: the child's allowance is the envelope, and no clock in
+    /// the child exceeds its allowance, refills from deeper returns included.
+    /// It is clamped rather than reverted: a revert would block the winner's
+    /// propagation until the child became eliminable, and elimination removes
+    /// both sides, the correct one included.
     function childReturnAllowance(
         Clock.State storage one,
         Clock.State storage two,
