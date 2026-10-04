@@ -277,7 +277,12 @@ adversarial traces, and the finite-state model are recorded in
   deduction) refilled by up to `T + 2G`, capped by the pair envelope,
   `returned = min(carried + T + 2G, max(r1, r2))`, so
   `0 < returned <= max(r1, r2) <= r1 + r2` and
-  `returned <= maxAllowance`. The refill pays back the build, the join, and
+  `returned <= maxAllowance`. The formula holds for every input: a carried
+  remainder above the envelope is unreachable (the child's allowance is the
+  envelope, and nothing in a child adds time) and would clamp to it rather
+  than revert, since a revert would block the winner's propagation until the
+  child became eliminable, eliminating the correct side with its opponent.
+  The refill pays back the build, the join, and
   the propagation, so the number of delegations a correct commitment faces
   does not drain its clock as long as each takes at most `T + G` to join and
   `G` to propagate. The shared maximum is a worst-case pair

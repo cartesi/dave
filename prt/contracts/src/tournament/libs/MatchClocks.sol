@@ -148,14 +148,18 @@ library MatchClocks {
     }
 
     /// @notice The allowance a child winner returns to its sealed parent pair
-    /// with: its carried remainder, refilled by up to `refill`, within the
-    /// pair's envelope `max(r1, r2)`.
+    /// with, `min(carried + refill, max(r1, r2))`: never above the pair's
+    /// envelope, for any input.
     /// @dev The refill restores what the delegation cost the winner (building
     /// the child commitment, joining, and propagating back), so repeated
     /// delegations do not drain a correct commitment's clock. The cap is the
     /// child's own allowance, so no clock mass is created. Both parent clocks
     /// stay paused at their post-seal remainders while the child runs, which
-    /// makes the envelope exact here.
+    /// makes the envelope exact here. A carried remainder above the envelope
+    /// is unreachable, since the child's allowance is the envelope and nothing
+    /// in the child adds time. It is clamped rather than reverted: a revert
+    /// would block the winner's propagation until the child became eliminable,
+    /// and elimination removes both sides, the correct one included.
     function childReturnAllowance(
         Clock.State storage one,
         Clock.State storage two,
@@ -164,7 +168,8 @@ library MatchClocks {
     ) internal view returns (Time.Duration) {
         Time.Duration envelope = one.pausedAllowance()
             .max(two.pausedAllowance());
-        return carried.add(refill.min(envelope.saturatingSub(carried)));
+        Time.Duration kept = carried.min(envelope);
+        return kept.add(refill.min(envelope.saturatingSub(kept)));
     }
 
     /// @notice Pause the running responder, discounting its response.

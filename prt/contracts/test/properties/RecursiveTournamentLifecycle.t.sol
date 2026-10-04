@@ -235,7 +235,7 @@ contract RecursiveTournamentLifecycleTest is Test {
             _parentTree(SmallTwoLevelClaims.CLAIM_ONE);
         (Tree.Node selectedLeft, Tree.Node selectedRight) =
             selected.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
-        parent.winInnerTournament(child, selectedLeft, selectedRight);
+        _winInnerTournament(selectedLeft, selectedRight);
 
         // Side one becomes the dangling survivor with the carried child
         // clock; the entrant's own parent match and clock are unchanged.
@@ -389,7 +389,7 @@ contract RecursiveTournamentLifecycleTest is Test {
             _parentTree(SmallTwoLevelClaims.CLAIM_ONE);
         (Tree.Node left, Tree.Node right) =
             winner.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
-        parent.winInnerTournament(child, left, right);
+        _winInnerTournament(left, right);
 
         (Clock.State memory returned,) = parent.getCommitment(parentOne);
         assertFalse(returned.isRunning());
@@ -511,7 +511,7 @@ contract RecursiveTournamentLifecycleTest is Test {
             _parentTree(SmallTwoLevelClaims.CLAIM_ONE);
         (Tree.Node left, Tree.Node right) =
             winningParent.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
-        parent.winInnerTournament(child, left, right);
+        _winInnerTournament(left, right);
 
         assertEq(address(firstChild).balance, firstChildBalance);
         assertEq(address(child).balance, secondChildBalance);
@@ -998,6 +998,23 @@ contract RecursiveTournamentLifecycleTest is Test {
         );
     }
 
+    /// @dev Every successful child return goes through here. The carried
+    /// allowance must already lie within the parent pair's envelope: the
+    /// return clamps to it, which would otherwise mask a child adding time.
+    function _winInnerTournament(Tree.Node left, Tree.Node right) private {
+        Match.Id memory origin = parent.observedOriginatingMatch(child);
+        (Clock.State memory one,) = parent.getCommitment(origin.commitmentOne);
+        (Clock.State memory two,) = parent.getCommitment(origin.commitmentTwo);
+        assertFalse(one.isRunning() || two.isRunning());
+        assertLe(
+            Time.Duration.unwrap(child.innerResult().pausedAllowance),
+            Time.Duration.unwrap(one.allowance.max(two.allowance)),
+            "child return above its pair envelope"
+        );
+
+        parent.winInnerTournament(child, left, right);
+    }
+
     /// @dev The parent's return rule: the carried remainder refilled by up to
     /// the join budget, within the sealed pair's envelope.
     function _refilled(uint64 carried, uint64 envelope)
@@ -1144,7 +1161,7 @@ contract RecursiveTournamentLifecycleTest is Test {
             winner.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
         uint256 childBalance = address(child).balance;
 
-        parent.winInnerTournament(child, left, right);
+        _winInnerTournament(left, right);
         assertEq(address(child).balance, childBalance);
 
         Tree.Node selectedParent = winner.root();

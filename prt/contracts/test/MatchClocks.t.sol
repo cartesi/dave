@@ -443,32 +443,27 @@ contract MatchClocksTest is Test {
 
     /// @dev The returned allowance refills the carried remainder by up to the
     /// join budget and never exceeds the sealed pair's envelope, whichever
-    /// side holds the larger clock.
+    /// side holds the larger clock. Carried remainders above the envelope,
+    /// unreachable from a real child, are drawn too and clamp to it; the
+    /// refill spans the whole duration domain.
     function testFuzzChildReturnRefillsWithinThePairEnvelope(
         uint64 rawAllowanceOne,
         uint64 rawAllowanceTwo,
         uint64 rawCarried,
-        uint64 rawJoinBudget
+        uint64 joinBudget
     ) public {
         uint64 allowanceOne = _boundPure(rawAllowanceOne, 1, MAX_FUZZ_DURATION);
         uint64 allowanceTwo = _boundPure(rawAllowanceTwo, 1, MAX_FUZZ_DURATION);
-        uint64 envelope =
-            allowanceOne > allowanceTwo ? allowanceOne : allowanceTwo;
-        uint64 carried = _boundPure(rawCarried, 1, envelope);
-        uint64 joinBudget = _boundPure(rawJoinBudget, 0, MAX_FUZZ_DURATION);
+        uint64 envelope = _max(allowanceOne, allowanceTwo);
+        uint64 carried = _boundPure(rawCarried, 0, 2 * envelope + 1);
         _initializePaused(allowanceOne, allowanceTwo);
 
-        uint64 returned = Time.Duration
-            .unwrap(
-                harness.childReturnAllowance(
-                    Time.Duration.wrap(carried), Time.Duration.wrap(joinBudget)
-                )
-            );
+        uint64 returned = _childReturn(carried, joinBudget);
 
-        uint64 refilled = carried + joinBudget;
+        uint256 refilled = uint256(carried) + joinBudget;
         assertEq(returned, refilled < envelope ? refilled : envelope);
-        assertGe(returned, carried);
         assertLe(returned, envelope);
+        assertGe(returned, _min(carried, envelope));
     }
 
     function testChildReturnWithoutBudgetCarriesTheRemainder() public {
@@ -485,6 +480,13 @@ contract MatchClocksTest is Test {
         _initializePaused(90, 40);
         assertEq(_childReturn(80, 20), 90);
         assertEq(_childReturn(90, 20), 90);
+    }
+
+    function testChildReturnClampsACarriedRemainderAboveTheEnvelope() public {
+        _initializePaused(90, 40);
+        assertEq(_childReturn(91, 0), 90);
+        assertEq(_childReturn(91, 20), 90);
+        assertEq(_childReturn(type(uint64).max, type(uint64).max), 90);
     }
 
     function testChildReturnRequiresTheSealedInnerShape() public {

@@ -112,7 +112,10 @@ a child return may exceed the selected side's snapshotted remainder, but not
 `max(r1, r2)` or the post-discount live pair mass, and it owns the refill
 property: a commitment joining each child within `T + G` and propagating
 within `G` returns with its pre-seal clock, delegation after delegation, from
-either side of the pair envelope.
+either side of the pair envelope. Before every successful child return, the
+recursive suites also assert that the carried allowance already lies within
+the envelope: the return clamps to it, which would otherwise mask a child
+that added time.
 
 Tournament integration owns the structural distinctions that pair clocks alone
 cannot infer, including ready-to-bisect versus sealed-inner states when both

@@ -35,6 +35,7 @@ contract FourLevelRecursiveLifecycleTest is Test {
     using Match for Match.Id;
     using Match for Match.State;
     using SmallFullTree for SmallFullTree.Data;
+    using Time for Time.Duration;
     using Time for Time.Instant;
     using Tree for Tree.Node;
 
@@ -435,6 +436,13 @@ contract FourLevelRecursiveLifecycleTest is Test {
         assertFalse(beforeTwo.isRunning());
         assertEq(Time.Duration.unwrap(beforeOne.allowance), MAX_ALLOWANCE);
         assertEq(Time.Duration.unwrap(beforeTwo.allowance), MAX_ALLOWANCE);
+        // The return clamps to the pair envelope, which would otherwise mask
+        // a child adding time; the carried allowance must already fit.
+        assertLe(
+            Time.Duration.unwrap(carriedClock.allowance),
+            Time.Duration.unwrap(beforeOne.allowance.max(beforeTwo.allowance)),
+            "child return above its pair envelope"
+        );
 
         SmallFullTree.Data memory winner = SmallFourLevelClaims.tree(
             SmallFourLevelClaims.CLAIM_ONE, parentLevel

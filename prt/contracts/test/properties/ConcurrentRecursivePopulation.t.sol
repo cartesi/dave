@@ -533,9 +533,21 @@ contract ConcurrentRecursivePopulationTest is Test {
         tournament.winMatchByTimeout(matchId, left, right);
     }
 
+    /// @dev The return clamps to the pair envelope, which would otherwise
+    /// mask a child adding time; the carried allowance must already fit.
     function _propagateChild(InspectableTournament tournament, uint8 claim)
         private
     {
+        Match.Id memory origin = parent.observedOriginatingMatch(tournament);
+        (Clock.State memory one,) = parent.getCommitment(origin.commitmentOne);
+        (Clock.State memory two,) = parent.getCommitment(origin.commitmentTwo);
+        assertFalse(one.isRunning() || two.isRunning());
+        assertLe(
+            Time.Duration.unwrap(tournament.innerResult().pausedAllowance),
+            Time.Duration.unwrap(one.allowance.max(two.allowance)),
+            "child return above its pair envelope"
+        );
+
         SmallFullTree.Data memory winner = SmallTwoLevelClaims.rootTree(claim);
         (Tree.Node left, Tree.Node right) =
             winner.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
