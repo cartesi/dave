@@ -348,7 +348,11 @@ function Machine:feed_input(input_bin)
     if not helper.exists(new_snapshot_path) then
         self.machine:store(new_snapshot_path)
         if self.snapshot_path and helper.exists(self.snapshot_path) then
-            -- never delete a snapshot we didn't ourselves create
+            -- Never delete the initial snapshot. A snapshot this instance
+            -- adopted (already on disk when stored) is deleted like its own:
+            -- each instance assumes exclusive use of its snapshot_dir, which
+            -- holds for the synchronous sybil computation and the oracle's
+            -- separate scratch directory.
             if self.initial_snapshot ~= self.snapshot_path then
                 helper.remove_tree(self.snapshot_path)
             end
