@@ -47,7 +47,7 @@ Only Ethereum is supported. `./script/deploy-mainnets.sh` deploys to Ethereum
 Mainnet and `./script/deploy-testnets.sh` to Ethereum Sepolia; the release's
 `deployment-addresses` asset holds those two chains.
 `./script/deploy-experimental.sh` deploys to the other registered chains, whose
-addresses ship in the separate `experimental-deployment-addresses` asset. OP
+addresses ship in the separate `deployment-addresses-experimental` asset. OP
 Mainnet, Base and their Sepolia testnets are experimental. Arbitrum One and
 Arbitrum Sepolia are experimental and the node does not start there: their
 `block.number` is the parent chain's block number, so their clocks are

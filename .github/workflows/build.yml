@@ -448,7 +448,7 @@ jobs:
       - name: Compress experimental chain deployment addresses
         run: tar -czf "$FILEPATH" -C cartesi-rollups/contracts deployments
         env:
-          FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-experimental-deployment-addresses.tar.gz
+          FILEPATH: upload/cartesi-rollups-prt-${{ steps.extract_version.outputs.version }}-deployment-addresses-experimental.tar.gz
 
       - name: Build devnet
         run: |
