@@ -118,7 +118,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
                 storage,
                 params.sleep_duration,
                 shutdown,
-            )?;
+            );
             epoch_manager.execution_loop(chain).await?;
             Ok(())
         })

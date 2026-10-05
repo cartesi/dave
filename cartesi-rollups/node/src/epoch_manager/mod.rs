@@ -63,12 +63,11 @@ impl<AS: ArenaSender> EpochManager<AS> {
         transaction_lane: TransactionLane,
         consensus_address: Address,
         signer_address: Address,
-        mut storage: Storage,
+        storage: Storage,
         sleep_duration: Duration,
         shutdown: ShutdownSignal,
-    ) -> Result<Self> {
-        storage.pin_epoch_claimant(signer_address)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             arena_sender,
             transaction_lane,
             consensus: consensus_address,
@@ -78,7 +77,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             epoch_hero: None,
             shutdown,
             reverted: Vec::new(),
-        })
+        }
     }
 
     /// A stop lets the tick in flight finish, so an action whose
@@ -738,8 +737,7 @@ mod tests {
             Storage::new(path).unwrap(),
             Duration::ZERO,
             ShutdownSignal::default(),
-        )
-        .unwrap();
+        );
         (manager, Chain::new(provider, Vec::new()))
     }
 

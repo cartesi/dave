@@ -1463,7 +1463,6 @@ mod tests {
     #[test]
     fn rolling_ahead_does_not_release_the_managers_unfinished_epoch() {
         let (_handle, mut storage) = setup_storage();
-        storage.pin_epoch_claimant(Address::ZERO).unwrap();
         let epochs: Vec<_> = (0..3)
             .map(|epoch_number| Epoch {
                 epoch_number,
@@ -1495,7 +1494,6 @@ mod tests {
     #[test]
     fn restart_skips_the_template_import() {
         let (handle, mut storage) = setup_storage();
-        storage.pin_epoch_claimant(Address::ZERO).unwrap();
         let epochs: Vec<_> = (0..3)
             .map(|epoch_number| Epoch {
                 epoch_number,

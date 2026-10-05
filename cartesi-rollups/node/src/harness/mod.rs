@@ -559,7 +559,7 @@ impl Node {
             Storage::new(state_dir.path())?,
             Duration::ZERO,
             ShutdownSignal::default(),
-        )?;
+        );
         Ok(Self {
             state_dir,
             reader,

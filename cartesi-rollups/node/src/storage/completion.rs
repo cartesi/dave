@@ -8,40 +8,8 @@ use super::Storage;
 use super::convert::u64_to_i64;
 use super::error::{Result, StorageError};
 use super::queries::unfinished_epoch_number_in;
-use alloy::primitives::Address;
 
 impl Storage {
-    /// Completion is claimant-specific: another signer may still have bonds
-    /// in epochs this claimant has finished and released for collection.
-    pub fn pin_epoch_claimant(&mut self, claimant: Address) -> Result<()> {
-        self.write(|tx| {
-            let stored: Option<Vec<u8>> = tx
-                .query_row(
-                    "SELECT claimant FROM epoch_completion WHERE id = 1",
-                    [],
-                    |row| row.get(0),
-                )
-                .map_err(anyhow::Error::from)?;
-            if let Some(stored) = stored {
-                let stored = Address::from_slice(&stored);
-                if stored != claimant {
-                    return Err(anyhow::anyhow!(
-                        "epoch completion belongs to claimant {stored}, not {claimant}; \
-                         use a new state directory for a different claimant"
-                    )
-                    .into());
-                }
-            } else {
-                tx.execute(
-                    "UPDATE epoch_completion SET claimant = ?1 WHERE id = 1",
-                    [claimant.as_slice()],
-                )
-                .map_err(anyhow::Error::from)?;
-            }
-            Ok(())
-        })
-    }
-
     /// Releases an epoch after finalized settlement and bond recovery. The
     /// caller must stop using its Hero before making the epoch collectible.
     pub fn complete_epoch(&mut self, epoch_number: u64) -> Result<()> {
@@ -69,6 +37,7 @@ mod tests {
     use super::*;
     use crate::storage::Epoch;
     use crate::storage::queries::setup_settlement_storage;
+    use alloy::primitives::Address;
 
     fn epochs(count: u64) -> Vec<Epoch> {
         (0..count)
@@ -91,27 +60,11 @@ mod tests {
         storage
             .insert_consensus_data(3, [].iter(), epochs.iter())
             .unwrap();
-        assert!(
-            storage.complete_epoch(0).is_err(),
-            "completion requires a claimant"
-        );
-        storage.pin_epoch_claimant(Address::repeat_byte(7)).unwrap();
         assert_eq!(storage.unfinished_epoch().unwrap().unwrap().epoch_number, 0);
         storage.complete_epoch(0).unwrap();
         drop(storage);
 
         let mut restarted = Storage::new(dir.path()).unwrap();
-        restarted
-            .pin_epoch_claimant(Address::repeat_byte(7))
-            .unwrap();
-        let mismatch = restarted
-            .pin_epoch_claimant(Address::repeat_byte(8))
-            .unwrap_err();
-        assert!(mismatch.to_string().contains("use a new state directory"));
-        // A rejected signer change leaves the original claimant and cursor intact.
-        restarted
-            .pin_epoch_claimant(Address::repeat_byte(7))
-            .unwrap();
         assert_eq!(
             restarted.unfinished_epoch().unwrap().unwrap().epoch_number,
             1
@@ -131,7 +84,6 @@ mod tests {
     #[test]
     fn idle_runner_prunes_only_completed_epochs_and_keeps_its_newest_boundary() {
         let (dir, mut storage) = setup_settlement_storage();
-        storage.pin_epoch_claimant(Address::repeat_byte(7)).unwrap();
         let epochs = epochs(6);
         storage
             .insert_consensus_data(3, [].iter(), epochs.iter().take(3))

@@ -317,9 +317,9 @@ impl NodeConfig {
 
     /// Validates everything it can before the first local write: the
     /// deployment, then the template against the chain's initial hash,
-    /// then, under the state-directory lock, the directory's pins and the
-    /// claimant. A refused deployment or template creates nothing, and a
-    /// refused pin leaves the existing directory untouched.
+    /// then, under the state-directory lock, the directory's pins. A refused
+    /// deployment or template creates nothing, and a refused pin leaves the
+    /// existing directory untouched.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = named_chain(args.web3_chain_id)?;
 
@@ -371,7 +371,7 @@ impl NodeConfig {
             .context("--web3-submit-rpc-url (defaults to --web3-rpc-url)")?;
 
         let state_lock = StateDirLock::acquire(&args.state_dir)?;
-        let mut storage = Storage::initialize(
+        let storage = Storage::initialize(
             &args.state_dir,
             &template,
             address_book.initial_watermark(finalized),
@@ -381,9 +381,6 @@ impl NodeConfig {
             &geometry,
         )
         .context("could not open the state directory")?;
-        storage
-            .pin_epoch_claimant(signer_address)
-            .context("the signer (--web3-private-key(-file) or --aws-kms-key-id(-file))")?;
 
         Ok(Self {
             address_book,
@@ -617,16 +614,9 @@ mod tests {
         drop(config);
         NodeConfig::setup_with(args(&image)).await?;
 
-        // Setup pins the claimant, so another signer is refused before any
-        // worker starts.
-        let error = NodeConfig::setup_with(args_for(book.app, &image, 1))
-            .await
-            .map(|_| ())
-            .unwrap_err();
-        assert!(
-            format!("{error:#}").contains("--web3-private-key"),
-            "unexpected error: {error:#}"
-        );
+        // A new signer reopens the same directory: a previous signer's bonds
+        // stay recoverable by anyone, so rotating keys needs no replay.
+        NodeConfig::setup_with(args_for(book.app, &image, 1)).await?;
         Ok(())
     }
 }

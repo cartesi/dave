@@ -70,9 +70,11 @@ The node completes epochs in order: it waits for finalized settlement and its
 winning bond recoveries before participating in the next epoch. It resumes the
 same unfinished epoch after restart. Other participants may advance meanwhile;
 the operating timing assumption allows a modest delay while refunds finish.
-The completion cursor is bound to one claimant, so changing signer requires a
-fresh state directory. A changed node version, schema, or commitment semantics
-also requires a fresh directory under the node's rebuild policy. The first
+Changing the signer keeps the state directory: the node recovers the bonds of
+its current signer, and a previous signer's bonds stay recoverable by anyone
+through `tryRecoveringBond`, which pays the recorded claimer. A changed node
+version, schema, or commitment semantics requires a fresh directory under the
+node's rebuild policy. The first
 start pins a directory to its application, chain and template, and every start
 checks the `--machine-path` image against the application's on-chain initial
 hash; a mismatch is refused before anything is written, and so is a matching

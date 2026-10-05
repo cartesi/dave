@@ -60,9 +60,7 @@ INSERT INTO latest_processed (id, block)
 CREATE TABLE epoch_completion (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1),
     next_epoch INTEGER NOT NULL
-        CHECK (typeof(next_epoch) = 'integer' AND next_epoch >= 0),
-    claimant BLOB
-        CHECK (claimant IS NULL OR (typeof(claimant) = 'blob' AND length(claimant) = 20))
+        CHECK (typeof(next_epoch) = 'integer' AND next_epoch >= 0)
 ) WITHOUT ROWID;
 INSERT INTO epoch_completion (id, next_epoch) VALUES (1, 0);
 
@@ -226,25 +224,16 @@ BEGIN
 END;
 
 -- The manager finishes epochs in order, only after finalized settlement and
--- bond recovery for its pinned claimant. The cursor may point just beyond the
--- ingested epoch prefix; changing signers requires a different state directory.
+-- recovery of the current signer's bonds. The cursor may point just beyond the
+-- ingested epoch prefix. A previous signer's bonds stay recoverable by anyone.
 
 CREATE TRIGGER trg_epoch_completion_dense
 BEFORE UPDATE OF next_epoch ON epoch_completion
 FOR EACH ROW
 WHEN NEW.id != OLD.id OR NEW.next_epoch != OLD.next_epoch + 1
-    OR OLD.claimant IS NULL
     OR NOT EXISTS (SELECT 1 FROM epochs WHERE epoch_number = OLD.next_epoch)
 BEGIN
-    SELECT RAISE(ABORT, 'epoch_completion must advance by one ingested epoch with a pinned claimant');
-END;
-
-CREATE TRIGGER trg_epoch_completion_claimant
-BEFORE UPDATE OF claimant ON epoch_completion
-FOR EACH ROW
-WHEN OLD.claimant IS NOT NULL AND NEW.claimant IS NOT OLD.claimant
-BEGIN
-    SELECT RAISE(ABORT, 'epoch_completion claimant is write-once');
+    SELECT RAISE(ABORT, 'epoch_completion must advance by one ingested epoch');
 END;
 
 CREATE TRIGGER trg_epoch_completion_no_insert

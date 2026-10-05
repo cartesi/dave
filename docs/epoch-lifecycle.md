@@ -149,7 +149,9 @@ Recovery starts from the ingested epoch root and follows that tournament's
 finalized hash: our recoverable bonds produce calls; recovered, foreign, and
 no-winner dispositions need no further payment; running or unknown dispositions
 prevent completion. Latest only suppresses already-mined payments. Restart
-resumes the durable cursor, which is bound to the configured claimant.
+resumes the durable cursor. "Our" is the configured signer: after a key change,
+the previous signer's bonds stay recoverable by anyone, since
+`tryRecoveringBond` pays the recorded claimer.
 
 The lane rebuilds each batch from current observations and assigns consecutive
 nonces from the signer's latest mined count, with fresh market fees. The node
@@ -161,8 +163,8 @@ the previous epoch. The signer's funding floor is in the
 Completion releases the old Hero before advancing the cursor. The machine
 runner then collects older snapshots and dispute scratch during its next plan,
 even when idle. It collects only epochs below both the completion cursor and
-its newest machine epoch. A different claimant or incompatible schema needs a
-fresh state directory under the node's rebuild policy.
+its newest machine epoch. An incompatible schema needs a fresh state directory
+under the node's rebuild policy.
 
 Sentry-claim and settlement calldata are semantic commitments, so their
 contents come from finalized inputs and stored settlement data. Latest may

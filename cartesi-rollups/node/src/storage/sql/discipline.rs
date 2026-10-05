@@ -129,19 +129,6 @@ fn epoch_completion_is_a_dense_permanent_cursor() {
         .unwrap();
     conn.execute("INSERT INTO epochs VALUES (1, 0, '0x01', 0)", [])
         .unwrap();
-    expect_abort(conn.execute(update, [1]), "pinned claimant");
-    conn.execute("UPDATE epoch_completion SET claimant = zeroblob(20)", [])
-        .unwrap();
-    conn.execute("UPDATE epoch_completion SET claimant = zeroblob(20)", [])
-        .unwrap();
-    expect_abort(
-        conn.execute("UPDATE epoch_completion SET claimant = NULL", []),
-        "write-once",
-    );
-    expect_abort(
-        conn.execute("UPDATE epoch_completion SET claimant = ?1", [[1u8; 20]]),
-        "write-once",
-    );
     expect_abort(conn.execute(update, [2]), "one ingested epoch");
     conn.execute(update, [1]).unwrap();
     expect_abort(conn.execute(update, [0]), "one ingested epoch");
@@ -356,10 +343,10 @@ fn mutation_taxonomy_holds_at_source_level() {
     assert_eq!(
         update_hits,
         vec![
-            ("completion.rs".to_string(), 2),
+            ("completion.rs".to_string(), 1),
             ("ingest.rs".to_string(), 1)
         ],
-        "only claimant pinning, completion, and the ingestion watermark write in place"
+        "only completion and the ingestion watermark write in place"
     );
     assert_eq!(
         delete_hits,

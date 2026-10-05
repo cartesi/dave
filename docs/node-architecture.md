@@ -41,9 +41,8 @@ application's own and still refused: the engine starts every epoch from a
 state awaiting input, so the node could not defend any of its epochs. Only
 then does it take the state-directory lock and open the directory. A seeded
 directory is compared with its `sling_config` pins (app, chain, consensus,
-template, emulator and table) before anything is written, and the claimant is
-pinned before any worker starts. A mismatch names the flag to fix
-(`--app-address`, `--web3-chain-id`, the signer's), calls the directory another
+template, emulator and table) before anything is written. A mismatch names the
+flag to fix (`--app-address`, `--web3-chain-id`), calls the directory another
 deployment's or an old one (the template), or asks for a rebuild (consensus,
 emulator, table). A new directory is seeded in one transaction: the initial
 watermark, the epoch-0 boundary, the template row and the pins. So a deployment
@@ -278,13 +277,13 @@ neither. It attests which schema created
 this node-owned cache; manual database mutation remains unsupported rather than
 continuously audited.
 
-The epoch-completion cursor is bound to one claimant address. A different
-configured signer requires a fresh state directory: epochs completed for one
-claimant may still hold another claimant's bonds. Incompatible schema or node
-versions also require rebuilding a fresh state directory from the chain and
-template machine, as does a change of commitment semantics: a change to leaf
-values or transition shapes bumps `COMMITMENT_SEMANTICS` in
-`storage/sql/schema.rs`, because the frozen crate version would not.
+The epoch-completion cursor is not bound to a signer: recovery pays the
+configured signer's bonds, and a previous signer's bonds stay recoverable by
+anyone. Incompatible schema or node versions require rebuilding a fresh state
+directory from the chain and template machine, as does a change of commitment
+semantics: a change to leaf values or transition shapes bumps
+`COMMITMENT_SEMANTICS` in `storage/sql/schema.rs`, because the frozen crate
+version would not.
 
 Main schema (`storage/sql/schema.sql`):
 
@@ -293,7 +292,7 @@ Main schema (`storage/sql/schema.sql`):
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`
 - `inputs(epoch_number, input_index_in_epoch, input)`
 - `latest_processed(block)` - singleton; last finalized block ingested
-- `epoch_completion` - singleton; fixed claimant and next unfinished epoch
+- `epoch_completion` - singleton; next unfinished epoch
 - `settlement_info(epoch_number, computation_hash, final_state, data block and
   sibling blobs for iflags_Y, HTIF tohost, and the TX buffer)` - the TX data
   block is the outputs Merkle root
