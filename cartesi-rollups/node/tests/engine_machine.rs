@@ -1990,7 +1990,7 @@ fn node_proof_vectors_hold() {
 /// the level exactly like a fresh store. A build stopped midway is
 /// `a_stopped_build_resumes_after_its_stored_spans`; atomicity under
 /// injected failure is pinned by the storage tests, and process kills by
-/// the retained chaos and kill_catchup_batched e2e scenarios. The level is
+/// the chaos e2e scenario. The level is
 /// the big-cycle-root builder's active branch inside window 1.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]

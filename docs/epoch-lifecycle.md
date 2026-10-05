@@ -208,8 +208,11 @@ could succeed and cannot be repaired by a later retry.
    cleanup consumes the tournament standing overlay. Deeper work wins, and a
    cleanup is selected only when that tick has no Hero response. Cleanup
    plans eliminations only: the node never propagates a Sybil-versus-Sybil
-   child's winner, which may linger until its carryover window ends (up to
-   `T + 2G` more per child, one Sybil bond each).
+   child's winner, which may linger until its carryover window ends. That
+   window is the winner's remaining child clock, at most the child's
+   allowance `max(r1, r2)`, up to about one root allowance per nesting level
+   (the `T + 2G` refill applies only on propagation). It delays settlement,
+   not the correct commitment's survival.
 4. A won inner tournament propagates to the parent match; losing the root
    tournament is reported (and should page a human: it means our
    commitment is wrong or we were censored beyond the protocol's bound).

@@ -284,8 +284,12 @@ stepping every span would build. It is built span by span over the bottom
 stratum of its stored fanout (256 spans, 512 big cycles each at height 37),
 storing each span's row as it completes, so a stopped build keeps its
 finished spans and the next one resumes after them; those rows are ones a
-whole build stores anyway. The stepped path stays, permanently, as the
-test reference, and in production it covers one cycle the v0.21 collector gets
+whole build stores anyway. Only such tall quartets use the collector, so
+only the two-level table's height-37 leaf does: every other quartet, every leaf
+of the three-level table (height 27) included, is stepped through
+`Ruler::collect`. `Collector::Stepped`, which steps a tall build as well, stays
+permanently as the collector's test reference. In production stepping also
+covers one cycle the v0.21 collector gets
 wrong: a rejection on the input budget's last cycle keeps the physical root
 instead of the revert root, so that cycle is stepped. That fallback cannot
 cover an input whose first cycle is its budget's last, which takes a delivery
@@ -327,9 +331,10 @@ The same leaf sequence is computed independently by:
 
 1. the Rust node (`cartesi-rollups/node`: level 0 eagerly in the machine
    runner, `Ruler::collect` folded per window in `storage/advance.rs`, and
-   dispute levels lazily in `engine/`; its dense leaves come from the
-   emulator's collector, the lineage the CLI shares, and its stepped path,
-   kept as a test reference, is what stays independent of it),
+   dispute levels lazily in `engine/`; its tall leaves, two-level only,
+   come from the emulator's collector, the lineage the CLI shares, while
+   stepping, everywhere else and as `Collector::Stepped` in tests, stays
+   independent of it),
 2. the Lua client (`prt/client-lua/computation/`), and
 3. implicitly, the on-chain state transition (one leaf transition at a
    time).

@@ -6,4 +6,3 @@ One sample. Workload `test/programs/stress/machine-image`, first input.
 | quartet | build | peak RSS | target (T / slack 2) |
 |---|---:|---:|---:|
 | r0 h37 | 1100.35 s | 103 MiB | 30 min |
-

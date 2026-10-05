@@ -1,14 +1,15 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The [`Stf`] verbs on the real Cartesi machine. Dense leaf builds take
-//! their big-cycle roots from the emulator's bulk uarch collector; every
-//! other verb steps the machine through the per-step API. Under
-//! [`Collector::Stepped`] dense leaves are stepped too: the slow,
-//! obviously-correct path, kept permanently as the collector's
-//! differential reference (computation-hash.md). Machine errors
-//! propagate as errors; geometry violations remain panics (see the stf
-//! module doc).
+//! The [`Stf`] verbs on the real Cartesi machine. Tall leaf builds (stride
+//! 0, height 28 or more: only the two-level table has them) take their
+//! big-cycle roots from the emulator's bulk uarch collector; every other
+//! verb, every three-level leaf included, steps the machine through the
+//! per-step API. Under [`Collector::Stepped`] tall leaves are stepped
+//! too: the slow, obviously-correct path, kept permanently as the
+//! collector's differential reference (computation-hash.md). Machine
+//! errors propagate as errors; geometry violations remain panics (see the
+//! stf module doc).
 
 use super::dispute::DisputeSource;
 use super::ruler::{Hashing, Ruler, RulerFactory};

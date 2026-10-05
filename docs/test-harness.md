@@ -224,10 +224,12 @@ the 2026-10-01 cut:
   chaos`. Qualified 2026-07-02 with five
   consecutive green runs (seeds 1-5, 6-8 kills each); runs in CI with
   a fixed seed.
-- `kill_catchup_batched`: B2 at snapshot gap 3 - the SIGKILL lands mid
-  advance batch, the uncommitted records drop whole, and the resumed
-  run must re-execute the batch to the oracle's settlement. It is the one
-  real-signal kill of the runner partway through an input.
+- `kill_catchup_batched`: B2 at snapshot gap 3 - a SIGKILL aimed at the
+  first advance batch, after which the resumed run must settle to the
+  oracle's root. The kill is not guaranteed to land mid-batch: the 1 s log
+  poll is slower than one echo input, and runs have committed the batch
+  before the kill. It is a restart-and-settle smoke; mid-batch atomicity
+  rests on the storage tests' injected failures.
 
 Lifecycle, dispute, garbage-collection, restart, multi-sybil and
 sealed-leaf timeout scenarios run in the node's in-crate harness
