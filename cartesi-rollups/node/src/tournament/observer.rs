@@ -39,7 +39,7 @@ use crate::{
 
 type ObserverResult<T> = std::result::Result<T, ObserverError>;
 
-const POINT_READ_CONCURRENCY: usize = 16;
+pub(crate) const POINT_READ_CONCURRENCY: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatchPhase {

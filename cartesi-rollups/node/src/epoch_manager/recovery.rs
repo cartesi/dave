@@ -17,14 +17,24 @@
 //! is consulted only to suppress a transaction already observed as
 //! mined. It can never retire an epoch, so a reorg cannot turn a
 //! volatile observation into permanent process state.
+//!
+//! The tree and the settled dispositions are finalized facts, so they
+//! are kept across ticks: each tick walks only the newly finalized
+//! blocks and reads only unsettled tournaments. This scan runs before
+//! the tick's wave is sent, so its cost must not grow with the dispute's
+//! age or with the tournaments an adversary has created and resolved.
+
+use std::collections::HashSet;
 
 use alloy::primitives::Address;
 use anyhow::Result;
+use futures::{StreamExt, TryStreamExt, stream};
 use log::{info, trace};
 
 use crate::chain::{Chain, ChainHead};
 use crate::provider::LaneRequest;
 use crate::storage::Epoch;
+use crate::tournament::observer::POINT_READ_CONCURRENCY;
 use cartesi_prt_contracts::tournament;
 
 /// ITournament.BondDisposition, by declaration order.
@@ -38,10 +48,69 @@ pub struct RecoveryTick {
     pub complete: bool,
 }
 
-/// Rebuild every outstanding recovery from chain state. Only finalized
-/// classifications may complete an epoch; mined payments suppress retries.
+/// One epoch's dispute tree as walked over finalized blocks. Held in
+/// memory only: a restart rebuilds it with one full walk.
+#[derive(Debug)]
+pub struct RecoveryTree {
+    epoch_number: u64,
+    /// The first block whose NewInnerTournament events are not walked.
+    next_block: u64,
+    /// The root first, then children in discovery order.
+    tournaments: Vec<Address>,
+    /// Tournaments that can no longer owe us a payment: recovered,
+    /// without a winner, or another claimer's.
+    settled: HashSet<Address>,
+}
+
+impl RecoveryTree {
+    fn new(epoch: &Epoch) -> Self {
+        Self {
+            epoch_number: epoch.epoch_number,
+            next_block: epoch.block_created_number,
+            tournaments: vec![epoch.root_tournament],
+            settled: HashSet::new(),
+        }
+    }
+
+    /// Extends the tree through `to`. A child created in the range may
+    /// itself create children in it, so the range is walked again for
+    /// each new generation. A failed walk keeps what it found and leaves
+    /// the range to the next tick.
+    async fn walk_to(&mut self, chain: &Chain, to: u64) -> Result<()> {
+        if to < self.next_block {
+            return Ok(());
+        }
+        let mut parents = self.tournaments.clone();
+        while !parents.is_empty() {
+            let events = chain
+                .decoded_logs_from_any::<tournament::Tournament::NewInnerTournament>(
+                    &parents,
+                    self.next_block,
+                    to,
+                )
+                .await?;
+            let mut children = Vec::new();
+            for (event, log) in events {
+                let child = event.childTournament;
+                // Provenance: only a known parent's own event names a child.
+                if parents.contains(&log.address()) && !self.tournaments.contains(&child) {
+                    self.tournaments.push(child);
+                    children.push(child);
+                }
+            }
+            parents = children;
+        }
+        self.next_block = to + 1;
+        Ok(())
+    }
+}
+
+/// Plan outstanding recoveries from finalized chain state, keeping `tree`
+/// for the next tick. Only finalized classifications may complete an
+/// epoch; mined payments suppress retries.
 pub async fn plan_recovery(
     chain: &Chain,
+    tree: &mut Option<RecoveryTree>,
     epoch: &Epoch,
     claimant: Address,
     finalized: ChainHead,
@@ -53,31 +122,44 @@ pub async fn plan_recovery(
         });
     }
 
-    let tree = tournament_tree(
-        chain,
-        epoch.root_tournament,
-        epoch.block_created_number,
-        finalized.number,
-    )
+    let tree = match tree {
+        Some(tree) if tree.epoch_number == epoch.epoch_number => tree,
+        _ => tree.insert(RecoveryTree::new(epoch)),
+    };
+    tree.walk_to(chain, finalized.number).await?;
+
+    let unsettled: Vec<Address> = tree
+        .tournaments
+        .iter()
+        .filter(|tournament| !tree.settled.contains(*tournament))
+        .copied()
+        .collect();
+    let recoveries = stream::iter(unsettled.into_iter().map(|address| async move {
+        let recovery = tournament::Tournament::new(address, chain.provider())
+            .bondRecovery()
+            .block(finalized.block_id())
+            .call()
+            .await?;
+        Ok::<_, anyhow::Error>((address, recovery))
+    }))
+    .buffered(POINT_READ_CONCURRENCY)
+    .try_collect::<Vec<_>>()
     .await?;
+
     let mut candidates = Vec::new();
     let mut tick = RecoveryTick {
         wave: Vec::new(),
         complete: true,
     };
-    for tournament in tree {
-        let contract = tournament::Tournament::new(tournament, chain.provider());
-        let recovery = contract
-            .bondRecovery()
-            .block(finalized.block_id())
-            .call()
-            .await?;
+    for (tournament, recovery) in recoveries {
         match recovery.disposition {
             RECOVERABLE if recovery.claimer == claimant => {
                 candidates.push(tournament);
                 tick.complete = false;
             }
-            RECOVERABLE | RECOVERED | NO_WINNER => {}
+            RECOVERABLE | RECOVERED | NO_WINNER => {
+                tree.settled.insert(tournament);
+            }
             TOURNAMENT_RUNNING => tick.complete = false,
             other => {
                 // Refunds gate the next epoch, so this holds the node out of
@@ -116,28 +198,10 @@ pub async fn plan_recovery(
     Ok(tick)
 }
 
-/// Enumerate one epoch's dispute tree root-down. Every address comes
-/// from a trusted parent's own NewInnerTournament events over
-/// finalized blocks, so the whole tree inherits the root's provenance.
-async fn tournament_tree(chain: &Chain, root: Address, from: u64, to: u64) -> Result<Vec<Address>> {
-    let mut tree = vec![root];
-    let mut cursor = 0;
-    while cursor < tree.len() {
-        let parent = tree[cursor];
-        cursor += 1;
-        let children = chain
-            .decoded_logs::<tournament::Tournament::NewInnerTournament>(parent, None, from, to)
-            .await?;
-        for (event, _) in children {
-            tree.push(event.childTournament);
-        }
-    }
-    Ok(tree)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chain::recording::{Requests, recording_provider};
     use alloy::{
         primitives::{B256, Bytes, Log as PrimitiveLog, TxKind, U256},
         providers::{Provider, ProviderBuilder},
@@ -258,13 +322,16 @@ mod tests {
         let latest = head(12, 0x12);
         let (chain, asserter) = mocked_chain();
         let epoch = epoch(7, root, 5);
+        let mut tree = None;
 
         // At F1 the child does not exist yet and the root is still
         // running. A latest view could already report the root as
         // recovered, but it is intentionally never queried here.
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, TOURNAMENT_RUNNING, Address::ZERO);
-        let tick = plan_recovery(&chain, &epoch, us, f1).await.unwrap();
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1)
+            .await
+            .unwrap();
         assert!(tick.wave.is_empty());
         assert!(!tick.complete);
 
@@ -277,7 +344,9 @@ mod tests {
         asserter.push_success(&Some(block(latest)));
         push_bond(&asserter, RECOVERABLE, us);
 
-        let tick = plan_recovery(&chain, &epoch, us, f2).await.unwrap();
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f2)
+            .await
+            .unwrap();
         assert_eq!(tick.wave.len(), 1);
         assert_recovers(&tick.wave[0], child);
         assert!(!tick.complete);
@@ -294,30 +363,36 @@ mod tests {
         let h2 = head(22, 0x32);
         let (chain, asserter) = mocked_chain();
         let epoch = epoch(8, root, 5);
+        let mut tree = None;
 
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERABLE, us);
         asserter.push_success(&Some(block(h1)));
         push_bond(&asserter, RECOVERED, Address::ZERO);
-        let tick = plan_recovery(&chain, &epoch, us, f1).await.unwrap();
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1)
+            .await
+            .unwrap();
         assert!(tick.wave.is_empty());
         assert!(!tick.complete);
 
         // Retry immediately when the payment disappears, even while the
-        // finalized head has not advanced.
-        asserter.push_success(&Vec::<Log>::new());
+        // finalized head has not advanced (so no blocks are walked).
         push_bond(&asserter, RECOVERABLE, us);
         asserter.push_success(&Some(block(h2)));
         push_bond(&asserter, RECOVERABLE, us);
 
-        let tick = plan_recovery(&chain, &epoch, us, f1).await.unwrap();
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1)
+            .await
+            .unwrap();
         assert_eq!(tick.wave.len(), 1);
         assert_recovers(&tick.wave[0], root);
         assert!(!tick.complete);
 
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERED, Address::ZERO);
-        let tick = plan_recovery(&chain, &epoch, us, f2).await.unwrap();
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f2)
+            .await
+            .unwrap();
         assert!(tick.wave.is_empty());
         assert!(tick.complete);
         assert!(asserter.read_q().is_empty());
@@ -332,17 +407,23 @@ mod tests {
         let latest = head(31, 0x31);
         let (chain, asserter) = mocked_chain();
         let epoch = epoch(9, root, 5);
+        let mut tree = None;
 
-        for _ in 0..2 {
-            asserter.push_success(&vec![child_log(root, child, finalized)]);
-            asserter.push_success(&Vec::<Log>::new());
+        for tick in 0..2 {
+            // The tree is walked once; the bonds are read on every tick.
+            if tick == 0 {
+                asserter.push_success(&vec![child_log(root, child, finalized)]);
+                asserter.push_success(&Vec::<Log>::new());
+            }
             push_bond(&asserter, RECOVERABLE, us);
             push_bond(&asserter, RECOVERABLE, us);
             asserter.push_success(&Some(block(latest)));
             push_bond(&asserter, RECOVERABLE, us);
             push_bond(&asserter, RECOVERABLE, us);
 
-            let tick = plan_recovery(&chain, &epoch, us, finalized).await.unwrap();
+            let tick = plan_recovery(&chain, &mut tree, &epoch, us, finalized)
+                .await
+                .unwrap();
             assert_eq!(tick.wave.len(), 2);
             assert_recovers(&tick.wave[0], root);
             assert_recovers(&tick.wave[1], child);
@@ -368,7 +449,9 @@ mod tests {
         push_bond(&asserter, RECOVERABLE, address(5));
         push_bond(&asserter, NO_WINNER, Address::ZERO);
 
-        let tick = plan_recovery(&chain, &epoch, us, finalized).await.unwrap();
+        let tick = plan_recovery(&chain, &mut None, &epoch, us, finalized)
+            .await
+            .unwrap();
         assert!(tick.wave.is_empty());
         assert!(tick.complete);
         assert!(asserter.read_q().is_empty());
@@ -382,7 +465,7 @@ mod tests {
         for disposition in [TOURNAMENT_RUNNING, 9] {
             asserter.push_success(&Vec::<Log>::new());
             push_bond(&asserter, disposition, Address::ZERO);
-            let tick = plan_recovery(&chain, &epoch, address(1), head(30, 0x30))
+            let tick = plan_recovery(&chain, &mut None, &epoch, address(1), head(30, 0x30))
                 .await
                 .unwrap();
             assert!(tick.wave.is_empty());
@@ -396,11 +479,114 @@ mod tests {
         let (chain, asserter) = mocked_chain();
         let epoch = epoch(9, address(2), 31);
 
-        let tick = plan_recovery(&chain, &epoch, address(1), head(30, 0x30))
+        let tick = plan_recovery(&chain, &mut None, &epoch, address(1), head(30, 0x30))
             .await
             .unwrap();
         assert!(tick.wave.is_empty());
         assert!(!tick.complete);
+        assert!(asserter.read_q().is_empty());
+    }
+
+    /// The `[fromBlock, toBlock]` and addresses of every get_logs request,
+    /// and the number of point reads.
+    fn requested(requests: &Requests) -> (Vec<(u64, u64, usize)>, usize) {
+        let block = |value: &serde_json::Value| {
+            u64::from_str_radix(value.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
+        };
+        let requests = requests.lock().unwrap();
+        let logs = requests
+            .iter()
+            .filter(|request| request["method"] == "eth_getLogs")
+            .map(|request| {
+                let filter = &request["params"][0];
+                let addresses = match &filter["address"] {
+                    serde_json::Value::Array(addresses) => addresses.len(),
+                    _ => 1,
+                };
+                (
+                    block(&filter["fromBlock"]),
+                    block(&filter["toBlock"]),
+                    addresses,
+                )
+            })
+            .collect();
+        let calls = requests
+            .iter()
+            .filter(|request| request["method"] == "eth_call")
+            .count();
+        (logs, calls)
+    }
+
+    #[tokio::test]
+    async fn a_later_tick_walks_only_new_blocks_and_rereads_only_unsettled_bonds() {
+        let us = address(1);
+        let root = address(2);
+        let child = address(3);
+        let (provider, asserter, requests) = recording_provider();
+        let chain = Chain::new(provider);
+        let epoch = epoch(9, root, 5);
+        let mut tree = None;
+
+        asserter.push_success(&vec![child_log(root, child, head(10, 0x10))]);
+        asserter.push_success(&Vec::<Log>::new());
+        push_bond(&asserter, RECOVERED, Address::ZERO);
+        push_bond(&asserter, TOURNAMENT_RUNNING, Address::ZERO);
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(30, 0x30))
+            .await
+            .unwrap();
+        assert!(!tick.complete);
+
+        // Both known tournaments are walked over the new blocks in one
+        // query, and only the still-running child is read again.
+        asserter.push_success(&Vec::<Log>::new());
+        push_bond(&asserter, NO_WINNER, Address::ZERO);
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(40, 0x40))
+            .await
+            .unwrap();
+        assert!(tick.complete);
+
+        let (logs, calls) = requested(&requests);
+        assert_eq!(logs, [(5, 30, 1), (5, 30, 1), (31, 40, 2)]);
+        assert_eq!(calls, 3);
+        assert!(asserter.read_q().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_next_epoch_starts_its_own_tree() {
+        let us = address(1);
+        let (provider, asserter, requests) = recording_provider();
+        let chain = Chain::new(provider);
+        let mut tree = None;
+
+        asserter.push_success(&Vec::<Log>::new());
+        push_bond(&asserter, RECOVERED, Address::ZERO);
+        let tick = plan_recovery(
+            &chain,
+            &mut tree,
+            &epoch(9, address(2), 5),
+            us,
+            head(30, 0x30),
+        )
+        .await
+        .unwrap();
+        assert!(tick.complete);
+
+        asserter.push_success(&Vec::<Log>::new());
+        push_bond(&asserter, TOURNAMENT_RUNNING, Address::ZERO);
+        let tick = plan_recovery(
+            &chain,
+            &mut tree,
+            &epoch(10, address(4), 25),
+            us,
+            head(30, 0x30),
+        )
+        .await
+        .unwrap();
+        assert!(!tick.complete);
+
+        let (logs, calls) = requested(&requests);
+        assert_eq!(logs, [(5, 30, 1), (25, 30, 1)]);
+        assert_eq!(calls, 2);
         assert!(asserter.read_q().is_empty());
     }
 }

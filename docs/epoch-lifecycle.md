@@ -148,8 +148,12 @@ Recovery starts from the ingested epoch root and follows that tournament's
 `NewInnerTournament` descendants. It reads their bond dispositions at one
 finalized hash: our recoverable bonds produce calls; recovered, foreign, and
 no-winner dispositions need no further payment; running or unknown dispositions
-prevent completion. Latest only suppresses already-mined payments. Restart
-resumes the durable cursor. "Our" is the configured signer: after a key change,
+prevent completion. Latest only suppresses already-mined payments. The walked
+tree and the settled dispositions are finalized facts, so the manager keeps
+them in memory and each tick walks only newly finalized blocks and rereads only
+unsettled bonds: the scan runs before the tick's wave is sent, and must not
+grow with the dispute's age or with the tournaments an adversary has created.
+Restart resumes the durable cursor and walks the tree once. "Our" is the configured signer: after a key change,
 the previous signer's bonds stay recoverable by anyone, since
 `tryRecoveringBond` pays the recorded claimer.
 

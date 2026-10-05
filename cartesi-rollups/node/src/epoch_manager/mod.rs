@@ -5,7 +5,7 @@ mod error;
 mod recovery;
 
 use self::error::Result;
-use self::recovery::plan_recovery;
+use self::recovery::{RecoveryTree, plan_recovery};
 use alloy::primitives::{Address, B256, TxKind, U256, keccak256};
 use alloy::providers::DynProvider;
 use log::{debug, error, info, trace};
@@ -35,6 +35,8 @@ pub struct EpochManager<AS: ArenaSender> {
     shutdown: ShutdownSignal,
     /// The calls the previous tick skipped as reverting at latest.
     reverted: Vec<CallKey>,
+    /// The unfinished epoch's dispute tree, walked over finalized blocks.
+    recovery: Option<RecoveryTree>,
 }
 
 /// A call's identity across ticks: its verb, target and calldata.
@@ -77,6 +79,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             epoch_hero: None,
             shutdown,
             reverted: Vec::new(),
+            recovery: None,
         }
     }
 
@@ -201,17 +204,24 @@ impl<AS: ArenaSender> EpochManager<AS> {
 
         // Every applicable refund joins the same batch, including while the
         // root is running. A failed scan cannot discard already prepared work.
-        let refunds_complete =
-            match plan_recovery(chain, &epoch, self.signer_address, finalized).await {
-                Ok(recovery) => {
-                    wave.extend(recovery.wave);
-                    recovery.complete
-                }
-                Err(e) => {
-                    log::warn!("bond recovery planning failed, retrying next tick: {e:#}");
-                    false
-                }
-            };
+        let refunds_complete = match plan_recovery(
+            chain,
+            &mut self.recovery,
+            &epoch,
+            self.signer_address,
+            finalized,
+        )
+        .await
+        {
+            Ok(recovery) => {
+                wave.extend(recovery.wave);
+                recovery.complete
+            }
+            Err(e) => {
+                log::warn!("bond recovery planning failed, retrying next tick: {e:#}");
+                false
+            }
+        };
         Ok(Some(EpochTick {
             epoch: epoch.epoch_number,
             wave,
@@ -769,6 +779,18 @@ mod tests {
         push_bond(asserter, disposition, claimer);
     }
 
+    /// A refund tick at a finalized head this manager has already walked:
+    /// the recovery tree needs no logs, only the bond reads.
+    fn push_walked_refund_tick(
+        asserter: &Asserter,
+        finalized: u64,
+        disposition: u8,
+        claimer: Address,
+    ) {
+        push_head(asserter, finalized);
+        push_bond(asserter, disposition, claimer);
+    }
+
     #[tokio::test]
     async fn rotation_and_restart_finish_old_refunds_before_following_the_next_epoch() {
         let dir = setup_epochs();
@@ -801,7 +823,7 @@ mod tests {
         assert_eq!(retried.wave, planned.wave);
 
         // Mined but unfinalized recovery suppresses the call, not the epoch.
-        push_refund_tick(&rpc, 30, 2, us);
+        push_walked_refund_tick(&rpc, 30, 2, us);
         push_head(&rpc, 31);
         push_bond(&rpc, 3, Address::ZERO);
         assert!(!restarted.tick(&chain).await.unwrap().done);

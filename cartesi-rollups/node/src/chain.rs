@@ -40,6 +40,10 @@ impl ChainHead {
     }
 }
 
+/// Addresses per log filter, well under geth's default
+/// `--rpc.logquerylimit` of 1,000.
+const MAX_FILTER_ADDRESSES: usize = 100;
+
 #[derive(Debug, Clone)]
 pub struct Chain {
     provider: DynProvider,
@@ -126,17 +130,44 @@ impl Chain {
         if let Some(topic) = topic1 {
             filter = filter.topic1(topic.clone());
         }
+        self.decoded_logs_in_order(&filter, from, to).await
+    }
 
-        let mut logs = self.logs_bisecting(&filter, from, to).await?;
+    /// `E`-typed logs emitted by any of `addresses` in `[from, to]`, decoded
+    /// and in chain order. One query per `MAX_FILTER_ADDRESSES` addresses:
+    /// providers cap a filter's address list (geth at 1,000 by default).
+    pub async fn decoded_logs_from_any<E: SolEvent>(
+        &self,
+        addresses: &[Address],
+        from: u64,
+        to: u64,
+    ) -> Result<Vec<(E, Log)>> {
+        let mut decoded = Vec::new();
+        for chunk in addresses.chunks(MAX_FILTER_ADDRESSES) {
+            let filter = Filter::new().address(chunk.to_vec()).event(E::SIGNATURE);
+            decoded.extend(self.decoded_logs_in_order(&filter, from, to).await?);
+        }
+        decoded.sort_by_key(|(_, log)| (log.block_number, log.transaction_index, log.log_index));
+        Ok(decoded)
+    }
+
+    async fn decoded_logs_in_order<E: SolEvent>(
+        &self,
+        filter: &Filter,
+        from: u64,
+        to: u64,
+    ) -> Result<Vec<(E, Log)>> {
+        let mut logs = self.logs_bisecting(filter, from, to).await?;
         // A response is not guaranteed to be in chain order, and ingestion
         // checks each input's index against its predecessor's: a reordered
         // response would fail every retry the same way. Ordering needs the
         // block number, which every mined log carries.
         if let Some(log) = logs.iter().find(|log| log.block_number.is_none()) {
             bail!(
-                "a {} log from {address} has no block number (transaction {:?}): an \
+                "a {} log from {} has no block number (transaction {:?}): an \
                  inconsistent response from the provider",
                 E::SIGNATURE,
+                log.address(),
                 log.transaction_hash
             );
         }
