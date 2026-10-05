@@ -81,3 +81,8 @@ rusqlite = { version = "0.31.0", features = ["bundled", "functions"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 hex = "0.4"
 log = "0.4"
+
+# The tests run with overflow checks; ship the node with the same semantics,
+# so an arithmetic invariant violation panics instead of wrapping silently.
+[profile.release]
+overflow-checks = true
