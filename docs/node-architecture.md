@@ -213,7 +213,7 @@ state_dir/
 ```
 
 The storage module follows the sequencer's shape: `open.rs` owns connections
-(WAL, `foreign_keys=ON`, `synchronous=NORMAL`, busy timeout, a
+(WAL, `foreign_keys=ON`, `synchronous=FULL`, busy timeout, a
 read-only opener) and the `read`/`write` closure helpers (Deferred vs
 Immediate); writer roles live in per-role files - `ingest.rs`
 (blockchain-reader), `advance.rs` (machine-runner), `dispute.rs` (player), and

@@ -21,13 +21,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// SQLite `synchronous` pragma for every connection. NORMAL under WAL
-/// survives process crash but may lose the last commits on power
-/// loss. That is enough here because the node is replay-tolerant by
-/// design: every write is re-derivable from the chain and the machine,
-/// and it externalizes nothing keyed on a commit. Revisit if a commit
-/// ever gates an external effect.
-const SYNCHRONOUS_PRAGMA: &str = "NORMAL";
+/// SQLite `synchronous` pragma for every connection. FULL, because a
+/// commit gates an external effect: snapshot directories are removed
+/// once the commit that stops referencing them lands, and under NORMAL
+/// a power loss can undo that commit while the removals persist,
+/// leaving rows that name missing directories. The node commits a few
+/// times per tick, so the extra fsync is free.
+const SYNCHRONOUS_PRAGMA: &str = "FULL";
 
 /// Snapshot boundaries kept per epoch beyond the start and the
 /// latest: every gap-th input. This is the disk-vs-replay knob for
