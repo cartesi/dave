@@ -69,7 +69,7 @@ enum Feeder {
     },
 }
 
-/// How dense leaves are built: the emulator's bulk uarch collector, or
+/// How tall leaves are built: the emulator's bulk uarch collector, or
 /// the per-step API one transition at a time (the reference).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Collector {
@@ -178,7 +178,7 @@ impl MachineStf {
         self
     }
 
-    /// Selects how dense leaves are built (production collects in bulk).
+    /// Selects how tall leaves are built (production collects in bulk).
     pub fn with_collector(mut self, collector: Collector) -> Self {
         self.collector = collector;
         self
@@ -200,7 +200,7 @@ impl MachineStf {
             machine,
             // The runner hashes once per stride sample.
             hashing: Hashing::Sampled,
-            // and builds no dense leaves.
+            // and builds no tall leaves.
             collector: Collector::Stepped,
             revert_tail: None,
             ucycle: 0,

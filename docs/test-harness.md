@@ -136,9 +136,10 @@ both tables (the root samples every 2^(stride - 20) big cycles; at 2^17 a
 sample falls inside echo's rejected input, so the revert shows), and
 `leaf_commitments_match_the_reference_cli` checks stride-0 leaf commitments
 (dense spans, yields, reverts) against the CLI's uarch cycle computation
-hashes at periods 7 and 8. The node builds dense leaves with the emulator's
-collector, as the CLI does, so those leaves and the corpus's are also built
-with the node's stepped reference, `bulk_and_stepped_leaf_runs_agree`
+hashes at periods 7 and 8. The node builds tall leaves (two-level only)
+with the emulator's collector, as the CLI does, so those leaves and the
+corpus's are also built with the node's stepped reference,
+`bulk_and_stepped_leaf_runs_agree`
 compares the two per big cycle, and `uarch_bundles_reduce_to_the_unbundled_leaves`
 ties the collector's bundling to the node's Merkle assembly. The sling
 differential chain (toy spec, reference collector, prototype fixtures)

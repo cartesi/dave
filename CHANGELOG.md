@@ -21,9 +21,10 @@ needed.
 - Interface changes: `TournamentArguments` (the clone arguments) and
   `TournamentParameters` gain `commitmentBudget`, so `tournamentParameters()`
   returns six fields; `CanonicalTournamentParametersProvider`'s constructor
-  takes `(blockMilliseconds, censorshipSeconds, inclusionSeconds)` and
-  derives the budgets (`ClockBudgets`); `CartesiStateTransition` gains one
-  error. Tournament's function and event ABI is unchanged.
+  takes `(blockMilliseconds, censorshipSeconds, inclusionSeconds)`, derives
+  the budgets (`ClockBudgets`) and can revert with `BlockTimeCannotBeZero`;
+  `CartesiStateTransition` gains one error. Tournament's function and event
+  ABI is unchanged.
 - An epoch now settles no sooner than about one week and 85 minutes after it
   seals on mainnet with the canonical three-level table (one week and 60
   minutes before), and about 9 hours 25 minutes on testnets, plus the claim
@@ -58,7 +59,8 @@ needed.
   start from.
 - Ingestion starts at the application's (or its consensus's) deployment,
   checks the chain's input and sealed-epoch totals at the finalized head, and
-  refuses an incomplete response before committing.
+  refuses an incomplete response there before committing (catch-up chunks are
+  checked for contiguity only; see the README's operator notes).
 - `--long-block-range-error-codes` is removed: any failed `eth_getLogs` over
   more than one block is split, and a failure at one block fails the tick.
   Passing the flag is now a startup error; its environment variable is
@@ -82,6 +84,13 @@ needed.
   `clean-*` recipes are `programs::clean PROGRAM`, one `clean` per contracts
   project and the root `clean`; the e2e entry points are `just e2e`,
   `just e2e-smoke` and `just e2e-logs`.
-- The honeypot image is an opt-in build from a pinned ref. Docker is needed
-  only for `just test-kms` and the honeypot image.
-- Each worktree's devnet needs one rebuild.
+- Also removed: the Docker dev environment and its recipes (`setup-docker`,
+  `prepare-docker-context`, `run-dockered`, `exec-dockered`),
+  `update-submodules`, `check-rust-workspace`, `test-prt-timeout-boundaries`,
+  the per-scenario `test-rollups-*` recipes (use `just e2e`) and the
+  per-module `doctor` recipes (use `just doctor`).
+- The honeypot image is an opt-in build from a pinned ref:
+  `programs::build-honeypot-snapshot` is `programs::build-honeypot`. Docker is
+  needed only for `just test-kms` and the honeypot image.
+- Each worktree's devnet needs one rebuild:
+  `just rollups-contracts::build-devnet`.

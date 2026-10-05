@@ -61,9 +61,10 @@ Reads use `--web3-rpc-url`. Raw signed transactions use
 name a private relay with revert protection: honest nodes that share a
 commitment race on every step, and without it each pays for its reverted
 copies of the steps another node landed first. The relay must not land
-reverting transactions and must reach builders covering most blocks (for
-example Flashbots Protect, or MEV Blocker's `/noreverts` endpoint: its default
-endpoint lands reverts). The signer must be exclusive to
+reverting transactions and must reach builders covering most blocks. For
+example, MEV Blocker's `/noreverts` endpoint qualifies, while its default
+endpoint lands reverts, and Flashbots Protect's default endpoint reaches only
+the Flashbots builder. The signer must be exclusive to
 one node process because the node owns its nonce sequence. Each tick batches
 the applicable dispute or cleanup action, settlement step, and all available
 bond recoveries at consecutive nonces from the latest mined count. The next
@@ -191,7 +192,10 @@ Options:
 - A fresh state directory replays every input since the application's
   deployment. To upgrade across a change that requires one, start the new
   node on a new directory with its own funded signer, let it catch up, then
-  stop the old one; never wipe the only node's directory in place.
+  stop the old one; never wipe the only node's directory in place. The old
+  signer's outstanding bonds stay recoverable by anyone through
+  `tryRecoveringBond`; restarting the new node with the old signer, once the
+  old node is stopped, recovers them as well.
 - Read the levels as the failure policy defines them
   ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
   an ERROR asks an operator to act; a WARN means the node carries on. A WARN
