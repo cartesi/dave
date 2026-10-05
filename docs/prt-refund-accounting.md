@@ -171,9 +171,11 @@ prove that the requested refund is less than the recipient's private cost.
 It does keep the refund tied to that work: the metered proof's length is
 fixed by the state transition, so padding earns nothing. The remaining slack
 is bounded: `Gas.TX` per action in a batch that pays the intrinsic cost once
-(about a fifth of an advance's allocation), and, for a recipient that also
-builds the block, its own priority fee up to `Bond.REFUND_PRIORITY_FEE_CAP`
-(a fifth of the 50 gwei work price).
+(about a fifth of an advance's allocation); for a recipient that also builds
+the block, its own priority fee up to `Bond.REFUND_PRIORITY_FEE_CAP` (a fifth
+of the 50 gwei work price); and the gap between 16 units and the zero-byte
+price on the leaf proof's input bytes, which the input's author chooses
+(under about 0.8M units at the maximum input).
 
 Adding an independent attacker loss would be a new policy. Doubling the work
 reserve without increasing refund liability would merely disguise that stake

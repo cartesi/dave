@@ -237,8 +237,8 @@ settlement validity proof; `NodeProofsTest` opens the former with the
 tournament's `Commitment` library and validates the latter as `DaveConsensus`
 stages it, requiring the reference CLI's outputs Merkle root.
 A nonempty DA payload paired with the provider's zero out-of-range root is
-rejected: a position with no input carries no input bytes, which fixes the
-proof's length for the leaf refund.
+rejected (`StateTransition.t.sol`): a position with no input carries no input
+bytes, which fixes the proof's length for the leaf refund.
 One PRT-side composition test carries a canonical input-opening vector through
 the real leaf Tournament and `CartesiStateTransition` with a standalone
 `IDataProvider`. This pins the generic dispute seam without depending on

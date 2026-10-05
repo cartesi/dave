@@ -19,6 +19,8 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 
 /// @title IStateTransition
 /// @notice Transitions machine state from s to s+1
+/// @dev At most one proof length may verify per (machineState, counter):
+/// the leaf proof's refund meters it.
 interface IStateTransition {
     function transitionState(
         bytes32 machineState,

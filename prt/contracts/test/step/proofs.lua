@@ -244,21 +244,6 @@ if args[1] == "uarch-cycle-overflow-closing-layout" then
     return
 end
 
-if args[1] == "out-of-range-nonempty-input-opening" then
-    local meta_cycle = uint256.zero()
-    local agree_hash, next_state_hash, empty_da_proof =
-        get_proof(meta_cycle, {})
-    assert(empty_da_proof:sub(1, 8) == string.rep("\0", 8))
-    local input_bin = input_at(0)
-    local proof_bin = encode_da(input_bin) .. empty_da_proof:sub(9)
-
-    write_abi(
-        { meta_cycle:tobe(false), agree_hash.digest, next_state_hash.digest },
-        proof_bin
-    )
-    return
-end
-
 local terminal_specs = {
     ["terminal-halt-zero-opening"] = {
         kind = "halt",

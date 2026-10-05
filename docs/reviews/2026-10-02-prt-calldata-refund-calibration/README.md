@@ -97,10 +97,14 @@ Other leaf witnesses (rounded recommendations): representative input
 
 ## Padding
 
-Superseded before merge; see the amendment below. As measured here, padding
-calldata with cheap bytes (4 units each, or 10 under the EIP-7623 floor)
-earned 16 each, so a caller could lift an action's refund up to its
-allocation.
+Padding calldata with cheap bytes (4 units each, or 10 under the EIP-7623
+floor) now earns 16 each, so a caller can lift an action's refund up to its
+allocation. The reserve argument in `prt-refund-accounting.md` already
+charges every action at its allocation, so the winner's reserve holds. What
+moves is who receives the losing reserves: refunds instead of bounty and
+burn, which the accounting already permits.
+
+Superseded before merge; see Amendment (2026-10-05).
 
 ## Network admission
 

@@ -695,29 +695,6 @@ contract StateTransitionFfiTest is Util {
         );
     }
 
-    /// A position with no input carries no input bytes; otherwise the leaf
-    /// proof, whose length its refund meters, could be padded.
-    function testTransitionOutOfRangeNonemptyInputIsRejected() public {
-        (uint256 counter, bytes32 before,, bytes memory proof) =
-            runVectorCmd("out-of-range-nonempty-input-opening");
-        assertEq(counter, 0);
-        assertGt(proof.length, 40);
-        uint64 inputLength;
-        assembly ("memory-safe") {
-            inputLength := shr(192, mload(add(proof, 32)))
-        }
-        assertGt(inputLength, 0);
-        Provider provider = new Provider(0);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                CartesiStateTransition.InputBytesWithoutInput.selector,
-                inputLength
-            )
-        );
-        STATE_TRANSITION.transitionState(before, counter, proof, provider);
-    }
-
     function assertTransitionReverts(
         bytes32 before,
         uint256 counter,
