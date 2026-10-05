@@ -87,10 +87,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         let shutdown = shutdown.clone();
         tokio::spawn(async move {
             let storage = params.storage()?;
-            let chain = Chain::new(
-                params.read_provider().await?,
-                params.long_block_range_error_codes.clone(),
-            );
+            let chain = Chain::new(params.read_provider().await?);
             let blockchain_reader =
                 BlockchainReader::new(storage, params.address_book, params.sleep_duration);
             blockchain_reader.execution_loop(shutdown, chain).await
@@ -105,10 +102,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
             let storage = params.storage()?;
             let read_provider = params.read_provider().await?;
             let transaction_lane = params.transaction_lane(read_provider.clone()).await?;
-            let chain = Chain::new(
-                read_provider.clone(),
-                params.long_block_range_error_codes.clone(),
-            );
+            let chain = Chain::new(read_provider.clone());
             let arena_sender = EthArenaSender::new(read_provider);
             let epoch_manager = EpochManager::new(
                 Arc::new(arena_sender),

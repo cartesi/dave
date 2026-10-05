@@ -770,7 +770,7 @@ mod witness_tests {
             _dir: dir,
             reader: BlockchainReader::new(storage, book, Duration::ZERO)
                 .with_chunk_blocks(chunk_blocks),
-            chain: Chain::new(provider, Vec::new()),
+            chain: Chain::new(provider),
             rpc,
             requests,
         }
@@ -1153,7 +1153,6 @@ mod blockchain_reader_tests {
             ProviderBuilder::new()
                 .connect_client(rpc_client_with_timeout(url))
                 .erased(),
-            Vec::new(),
         )
     }
 
@@ -1352,7 +1351,7 @@ mod blockchain_reader_tests {
     #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
     async fn ingestion_starts_at_the_application_deployment() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
-        let chain = Chain::new(provider.clone(), Vec::new());
+        let chain = Chain::new(provider.clone());
         // finality trails latest by two blocks
         mine_blocks(&provider, 3).await?;
         let watermark = address_book.initial_watermark(chain.finalized_block_number().await?);
@@ -1415,7 +1414,7 @@ mod blockchain_reader_tests {
         let shutdown = crate::sync::ShutdownSignal::default();
 
         let shutdown_0 = shutdown.clone();
-        let reader_chain = Chain::new(provider.clone(), Vec::new());
+        let reader_chain = Chain::new(provider.clone());
         let r = thread::spawn(move || {
             // One block per chunk: inputs and their epoch's seal land in
             // different commits.

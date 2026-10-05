@@ -114,7 +114,7 @@ impl World {
         provider.anvil_set_auto_mine(false).await?;
 
         let geometry = discover_deployed_tournament(book.tournament_factory, &provider).await?;
-        let chain = Chain::new(provider.clone(), vec![]);
+        let chain = Chain::new(provider.clone());
         let checked = chain.latest_block_number().await?;
         let mut world = Self {
             anvil,

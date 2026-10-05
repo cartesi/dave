@@ -181,13 +181,6 @@ pub struct PRTArgs {
     /// restarts, on a filesystem with reflinks
     #[arg(long, env)]
     pub state_dir: PathBuf,
-
-    /// error codes to retry `get_logs` with shorter block range
-    #[arg(long, env, default_values = &["-32005", "-32600", "-32602", "-32616"])]
-    // -32005 Infura
-    // -32600, -32602 Alchemy
-    // -32616 QuickNode
-    pub long_block_range_error_codes: Vec<String>,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -250,7 +243,6 @@ pub struct NodeConfig {
 
     // Misc
     pub sleep_duration: Duration,
-    pub long_block_range_error_codes: Vec<String>,
     pub snapshot_gap_inputs: u64,
 
     // Private signing capability. Read providers remain signerless.
@@ -269,19 +261,11 @@ impl fmt::Display for NodeConfig {
         writeln!(f, "Ethereum read gateway: <redacted>")?;
         writeln!(f, "Ethereum submit gateway: <redacted>")?;
         writeln!(f, "State directory: {}", self.state_dir.display())?;
-        writeln!(
+        write!(
             f,
             "Sleep duration: {} seconds",
             self.sleep_duration.as_secs()
         )?;
-        write!(f, "Long block range error codes: [")?;
-        for (i, item) in self.long_block_range_error_codes.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}", item)?;
-        }
-        write!(f, "]")?;
         Ok(())
     }
 }
@@ -329,7 +313,7 @@ impl NodeConfig {
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await?;
         // Sampled before the deployment blocks are read: it bounds a new
         // directory's watermark (AddressBook::initial_watermark).
-        let finalized = Chain::new(provider.clone(), Vec::new())
+        let finalized = Chain::new(provider.clone())
             .finalized_block_number()
             .await
             .context("--web3-rpc-url: failed to read the finalized block")?;
@@ -392,7 +376,6 @@ impl NodeConfig {
             ethereum_submit_gateway,
             sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
             wallet,
-            long_block_range_error_codes: args.long_block_range_error_codes,
             snapshot_gap_inputs: args.snapshot_gap_inputs,
             _state_lock: Arc::new(state_lock),
         })

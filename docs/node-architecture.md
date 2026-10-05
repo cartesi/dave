@@ -361,9 +361,12 @@ One schema note to know about:
 
 Epoch and input ingestion consumes logs only up to the chain's finalized block
 (`BlockNumberOrTag::Finalized`). Finality is trusted and those rows are never
-rolled back. Oversized `eth_getLogs` ranges are handled by binary range
-partitioning, triggered by provider-specific error codes passed in as
-configuration (`--long-block-range-error-codes`). Decoded logs are sorted into
+rolled back. Any failed `eth_getLogs` over more than one block is split in two
+and retried: range, result-count and response-size caps and timeouts clear by
+narrowing, and providers' codes for them vary and overlap with rate limits. A
+single block's logs are bounded by its gas, so a failure there fails the tick;
+a persistent error therefore costs about log2(range) + 1 sequential queries,
+never the whole range tree. Decoded logs are sorted into
 chain order (block, transaction and log index) before use: a response's order
 is not guaranteed, and a reordered one would fail the index checks below on
 every retry. A log without a block number fails the tick as an inconsistent

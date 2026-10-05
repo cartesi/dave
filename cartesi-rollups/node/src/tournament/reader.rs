@@ -682,7 +682,7 @@ mod tests {
 
     fn recording_chain() -> (Chain, Asserter, Requests) {
         let (provider, asserter, requests) = recording_provider();
-        (Chain::new(provider, Vec::new()), asserter, requests)
+        (Chain::new(provider), asserter, requests)
     }
 
     #[test]
@@ -1169,8 +1169,10 @@ mod tests {
         asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
         reader.fetch_from_root(root).await.unwrap();
 
-        // A transport failure keeps Solid and retries the same range.
+        // A transport failure keeps Solid and retries the same range; the
+        // fetch splits the range and gives up at its first block.
         asserter.push_success(&Some(block(second_finalized, B256::repeat_byte(0x42))));
+        asserter.push_failure_msg("getLogs unavailable");
         asserter.push_failure_msg("getLogs unavailable");
         assert!(reader.fetch_from_root(root).await.is_err());
         assert_eq!(reader.solid().unwrap().0, first_finalized);
@@ -1214,6 +1216,7 @@ mod tests {
             vec![
                 range("0x28", "0x29"),
                 range("0x2a", "0x2b"),
+                range("0x2a", "0x2a"),
                 range("0x2a", "0x2b"),
                 range("0x28", "0x2b"),
             ]

@@ -738,7 +738,7 @@ mod tests {
             Duration::ZERO,
             ShutdownSignal::default(),
         );
-        (manager, Chain::new(provider, Vec::new()))
+        (manager, Chain::new(provider))
     }
 
     fn push_head(asserter: &Asserter, number: u64) {

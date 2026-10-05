@@ -178,7 +178,7 @@ mod tests {
         let provider = ProviderBuilder::new()
             .connect_mocked_client(asserter.clone())
             .erased();
-        (Chain::new(provider, Vec::new()), asserter)
+        (Chain::new(provider), asserter)
     }
 
     fn push_call_response<C: SolCall>(asserter: &Asserter, response: &C::Return) {

@@ -174,8 +174,6 @@ Options:
           execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: SNAPSHOT_GAP_INPUTS=] [default: 64]
       --state-dir <STATE_DIR>
           node state (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: STATE_DIR=]
-      --long-block-range-error-codes <LONG_BLOCK_RANGE_ERROR_CODES>
-          error codes to retry `get_logs` with shorter block range [env: LONG_BLOCK_RANGE_ERROR_CODES=] [default: -32005 -32600 -32602 -32616]
   -h, --help
           Print help
 ```
