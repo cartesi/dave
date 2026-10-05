@@ -40,6 +40,7 @@ contract CartesiStateTransition is IStateTransition {
 
     error CounterOutsideEpoch(uint256 counter);
     error InvalidAccessLogProofLength(uint256 consumed, uint256 provided);
+    error InputBytesWithoutInput(uint64 inputLength);
 
     uint64 constant LOG2_INPUT_WINDOW_SPAN =
         EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
@@ -136,6 +137,12 @@ contract CartesiStateTransition is IStateTransition {
         bytes calldata input = proofs[8:accessLogsOffset];
         inputMerkleRoot =
             provider.provideMerkleRootOfInput(inputIndexWithinEpoch, input);
+        // A zero root means no input: the provider ignores the bytes there,
+        // so they must be absent. With the exact access-log consumption,
+        // this fixes the proof's length, which the leaf refund meters.
+        if (inputMerkleRoot == bytes32(0x0) && inputLength != 0) {
+            revert InputBytesWithoutInput(inputLength);
+        }
     }
 
     function _requireAccessLogProofFullyConsumed(Buffer.Context memory buffer)

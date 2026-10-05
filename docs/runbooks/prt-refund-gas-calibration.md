@@ -46,11 +46,11 @@ without adding an upward dependency from PRT.
 The `refundable` modifier snapshots `gasleft()` after dispatch, ABI decoding,
 and lock acquisition, then samples it again before refund calculation and the
 recipient callback. The refunded units add a fixed allowance and a per-byte
-calldata charge to that delta:
+charge for the leaf proof to that delta:
 
 ```text
 delta = gasBefore - gasAfter
-calldata = Gas.CALLDATA_BYTE * msg.data.length
+calldata = Gas.CALLDATA_BYTE * meteredBytes   # proofs.length in winLeafMatch, else 0
 units = Gas.TX + calldata + delta
 ```
 
@@ -75,12 +75,14 @@ requestedRefund = min(
 ```
 
 `Gas.TX` is a fixed policy allowance for work outside the snapshots. It is not
-measured transaction-intrinsic gas. `Gas.CALLDATA_BYTE` prices every calldata
+measured transaction-intrinsic gas. `Gas.CALLDATA_BYTE` prices each leaf-proof
 byte at the EIP-2028 nonzero-byte rate, an upper bound under standard pricing;
 it is what keeps the leaf proof, whose calldata grows with the input, inside
-the subsidy. A calldata-dominated transaction priced by the EIP-7623 floor
-pays more per byte; the retained leaf witnesses stay execution-dominated. The
-measurement excludes dispatch and decoding before the snapshot, exact
+the subsidy. Only the proof is metered because the state transition fixes its
+length; the rest of the calldata could be padded. A calldata-dominated
+transaction priced by the EIP-7623 floor pays more per byte; the retained leaf
+witnesses stay execution-dominated. The measurement excludes dispatch and
+decoding before the snapshot, other calldata, exact
 storage-refund reconciliation, and chain-specific fees. Proof forwarding,
 copying, memory expansion, nested proof work, events, and production counter
 writes after the snapshot remain in the measured delta.
@@ -377,9 +379,9 @@ The current evidence still does not enumerate every honest instruction/access
 shape or retain a gas witness for every terminal halt or exception outcome.
 `CartesiStateTransition` requires the canonical access-log buffer to be
 consumed completely,
-and the adapter retains a regression that rejects trailing proof bytes. The
-out-of-range input path can still return zero before validating the supplied
-input segment. The remaining open proof and input classes prevent a universal
+and the adapter retains a regression that rejects trailing proof bytes. An
+input position with no input rejects any supplied input bytes, so the proof's
+length is fixed. The remaining open proof and input classes prevent a universal
 finite ceiling claim; explicit size bounds may be a prerequisite.
 
 The current InputBox path stores a hash, then resubmits the encoded input during
@@ -395,8 +397,8 @@ If pre-Merkleization enters scope:
 2. replace the old input-boundary witnesses rather than mixing representations;
 3. rerun every full `winLeafMatch` witness;
 4. recompute terminal allocations, reserves, and bonds;
-5. record calldata length and byte composition, which the refund now counts
-   per byte; and
+5. record proof length and byte composition, which the refund counts per
+   byte; and
 6. compare aggregate cost paid for every input with the rare-dispute saving.
 
 That makes the InputBox change an explicit protocol tradeoff rather than an

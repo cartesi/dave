@@ -681,6 +681,67 @@ contract RefundReserveTest is Test {
         assertEq(payment, 0);
     }
 
+    /// The leaf proof's bytes are refunded; bytes a caller appends after the
+    /// call's arguments are not.
+    function testLeafRefundMetersProofBytesNotPadding() public {
+        uint256 extraBytes = 10_000;
+        // Warm the accounts every fixture shares, so each measured call
+        // starts from the same access state.
+        _leafProofRefund(new bytes(0), "");
+        uint256 bare = _leafProofRefund(new bytes(0), "");
+        uint256 proven = _leafProofRefund(new bytes(extraBytes), "");
+        uint256 padded = _leafProofRefund(new bytes(0), new bytes(extraBytes));
+
+        assertGe(proven - bare, Gas.CALLDATA_BYTE * extraBytes);
+        assertEq(padded, bare);
+    }
+
+    /// The refund, in wei at one wei per unit, of a fresh height-one leaf
+    /// proof; the state transition here ignores its proof bytes.
+    function _leafProofRefund(bytes memory proofs, bytes memory padding)
+        private
+        returns (uint256)
+    {
+        vm.roll(100);
+        vm.fee(0);
+        vm.txGasPrice(1);
+
+        ITournament tournament =
+            factory.instantiate(INITIAL_STATE, IDataProvider(address(0)));
+        uint256 bond = tournament.bondValue();
+        Tree.Node winner =
+            _joinHeightOne(tournament, vm.addr(100), INITIAL_STATE, bond);
+        Tree.Node opponent = _joinHeightOne(
+            tournament,
+            vm.addr(1_000),
+            Machine.Hash.wrap(bytes32(uint256(1))),
+            bond
+        );
+        Match.Id memory matchId = Match.Id(winner, opponent);
+        _sealHeightOne(tournament, matchId, INITIAL_STATE);
+
+        address prover = vm.addr(2_000);
+        uint256 balanceBefore = prover.balance;
+        vm.prank(prover);
+        (bool success,) = address(tournament)
+            .call(
+                abi.encodePacked(
+                    abi.encodeCall(
+                        ITournament.winLeafMatch,
+                        (
+                            matchId,
+                            INITIAL_NODE,
+                            Tree.Node.wrap(Machine.Hash.unwrap(INITIAL_STATE)),
+                            proofs
+                        )
+                    ),
+                    padding
+                )
+            );
+        assertTrue(success);
+        return prover.balance - balanceBefore;
+    }
+
     function _joinHeightOne(
         ITournament tournament,
         address claimer,

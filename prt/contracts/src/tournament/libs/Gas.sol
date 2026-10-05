@@ -5,7 +5,7 @@ pragma solidity ^0.8.17;
 
 /// @notice Configured gas-unit allocations used to cap action refunds.
 /// @dev Reviewed allocations include the fixed unmetered allowance, the
-/// calldata charge, measured modifier-body cost, and explicit headroom.
+/// leaf-proof charge, measured modifier-body cost, and explicit headroom.
 /// `WIN_LEAF_MATCH` is a provisional subsidy selected from the maximum
 /// canonical InputBox reference witness, not a bound across all valid proofs
 /// or transitions. No allocation is a whole-transaction or receipt-exact gas
@@ -16,13 +16,13 @@ library Gas {
     /// receives it once for every successful refundable action.
     uint256 constant TX = 25000;
 
-    /// @notice Refunded units per byte of the action's calldata.
+    /// @notice Refunded units per byte of the leaf proof.
     /// @dev The EIP-2028 nonzero-byte price, an upper bound on standard
     /// calldata pricing. It makes the leaf proof, whose calldata grows with
-    /// the input, subsidized with the rest of the action. Padding can lift a
-    /// refund toward its allocation but never past it, which the reserve
-    /// argument already assumes. A transaction priced by the EIP-7623 floor
-    /// pays more per byte than this.
+    /// the input, subsidized with the rest of the action. Only the proof is
+    /// metered: the state transition fixes its length, while the rest of
+    /// the calldata can be padded. A transaction priced by the EIP-7623
+    /// floor pays more per byte than this.
     uint256 constant CALLDATA_BYTE = 16;
 
     uint256 constant ADVANCE_MATCH = 103000 + TX;

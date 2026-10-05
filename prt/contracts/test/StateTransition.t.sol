@@ -293,6 +293,61 @@ contract StateTransitionTest is Util {
         assertEq(accessLogsOffset, 8);
     }
 
+    function testResolveInputWitnessRejectsBytesWithZeroRoot() public {
+        IDataProvider provider = IDataProvider(address(0x123));
+        uint256 inputIndexWithinEpoch = 9;
+        bytes memory input = hex"00";
+        bytes memory providerCall = abi.encodeCall(
+            IDataProvider.provideMerkleRootOfInput,
+            (inputIndexWithinEpoch, input)
+        );
+
+        vm.mockCall(address(provider), providerCall, abi.encode(bytes32(0)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.InputBytesWithoutInput.selector,
+                uint64(input.length)
+            )
+        );
+        STATE_TRANSITION_HARNESS.resolveInputWitness(
+            abi.encodePacked(uint64(input.length), input, hex"deadbeef"),
+            inputIndexWithinEpoch,
+            provider
+        );
+    }
+
+    /// Padding the input segment where the provider has no input would make
+    /// a leaf proof longer, and its refund larger, without changing its
+    /// meaning.
+    function testTransitionRejectsInputBytesWithoutInput(
+        uint24 inputIndex,
+        uint16 paddingLength
+    ) public {
+        vm.assume(paddingLength > 0);
+        (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
+        IDataProvider provider = IDataProvider(address(0x123));
+
+        vm.mockCall(
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(bytes32(0))
+        );
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.InputBytesWithoutInput.selector,
+                uint64(paddingLength)
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            machineState,
+            uint256(inputIndex) * INPUT_WINDOW_SPAN,
+            abi.encodePacked(
+                uint64(paddingLength), new bytes(paddingLength), stepProof
+            ),
+            provider
+        );
+    }
+
     function testResolveInputWitnessRejectsShortHeader() public {
         IDataProvider provider = IDataProvider(address(0x123));
         vm.mockCall(

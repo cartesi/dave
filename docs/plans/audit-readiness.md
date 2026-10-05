@@ -168,9 +168,10 @@ addresses (build-system.md).
 
 1. This PR (cartesi/dave#287): the node debts and R10, and the docs. Its
    calldata refund change set the allocations, and their calibration was
-   accepted under release Forge; the contracts' only later code change, the
-   child-return clamp on the `winInnerTournament` path, stays within them
-   (the Tournament gas witnesses pass). The deployment script registers the
+   accepted under release Forge; the contracts' later code changes, the
+   child-return clamp on the `winInnerTournament` path and the narrowing of
+   the calldata meter to the leaf proof, stay within them (the gas witnesses
+   pass). The deployment script registers the
    Arbitrum entries at the parent chain's 12 s, so their addresses now equal
    Ethereum's and Sepolia's.
 2. A release candidate for the staging pipeline and testnet. It is a new

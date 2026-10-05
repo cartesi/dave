@@ -97,12 +97,10 @@ Other leaf witnesses (rounded recommendations): representative input
 
 ## Padding
 
-Padding calldata with cheap bytes (4 units each, or 10 under the EIP-7623
-floor) now earns 16 each, so a caller can lift an action's refund up to its
-allocation. The reserve argument in `prt-refund-accounting.md` already
-charges every action at its allocation, so the winner's reserve holds. What
-moves is who receives the losing reserves: refunds instead of bounty and
-burn, which the accounting already permits.
+Superseded before merge; see the amendment below. As measured here, padding
+calldata with cheap bytes (4 units each, or 10 under the EIP-7623 floor)
+earned 16 each, so a caller could lift an action's refund up to its
+allocation.
 
 ## Network admission
 
@@ -129,3 +127,23 @@ Accepted: `just measure-prt-gas` on the clean accepted tree (Environment)
 under the release Forge, with no diagnostic override, exits 0 with no
 warning; all 30 witnesses pass. Every one of its 186 reported values,
 including the complete-call diagnostics, equals the source build's.
+
+## Amendment (2026-10-05): only the leaf proof is metered
+
+The PR review found that the padding above is not only a transfer between
+bounty, burn and refunds. The refund goes to the caller, who can be the Sybil
+itself, and padding built in a wrapper contract's memory costs about half a
+unit per byte. A self-refuting Sybil could therefore recover most of its bond
+at low fees, and copying an honest action became profitable. Within this PR,
+"fix(prt): meter only the leaf proof's bytes in refunds" changed the formula to
+`units = Gas.TX + Gas.CALLDATA_BYTE * meteredBytes + delta`, where
+`meteredBytes` is `winLeafMatch`'s `proofs.length` and zero for every other
+action, and made `CartesiStateTransition` reject input bytes at a position
+with no input, so the proof's length is fixed.
+
+The measurements above include each action's whole calldata, so they bound the
+narrowed units from above: every allocation still holds as a cap, the
+one-sided witnesses pass, and no `Gas.sol` constant changed. The seal
+allocations now carry the headroom of their unmetered sibling proofs.
+`testCalldataIsRefundedPerByte` became `testPaddedCalldataIsNotRefunded`, and
+`testLeafRefundMetersProofBytesNotPadding` pins the leaf's metering.

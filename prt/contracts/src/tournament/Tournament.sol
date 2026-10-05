@@ -121,17 +121,20 @@ contract Tournament is ITournament, ERC165 {
     /// @notice Computes and attempts a bounded gross-EVM work subsidy.
     /// @dev The requested value is capped by the current balance, this action's
     /// configured refund cap, and measured work plus a fixed overhead at the
-    /// capped price. Work counts the call's calldata at `Gas.CALLDATA_BYTE`
+    /// capped price. Work also counts `meteredBytes` at `Gas.CALLDATA_BYTE`
     /// per byte. The event records that request even if the recipient call
     /// fails and transfers nothing. Receipt-exact cost, chain-specific fees,
     /// and caller profit are not guaranteed.
     /// Also acquires the lock beforehand and releases it afterward.
     /// @param gasEstimate The configured allocation for the modified function
+    /// @param meteredBytes Calldata bytes the refund counts: the leaf proof,
+    /// whose length the state transition fixes, or zero. Never
+    /// `msg.data.length`, which a caller can pad.
     /// forge-lint: disable-next-line(unwrapped-modifier-logic)
-    modifier refundable(uint256 gasEstimate) {
+    modifier refundable(uint256 gasEstimate, uint256 meteredBytes) {
         uint256 gasBefore = _refundableBefore();
         _;
-        _refundableAfter(gasBefore, gasEstimate);
+        _refundableAfter(gasBefore, gasEstimate, meteredBytes);
     }
 
     //
@@ -246,7 +249,7 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node _rightNode,
         Tree.Node _newLeftNode,
         Tree.Node _newRightNode
-    ) external override refundable(Gas.ADVANCE_MATCH) tournamentNotFinished {
+    ) external override refundable(Gas.ADVANCE_MATCH, 0) tournamentNotFinished {
         Match.IdHash matchIdHash = _matchId.hashFromId();
         Match.State storage _matchState = matches[matchIdHash];
         _matchState.requireCanBeAdvanced();
@@ -286,7 +289,7 @@ contract Tournament is ITournament, ERC165 {
         Match.Id calldata _matchId,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external override refundable(Gas.WIN_MATCH_BY_TIMEOUT) {
+    ) external override refundable(Gas.WIN_MATCH_BY_TIMEOUT, 0) {
         // The not-finished check inline: the winner's budget needs the same
         // arguments, and decoding them once keeps the refunded path cheap.
         TournamentArguments memory args = _tournamentArgs();
@@ -350,7 +353,7 @@ contract Tournament is ITournament, ERC165 {
     function eliminateMatchByTimeout(Match.Id calldata _matchId)
         external
         override
-        refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT)
+        refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT, 0)
         tournamentNotFinished
     {
         // The legal clock configuration encodes the match phase, so an
@@ -505,7 +508,12 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node _rightLeaf,
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
-    ) external override refundable(Gas.SEAL_LEAF_MATCH) tournamentNotFinished {
+    )
+        external
+        override
+        refundable(Gas.SEAL_LEAF_MATCH, 0)
+        tournamentNotFinished
+    {
         TournamentArguments memory args = _tournamentArgs();
         if (!_isLeafTournament(args)) {
             revert RequireLeafTournament();
@@ -542,7 +550,12 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node _leftNode,
         Tree.Node _rightNode,
         bytes calldata proofs
-    ) external override refundable(Gas.WIN_LEAF_MATCH) tournamentNotFinished {
+    )
+        external
+        override
+        refundable(Gas.WIN_LEAF_MATCH, proofs.length)
+        tournamentNotFinished
+    {
         TournamentArguments memory args = _tournamentArgs();
         if (!_isLeafTournament(args)) {
             revert RequireLeafTournament();
@@ -641,7 +654,7 @@ contract Tournament is ITournament, ERC165 {
     )
         external
         override
-        refundable(Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT)
+        refundable(Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 0)
         tournamentNotFinished
     {
         TournamentArguments memory args = _tournamentArgs();
@@ -693,7 +706,7 @@ contract Tournament is ITournament, ERC165 {
     )
         external
         override
-        refundable(Gas.WIN_INNER_TOURNAMENT)
+        refundable(Gas.WIN_INNER_TOURNAMENT, 0)
         tournamentNotFinished
     {
         TournamentArguments memory args = _tournamentArgs();
@@ -760,7 +773,7 @@ contract Tournament is ITournament, ERC165 {
     function eliminateInnerTournament(ITournament _childTournament)
         external
         override
-        refundable(Gas.ELIMINATE_INNER_TOURNAMENT)
+        refundable(Gas.ELIMINATE_INNER_TOURNAMENT, 0)
         tournamentNotFinished
     {
         TournamentArguments memory args = _tournamentArgs();
@@ -1222,10 +1235,14 @@ contract Tournament is ITournament, ERC165 {
         gasBefore = gasleft();
     }
 
-    function _refundableAfter(uint256 gasBefore, uint256 gasEstimate) private {
+    function _refundableAfter(
+        uint256 gasBefore,
+        uint256 gasEstimate,
+        uint256 meteredBytes
+    ) private {
         uint256 gasAfter = gasleft();
         uint256 units =
-            Gas.TX + Gas.CALLDATA_BYTE * msg.data.length + gasBefore - gasAfter;
+            Gas.TX + Gas.CALLDATA_BYTE * meteredBytes + gasBefore - gasAfter;
 
         uint256 refundValue = _min(
             address(this).balance,

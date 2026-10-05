@@ -662,7 +662,7 @@ Each progress function uses a fixed `gasAllocation`. After the action body, the
 `refundable` modifier computes:
 
 ```text
-units = Gas.TX + Gas.CALLDATA_BYTE * msg.data.length + gasBefore - gasAfter
+units = Gas.TX + Gas.CALLDATA_BYTE * meteredBytes + gasBefore - gasAfter
 effectivePrice = min(tx.gasprice, block.basefee + Bond.REFUND_PRIORITY_FEE_CAP)
 requestedRefund = min(
     tournament balance before the callback,
@@ -673,15 +673,19 @@ requestedRefund = min(
 
 It then attempts to transfer `requestedRefund` to the caller. The balance term,
 the action-allocation term, and the measured-work term are independent caps.
+`meteredBytes` is `winLeafMatch`'s proof length and zero for every other
+action. The state transition fixes that length: it consumes the access logs
+exactly, the provider authenticates an input's bytes, and a position with no
+input must carry none. Bytes a caller appends to the calldata therefore earn
+nothing; metering `msg.data.length` instead would let any caller, a Sybil
+included, pad each refund up to its cap.
 
 This is a bounded partial refund, not a guarantee of full transaction cost or
-profit. The units are gross EVM work plus a fixed overhead plus calldata at 16
-units per byte (the EIP-2028 nonzero-byte rate), not exact receipt gas;
-EIP-7623 floor pricing, storage-refund credits, and chain-specific data or
-security fees are outside the promise. Proof forwarding and copying after the
-snapshot remain inside the measured delta. Padding calldata can lift a refund
-toward its action cap but not past it, which the reserve argument already
-assumes. Priority fee
+profit. The units are gross EVM work plus a fixed overhead plus the leaf proof
+at 16 units per byte (the EIP-2028 nonzero-byte rate), not exact receipt gas;
+other calldata, EIP-7623 floor pricing, storage-refund credits, and
+chain-specific data or security fees are outside the promise. Proof forwarding
+and copying after the snapshot remain inside the measured delta. Priority fee
 above 10 gwei is also excluded. The action cap is the action allocation times
 50 gwei. When real work exceeds that allocation, its effective reimbursed price
 ceiling is below 50 gwei.

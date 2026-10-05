@@ -162,14 +162,18 @@ theorem:
   receipt;
 - batching, paymasters, storage refunds, and proposer relationships can change
   private cost; and
-- calldata is priced at the EIP-2028 nonzero-byte rate whatever the bytes
-  are, and EIP-7623 floor pricing and chain-specific fees are outside the
-  promise.
+- only the leaf proof's calldata is metered, at the EIP-2028 nonzero-byte
+  rate whatever the bytes are; other calldata, EIP-7623 floor pricing and
+  chain-specific fees are outside the promise.
 
 Every successful refund accompanies real EVM work, but the contract does not
 prove that the requested refund is less than the recipient's private cost.
-Cheap padding bytes can lift a refund up to its action cap; the reserve
-argument above already charges every action at that cap.
+It does keep the refund tied to that work: the metered proof's length is
+fixed by the state transition, so padding earns nothing. The remaining slack
+is bounded: `Gas.TX` per action in a batch that pays the intrinsic cost once
+(about a fifth of an advance's allocation), and, for a recipient that also
+builds the block, its own priority fee up to `Bond.REFUND_PRIORITY_FEE_CAP`
+(a fifth of the 50 gwei work price).
 
 Adding an independent attacker loss would be a new policy. Doubling the work
 reserve without increasing refund liability would merely disguise that stake

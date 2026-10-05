@@ -194,9 +194,10 @@ contract RefundFormulaTest is Test {
         }
     }
 
-    function testCalldataIsRefundedPerByte() public {
+    /// Only the leaf proof is metered, so bytes a caller appends to any other
+    /// action earn nothing.
+    function testPaddedCalldataIsNotRefunded() public {
         vm.roll(START_BLOCK + MAX_ALLOWANCE);
-        uint256 padding = 1000;
         Observation memory control =
             _execute(controls[0], address(this), 0, 1, 2 * _actionCap(), "");
         Observation memory padded = _execute(
@@ -205,12 +206,12 @@ contract RefundFormulaTest is Test {
             0,
             1,
             2 * _actionCap(),
-            new bytes(padding)
+            new bytes(100_000)
         );
 
         _assertSuccessfulTransfer(control, control.value);
         _assertSuccessfulTransfer(padded, padded.value);
-        assertEq(padded.value - control.value, Gas.CALLDATA_BYTE * padding);
+        assertEq(padded.value, control.value);
     }
 
     function _runKink(Kink kind, bool repairsMatch) private {
@@ -373,8 +374,7 @@ contract RefundFormulaTest is Test {
             );
     }
 
-    /// @dev Trailing `padding` is ignored by ABI decoding but still counts as
-    /// calldata.
+    /// @dev Trailing `padding` is ignored by ABI decoding.
     function _execute(
         Fixture memory fixture,
         address recipient,

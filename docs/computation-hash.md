@@ -96,7 +96,9 @@ On-chain, `CartesiStateTransition` selects these three shapes explicitly. An
 input boundary optionally calls `SendCmioResponse` and then `UArchStep`; a
 big-step boundary calls `UArchStep` and then `UArchReset`; every other position
 calls only `UArchStep`. Each branch requires the access-log proof buffer to be
-consumed completely before returning its root.
+consumed completely before returning its root, and an input boundary with no
+input rejects any input bytes, so a valid proof has exactly one length (the
+leaf refund meters it).
 
 The node's computation source owns transition-proof preparation: it replays
 to the disputed position, checks the sealed agree-state hash, generates the
