@@ -60,7 +60,10 @@ Reads use `--web3-rpc-url`. Raw signed transactions use
 `--web3-submit-rpc-url`, which defaults to the read endpoint and may instead
 name a private relay with revert protection: honest nodes that share a
 commitment race on every step, and without it each pays for its reverted
-copies of the steps another node landed first. The signer must be exclusive to
+copies of the steps another node landed first. The relay must not land
+reverting transactions and must reach builders covering most blocks (for
+example Flashbots Protect, or MEV Blocker's `/noreverts` endpoint: its default
+endpoint lands reverts). The signer must be exclusive to
 one node process because the node owns its nonce sequence. Each tick batches
 the applicable dispute or cleanup action, settlement step, and all available
 bond recoveries at consecutive nonces from the latest mined count. The next
@@ -180,6 +183,15 @@ Options:
 
 ## Operator notes
 
+- Supported chains are Ethereum mainnet and Sepolia. OP Mainnet, Base and
+  their Sepolia testnets have experimental deployments: the node runs there
+  but is not validated, and refunds leave out the L1 data fee. On Arbitrum
+  the node stops at startup: contracts there measure clocks in the parent
+  chain's block numbers, while logs and the node's heads use Arbitrum's own.
+- A fresh state directory replays every input since the application's
+  deployment. To upgrade across a change that requires one, start the new
+  node on a new directory with its own funded signer, let it catch up, then
+  stop the old one; never wipe the only node's directory in place.
 - Read the levels as the failure policy defines them
   ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
   an ERROR asks an operator to act; a WARN means the node carries on. A WARN
