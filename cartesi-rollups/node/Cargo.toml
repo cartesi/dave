@@ -31,7 +31,7 @@ aws-sdk-kms = { version = "1.65", default-features = false, features = [
 ruint = { workspace = true }
 tiny-keccak = { workspace = true }
 
-alloy = { workspace = true, features = ["signer-aws"] }
+alloy = { workspace = true, features = ["json-rpc", "signer-aws"] }
 alloy-transport = { workspace = true }
 alloy-chains = { workspace = true }
 reqwest = { workspace = true }
@@ -49,6 +49,7 @@ rusqlite = { workspace = true }
 hex = { workspace = true }
 serde_json = "1.0"
 tempfile = "3"
+tower = "0.5"
 env_logger = "0.11.5"
 # peak RSS in the measure binary
 libc = "0.2"
@@ -57,7 +58,6 @@ libc = "0.2"
 alloy = { workspace = true, features = ["json-rpc", "node-bindings", "rpc-types"] }
 hex = "0.4.3"
 tempfile = "3"
-tower = "0.5"
 # the kms module's localstack round-trip test
 testcontainers-modules = { version = "0.13.0", default-features = false, features = [
     "localstack",

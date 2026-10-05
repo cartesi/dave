@@ -10,15 +10,27 @@ use alloy::{
     },
     primitives::{Address, B256, U256, keccak256, utils::format_ether},
     providers::{DynProvider, Provider, ProviderBuilder},
-    rpc::{client::RpcClient, types::TransactionRequest},
+    rpc::{
+        client::RpcClient,
+        json_rpc::{RequestPacket, ResponsePacket},
+        types::TransactionRequest,
+    },
     signers::local::PrivateKeySigner,
     transports::http::{Http, reqwest::Url},
 };
 use alloy_chains::NamedChain;
-use alloy_transport::{TransportError, layers::RetryBackoffLayer};
+use alloy_transport::{
+    HttpError, RpcError, TransportError, TransportErrorKind, TransportFut,
+    layers::RetryBackoffLayer,
+};
 use anyhow::{Context, Result, anyhow, ensure};
 use log::{debug, error, info, trace, warn};
-use std::{fs, str::FromStr, time::Duration};
+use std::{
+    fs,
+    str::FromStr,
+    task::{Context as TaskContext, Poll},
+    time::Duration,
+};
 
 /// Errors name the flag and add no key material: a key parse error may
 /// quote the key's characters, so it is dropped.
@@ -123,13 +135,88 @@ async fn create_client(url: &Url) -> RpcClient {
 
     RpcClient::builder()
         .layer(retry)
+        .layer(RedactUrlLayer(url.to_string()))
         .transport(transport, is_local)
+}
+
+/// Strips the endpoint's URL, which often carries an API key, from
+/// transport errors before any caller logs them: reqwest quotes the URL in
+/// its connection, timeout and body errors, and alloy copies a body error's
+/// text into an HTTP error. The error kind is kept, so retry decisions see
+/// the same error.
+#[derive(Clone, Debug)]
+struct RedactUrlLayer(String);
+
+impl<S> tower::Layer<S> for RedactUrlLayer {
+    type Service = RedactUrl<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        RedactUrl {
+            inner,
+            url: self.0.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct RedactUrl<S> {
+    inner: S,
+    url: String,
+}
+
+impl<S> tower::Service<RequestPacket> for RedactUrl<S>
+where
+    S: tower::Service<
+            RequestPacket,
+            Response = ResponsePacket,
+            Error = TransportError,
+            Future = TransportFut<'static>,
+        >,
+{
+    type Response = ResponsePacket;
+    type Error = TransportError;
+    type Future = TransportFut<'static>;
+
+    fn poll_ready(&mut self, context: &mut TaskContext<'_>) -> Poll<Result<(), TransportError>> {
+        let url = &self.url;
+        self.inner
+            .poll_ready(context)
+            .map_err(|error| redact_url(error, url))
+    }
+
+    fn call(&mut self, request: RequestPacket) -> Self::Future {
+        let response = self.inner.call(request);
+        let url = self.url.clone();
+        Box::pin(async move { response.await.map_err(|error| redact_url(error, &url)) })
+    }
+}
+
+fn redact_url(error: TransportError, url: &str) -> TransportError {
+    let scrub = |text: &str| text.replace(url, "<rpc url>");
+    match error {
+        RpcError::Transport(TransportErrorKind::Custom(inner)) => {
+            match inner.downcast::<reqwest::Error>() {
+                Ok(error) => TransportErrorKind::custom(error.without_url()),
+                Err(inner) => RpcError::Transport(TransportErrorKind::Custom(inner)),
+            }
+        }
+        RpcError::Transport(TransportErrorKind::HttpError(HttpError { status, body })) => {
+            TransportErrorKind::http_error(status, scrub(&body))
+        }
+        RpcError::Transport(TransportErrorKind::HttpErrorWithRetryAfter {
+            error: HttpError { status, body },
+            retry_after,
+        }) => {
+            TransportErrorKind::http_error_with_retry_after(status, scrub(&body), Some(retry_after))
+        }
+        other => other,
+    }
 }
 
 /// Build a signerless provider. Transaction filling is intentionally disabled:
 /// every node mutation is fully specified and signed by [`TransactionLane`].
-/// Callers name the endpoint's flag; the error adds no URL, which may carry
-/// an API key.
+/// Callers name the endpoint's flag; no error, here or from any later
+/// request, quotes the URL, which may carry an API key.
 pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> Result<DynProvider> {
     let client = create_client(url).await;
     let provider = ProviderBuilder::new()
@@ -651,6 +738,56 @@ mod tests {
         signers::Signer,
         transports::mock::Asserter,
     };
+
+    /// A provider URL often carries an API key; no request error may quote
+    /// it, while the error still says what failed.
+    #[tokio::test]
+    async fn request_errors_do_not_quote_the_rpc_url() {
+        let url: Url = "http://127.0.0.1:1/v2/not-a-real-api-key".parse().unwrap();
+        let client = create_client(&url).await;
+        let error = client
+            .request_noparams::<U64>("eth_blockNumber")
+            .await
+            .unwrap_err();
+
+        for rendered in [format!("{error:#}"), format!("{error:?}")] {
+            assert!(!rendered.contains("not-a-real-api-key"), "{rendered}");
+        }
+        assert!(
+            error.to_string().contains("error sending request"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn http_error_bodies_lose_the_rpc_url() {
+        let url = "https://rpc.example/v2/not-a-real-api-key";
+        let body =
+            format!("<failed to read response body: error decoding response body for url ({url})>");
+
+        let error = redact_url(TransportErrorKind::http_error(502, body.clone()), url);
+        assert_eq!(
+            error.to_string(),
+            "HTTP error 502 with body: <failed to read response body: error decoding \
+             response body for url (<rpc url>)>"
+        );
+
+        let delay = Duration::from_secs(3);
+        match redact_url(
+            TransportErrorKind::http_error_with_retry_after(429, body, Some(delay)),
+            url,
+        ) {
+            RpcError::Transport(TransportErrorKind::HttpErrorWithRetryAfter {
+                error,
+                retry_after,
+            }) => {
+                assert_eq!(error.status, 429);
+                assert!(!error.body.contains("not-a-real-api-key"));
+                assert_eq!(retry_after, delay);
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
 
     #[test]
     fn normalized_fees_never_price_priority_above_the_cap() {

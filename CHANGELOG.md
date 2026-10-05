@@ -75,6 +75,8 @@ needed.
   instead of crashing every node.
 - SIGTERM stops the node like Ctrl-C; a second signal exits at once.
 - SQLite commits sync fully, and release builds keep overflow checks.
+- Logged RPC errors no longer quote the endpoint URL, which often carries an
+  API key.
 
 ### For developers
 
