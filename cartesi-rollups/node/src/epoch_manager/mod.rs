@@ -779,18 +779,6 @@ mod tests {
         push_bond(asserter, disposition, claimer);
     }
 
-    /// A refund tick at a finalized head this manager has already walked:
-    /// the recovery tree needs no logs, only the bond reads.
-    fn push_walked_refund_tick(
-        asserter: &Asserter,
-        finalized: u64,
-        disposition: u8,
-        claimer: Address,
-    ) {
-        push_head(asserter, finalized);
-        push_bond(asserter, disposition, claimer);
-    }
-
     #[tokio::test]
     async fn rotation_and_restart_finish_old_refunds_before_following_the_next_epoch() {
         let dir = setup_epochs();
@@ -823,7 +811,9 @@ mod tests {
         assert_eq!(retried.wave, planned.wave);
 
         // Mined but unfinalized recovery suppresses the call, not the epoch.
-        push_walked_refund_tick(&rpc, 30, 2, us);
+        // The tree is already walked through 30: no logs, only the bond read.
+        push_head(&rpc, 30);
+        push_bond(&rpc, 2, us);
         push_head(&rpc, 31);
         push_bond(&rpc, 3, Address::ZERO);
         assert!(!restarted.tick(&chain).await.unwrap().done);

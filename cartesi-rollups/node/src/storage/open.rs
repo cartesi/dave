@@ -299,7 +299,7 @@ impl Storage {
     }
 }
 
-/// Writer connections: WAL, enforced foreign keys, NORMAL sync, and a
+/// Writer connections: WAL, enforced foreign keys, FULL sync, and a
 /// generous busy timeout (machine work happens between transactions,
 /// never inside one, so writers only contend for row-commit bursts).
 /// Escalates the schema triggers' corruption tripwires into panics.

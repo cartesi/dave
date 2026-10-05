@@ -277,11 +277,39 @@ pub(crate) mod recording {
             .erased();
         (provider, asserter, requests)
     }
+
+    /// `(fromBlock, toBlock, address count)` of every recorded get_logs.
+    pub(crate) fn log_requests(requests: &Requests) -> Vec<(u64, u64, usize)> {
+        let block = |value: &serde_json::Value| {
+            u64::from_str_radix(value.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
+        };
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request["method"] == "eth_getLogs")
+            .map(|request| {
+                let filter = &request["params"][0];
+                let addresses = match &filter["address"] {
+                    serde_json::Value::Array(addresses) => addresses.len(),
+                    _ => 1,
+                };
+                (
+                    block(&filter["fromBlock"]),
+                    block(&filter["toBlock"]),
+                    addresses,
+                )
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Chain, ChainHead, recording::recording_provider};
+    use super::{
+        Chain, ChainHead, MAX_FILTER_ADDRESSES,
+        recording::{log_requests, recording_provider},
+    };
     use alloy::{
         eips::BlockId,
         primitives::{Address, B256, Bytes, Log as PrimitiveLog, U256},
@@ -321,19 +349,32 @@ mod tests {
 
     /// The `[fromBlock, toBlock]` of every get_logs request, in order.
     fn log_ranges(requests: &super::recording::Requests) -> Vec<(u64, u64)> {
-        let block = |value: &serde_json::Value| {
-            u64::from_str_radix(value.as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
-        };
-        requests
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|request| request["method"] == "eth_getLogs")
-            .map(|request| {
-                let filter = &request["params"][0];
-                (block(&filter["fromBlock"]), block(&filter["toBlock"]))
-            })
+        log_requests(requests)
+            .into_iter()
+            .map(|(from, to, _)| (from, to))
             .collect()
+    }
+
+    #[tokio::test]
+    async fn logs_from_many_addresses_chunk_their_filters_and_merge_in_chain_order() {
+        let (provider, asserter, requests) = recording_provider();
+        let chain = Chain::new(provider);
+        let addresses: Vec<Address> = (0..=MAX_FILTER_ADDRESSES as u64)
+            .map(|i| Address::left_padding_from(&i.to_be_bytes()))
+            .collect();
+        asserter.push_success(&vec![input_log(1, Some(9), 0)]);
+        asserter.push_success(&vec![input_log(0, Some(8), 0)]);
+
+        let logs = chain
+            .decoded_logs_from_any::<InputAdded>(&addresses, 1, 10)
+            .await
+            .unwrap();
+        assert_eq!(indices(&logs), [0, 1]);
+        assert_eq!(
+            log_requests(&requests),
+            [(1, 10, MAX_FILTER_ADDRESSES), (1, 10, 1)]
+        );
+        assert!(asserter.read_q().is_empty());
     }
 
     #[tokio::test]
