@@ -24,9 +24,11 @@ use cartesi_rollups_prt_node::{chain::Chain, provider::create_rpc_provider};
 
 /// USDC on Ethereum mainnet: about 30 logs per block.
 const USDC: Address = address!("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
-/// One ingestion chunk (INGEST_CHUNK_BLOCKS) of USDC history, about 300,000
-/// logs: past every provider's result and response caps.
+/// One ingestion chunk (INGEST_CHUNK_BLOCKS) of USDC history: past every
+/// provider's result and response caps.
 const USDC_RANGE: (u64, u64) = (23_000_000, 23_009_999);
+/// USDC's logs in that range, as Infura and Alchemy both returned them.
+const USDC_LOGS: usize = 349_084;
 
 /// The rollups InputBox on Sepolia.
 const INPUT_BOX: Address = address!("0xEbE9f4Dfc04ae10bBeE663859c3dc5A23f94eA3C");
@@ -87,6 +89,7 @@ async fn a_busy_contracts_logs_over_one_chunk_are_complete() {
             .map(|log| (log.block_number.unwrap(), log.log_index.unwrap()))
             .collect();
         assert_eq!(keys.len(), logs.len(), "{name} returned duplicate logs");
+        assert_eq!(logs.len(), USDC_LOGS, "{name}: log count");
         assert!(
             keys.iter()
                 .all(|(block, _)| (USDC_RANGE.0..=USDC_RANGE.1).contains(block)),
