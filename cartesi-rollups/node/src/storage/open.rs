@@ -427,7 +427,7 @@ fn create_directory_structure(state_dir: &Path) -> Result<()> {
 
     let snapshots_path = snapshots_path(state_dir);
     fs::create_dir_all(&snapshots_path)
-        .with_context(|| format!("creating `{}`", &snapshots_path.display()))?;
+        .with_context(|| format!("creating `{}`", snapshots_path.display()))?;
 
     Ok(())
 }
@@ -438,7 +438,7 @@ fn epoch_dir(state_dir: &Path, epoch_number: u64) -> PathBuf {
 
 pub(super) fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<PathBuf> {
     let path = epoch_dir(state_dir, epoch_number);
-    fs::create_dir_all(&path).with_context(|| format!("creating `{}`", &path.display()))?;
+    fs::create_dir_all(&path).with_context(|| format!("creating `{}`", path.display()))?;
 
     Ok(path)
 }
