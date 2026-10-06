@@ -60,7 +60,7 @@ fn main() {
 
     // Static link. Source fallback is built with `slirp=no`. External
     // providers may be the upstream release package, whose archive references
-    // libslirp; `link_external` adds that provider dependency.
+    // libslirp; `link_external` adds that dependency when it is referenced.
     if cfg!(feature = "remote_machine") {
         println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
     } else {
@@ -286,14 +286,43 @@ fn link_external(libdir: &Path, out_path: &Path) {
     let cartesi = libdir.join("libcartesi.a");
     println!("cargo:rerun-if-changed={}", cartesi.display());
     stage_archive(&cartesi, out_path);
+    let mut slirp = references_slirp(&cartesi);
 
     if cfg!(feature = "remote_machine") {
         let jsonrpc = libdir.join("libcartesi_jsonrpc.a");
         println!("cargo:rerun-if-changed={}", jsonrpc.display());
         stage_archive(&jsonrpc, out_path);
+        slirp |= references_slirp(&jsonrpc);
     }
 
     println!("cargo:rustc-link-search={}", out_path.display());
+    if slirp {
+        link_slirp();
+    }
+}
+
+// An archive built with slirp names slirp's symbols; a `slirp=no` one (Nix's)
+// does not, and linking libslirp anyway requires it at build time and loads
+// it at run time for nothing.
+fn references_slirp(archive: &Path) -> bool {
+    let bytes = std::fs::read(archive)
+        .unwrap_or_else(|e| panic!("failed to read `{}`: {e}", archive.display()));
+    let symbol = b"slirp_new";
+    bytes.windows(symbol.len()).any(|window| window == symbol)
+}
+
+// ld64 searches neither Homebrew's nor MacPorts' library directory by
+// default. Homebrew's keg holds only libslirp; MacPorts' directory is shared,
+// but it is searched after OUT_DIR, which already holds the staged archives.
+fn link_slirp() {
+    if cfg!(target_os = "macos") {
+        for dir in ["/opt/homebrew/opt/libslirp/lib", "/opt/local/lib"] {
+            if Path::new(dir).join("libslirp.dylib").exists() {
+                println!("cargo:rustc-link-search={dir}");
+                break;
+            }
+        }
+    }
     println!("cargo:rustc-link-lib=slirp");
 }
 

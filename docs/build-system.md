@@ -223,10 +223,12 @@ index. A moved checkout therefore rechecks Make, while an unchanged second
 Cargo invocation does not invoke it.
 
 Dave's Nix and fallback libraries use `slirp=no`; the node does not use
-VirtIO net-user. The sys crate still links libslirp for an external upstream
-release package because that package's static archive references it. This
-keeps full system installations compatible without making slirp part of the
-source-build requirement.
+VirtIO net-user. The sys crate links libslirp only when an external archive
+references it, as the upstream release package's does; on macOS it also
+searches Homebrew's libslirp or MacPorts' library directory, which ld64 does
+not search by default. This keeps full system installations compatible
+without making slirp a build requirement, or a runtime library, of the Nix
+and source builds.
 
 CI mirrors the policy. Package-backed jobs export `/usr/lib` and
 `/usr/include/cartesi-machine`; source-fallback jobs prepare the checkout
