@@ -32,6 +32,12 @@ e2e suite shrinks.
   adversary is the tail adversary (glossary), and its disputes run on an
   empty epoch, so every build there is one idle span; a steered divergence
   point would let it dispute active spans in-process (todo.md).
+- The node against real providers: `tests/live_rpc.rs`
+  (`just test-live-rpc`, with provider URLs in the environment) fetches a busy
+  contract's logs over one ingestion chunk and twelve maximum-size inputs on
+  Sepolia, and requires every provider to return the same complete set. It
+  spends their quota, so it stays out of `just check` and CI; run it after
+  changing how the node fetches logs or after an alloy bump.
 - End to end (this document): only what needs the node as a process, real
   signals and an independent Lua lineage.
 

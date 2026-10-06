@@ -205,6 +205,12 @@ test-node-harness: bind
     cargo test -p cartesi-rollups-prt-node --lib -- --ignored --test-threads 1 \
       harness:: blockchain_reader:: provider:: args::
 
+# eth_getLogs splitting against live providers, outside check and CI: export
+# any of INFURA_MAINNET_URL, ALCHEMY_MAINNET_URL, INFURA_SEPOLIA_URL and
+# ALCHEMY_SEPOLIA_URL first (it spends their quota)
+test-live-rpc: bind
+    cargo test -p cartesi-rollups-prt-node --test live_rpc -- --ignored --nocapture --test-threads 1
+
 # the released CLI's answers behind the runner goldens (needs cartesi-machine
 # 0.21.0 on PATH; UPDATE_FIXTURES=1 regenerates them)
 test-reference-cli-goldens: bind
