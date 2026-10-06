@@ -66,11 +66,10 @@ carry no backlog (reviews/README.md).
   transactions with nonces from the mined count, so their retry and timeout
   needs differ from reads', and a relay's errors differ from a node's. Today
   both endpoints share `create_client`. (node-architecture.md, RPC client)
-- Under a provider's per-second cap, a tick's point reads grow with the
-  tournaments Sybils create, and one read failing every attempt fails the
-  whole tick; the levers are the read concurrency and per-read failure
-  isolation, not more retries. A lead to measure first.
-  (node-architecture.md, RPC client)
+- Measure and write down the minimum RPC provider the node needs, in the
+  steady state and under the dimensioned attack:
+  [plans/provider-requirements.md](plans/provider-requirements.md).
+  (dimensioning.md)
 
 ## Contracts and assurance
 

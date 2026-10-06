@@ -59,8 +59,9 @@ campaign too large for a few lines may open a plan under [plans/](plans/),
 linked from todo.md; when it ends, its lasting invariants move into the living
 docs and the plan is deleted. Git and pull-request history preserve the
 exploration. Active plans:
-[r19-honest-survival.md](plans/r19-honest-survival.md) and
-[audit-readiness.md](plans/audit-readiness.md).
+[r19-honest-survival.md](plans/r19-honest-survival.md),
+[audit-readiness.md](plans/audit-readiness.md) and
+[provider-requirements.md](plans/provider-requirements.md).
 
 Measurements: generated baselines live in [measurements/](measurements/) -
 `measurements.md` and `measurements-stress.md` (`just measure`,
