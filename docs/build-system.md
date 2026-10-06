@@ -275,6 +275,12 @@ toolchain overrides. Two historical traps, fixed in the flake on
   the macOS clang trampoline resolves the real toolchain through
   `DEVELOPER_DIR`, which the devshell points back into nix.
 
+macOS's default soft limit of 256 open files is too low for the
+machine-backed tests run in parallel, since every loaded machine keeps its
+files open. `just test-rust-workspace` (in `just check`) and
+`just test-engine-machine` raise it; run `ulimit -n 4096` before a plain
+`cargo test`.
+
 Also note `RUSTFLAGS` set in the environment replaces (not merges with)
 `.cargo/config.toml` rustflags. The config file in question is the
 developer's own global one - this repo commits none; homebrew LLVM

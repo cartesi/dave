@@ -23,6 +23,11 @@ set positional-arguments
 
 FOUNDRY_VERSION := "1.5.1"
 
+# Parallel machine-backed tests keep each loaded machine's files open, past
+# macOS's default soft limit of 256 (18 test threads peak near 512). Raises
+# the soft limit for the recipe's shell; a lower hard limit leaves it as is.
+RAISE_OPEN_FILES := "ulimit -Sn 4096 2>/dev/null || true;"
+
 [private]
 default:
     @just --list
@@ -178,7 +183,7 @@ check-fmt-rust-workspace: bind
 test-rust-workspace: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
-    cargo test
+    {{ RAISE_OPEN_FILES }} cargo test
 
 # The one Rust test that needs docker; ensure-docker wakes a sleeping
 # Docker Desktop, whose failures read like code bugs.
@@ -191,7 +196,7 @@ test-kms: bind
 test-engine-machine: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
-    cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
+    {{ RAISE_OPEN_FILES }} cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
       --ignored --skip computation_hash_corpus --skip reference_cli_goldens_hold
 
 # the node's workers against a deterministic anvil, serially (see
