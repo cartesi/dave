@@ -66,8 +66,9 @@ carry no backlog (reviews/README.md).
   transactions with nonces from the mined count, so their retry and timeout
   needs differ from reads', and a relay's errors differ from a node's. Today
   both endpoints share `create_client`. (node-architecture.md, RPC client)
-- Measure and write down the minimum RPC provider the node needs, in the
-  steady state and under the dimensioned attack:
+- Measure and write down the node's supported workload envelope (inputs,
+  live tournaments, provider capacity, action latency), in the steady state
+  and under the dimensioned attack:
   [plans/provider-requirements.md](plans/provider-requirements.md).
   (dimensioning.md)
 
