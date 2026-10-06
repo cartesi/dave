@@ -196,10 +196,11 @@ Options:
 - A fresh state directory replays every input since the application's
   deployment. To upgrade across a change that requires one, start the new
   node on a new directory with its own funded signer, let it catch up, then
-  stop the old one; never wipe the only node's directory in place. The old
-  signer's outstanding bonds stay recoverable by anyone through
-  `tryRecoveringBond`; restarting the new node with the old signer, once the
-  old node is stopped, recovers them as well.
+  stop the old one; never wipe the only node's directory in place. The new
+  node recovers only its own signer's bonds and never revisits an epoch it
+  has completed, even when restarted under another signer. The old signer's
+  outstanding bonds stay recoverable by anyone: a direct `tryRecoveringBond`
+  call on each such tournament pays the recorded claimer, whoever sends it.
 - Read the levels as the failure policy defines them
   ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
   an ERROR asks an operator to act; a WARN means the node carries on. A WARN

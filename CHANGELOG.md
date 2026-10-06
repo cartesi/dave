@@ -53,7 +53,8 @@ needed.
   for a side-by-side upgrade.
 - Changing the signer no longer needs a fresh directory: the node recovers
   its current signer's bonds, and a previous signer's stay recoverable by
-  anyone.
+  anyone through `tryRecoveringBond`, which pays the recorded claimer. The
+  node does not revisit a completed epoch for them.
 - Startup checks the template against the chain, the directory's pins and
   the chain id before writing anything, and refuses a template no epoch can
   start from.
