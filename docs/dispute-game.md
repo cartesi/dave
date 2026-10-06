@@ -331,13 +331,20 @@ The status of the delay claims is:
 | General attacker-versus-correct delay | Arbitrary recursive arrivals and finite blockspace | Open non-claim |
 
 Clock-induced delay and transaction work are different properties. A skewed
-arrival schedule can force a correct survivor through a linear number of
-matches, with work proportional to the number of claims times the commitment
-height. Clock conservation prevents arbitrary refill (a child return refills
-at most `T + 2G`, within its pair's envelope), but does not make that work
-logarithmic. Finite blockspace can turn the linear transaction workload
-into additional wall-clock delay. Bond dimensioning and operational capacity
-must cover this resource attack separately from the chess-clock bound.
+arrival schedule can force a correct survivor through a number of matches
+linear in the claims, with work proportional to the claims times the
+commitment height, but only in a bounded regime. A tournament closes to joins
+at its start plus its allowance, at most one commitment waits unpaired, and
+the survivor's matches run one at a time, each taking time, so only the
+claims that fit the join window meet it one by one. Further claims pair with
+each other and reach the survivor through a bracket, adding matches
+logarithmically, so for many claims the work grows like the delay. The
+regime's size per level is not computed here. Clock conservation prevents
+arbitrary refill (a child return refills at most `T + 2G`, within its pair's
+envelope), but does not shrink the bounded regime's work. Finite blockspace
+can turn that transaction workload into additional wall-clock delay. Bond
+dimensioning and operational capacity must cover this resource attack
+separately from the chess-clock bound.
 
 ### Sealing
 

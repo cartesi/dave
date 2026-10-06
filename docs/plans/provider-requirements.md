@@ -26,16 +26,21 @@ range and response size, latency), and the action latency that results.
   emitted bytes and inputs per block (leads to measure); direct calldata
   submission is one workload, not the upper bound. How to dimension an
   application's ordinary input size and rate is open.
-- Disputes: the reads grow with the tournaments Sybils create, and each
-  Sybil costs a join bond. Clock delay is not transaction work
-  (dispute-game.md, "Delay, work, and bracket shape"): skewed
-  arrivals can force the correct survivor through a number of matches
-  linear in the claims, each with work proportional to the commitment
-  height, so the honest work, and the reads behind it, may grow linearly
-  with the attack's cost. Each tick the tournament reader extends every
-  live tournament in the tree, the Sybils' own matches included, with one
-  `eth_getLogs` each, in sequence (`tournament/reader.rs`), and the
-  recovery scan reads the disposition of every open tournament.
+- Disputes: each Sybil costs a join bond, and the honest work grows only
+  logarithmically with the Sybils at each level, about log^L(N) over `L`
+  levels. Sequential arrivals make it linear only in a bounded regime: a
+  tournament closes to joins at its start plus its allowance, at most one
+  commitment waits unpaired, and each match takes time, so only the Sybils
+  that fit the join window meet the survivor one by one; the rest pair with
+  each other and reach it through a bracket (dispute-game.md, "Delay, work,
+  and bracket shape"). That regime's size per level is a lead to compute.
+  The open question is whether the reads follow that work. Each tick the
+  tournament reader extends every live tournament in the tree, the Sybils'
+  own matches included, with one `eth_getLogs` each, in sequence
+  (`tournament/reader.rs`), and the recovery scan reads the disposition of
+  every open tournament. Resolved matches and their children are dropped,
+  so the reads track the live population, which at a dispute's start can
+  be linear in the Sybils.
 
 ## What to measure
 
@@ -61,7 +66,9 @@ range and response size, latency), and the action latency that results.
   points: one 10,000-block chunk of USDC logs (349,084) took 138 s on
   Infura, and Alchemy's free tier caps `eth_getLogs` at 10 blocks.
 
-If reads dominate, the first lever is which reads the next action needs;
-then the tick's ordering and the read concurrency. Failure isolation and
+If reads dominate, the first lever is which reads the next action needs:
+reading only the tournaments on the honest commitment's path would make
+the reads follow the work. Then come the tick's ordering and the read
+concurrency. Failure isolation and
 more retries come last: dispute planning's reads still fail together under
 a per-second cap, but that is worth machinery only once measured.
