@@ -13,7 +13,11 @@
 
 use std::{collections::BTreeSet, time::Instant};
 
-use alloy::primitives::{Address, address};
+use alloy::{
+    primitives::{Address, address},
+    providers::Provider,
+    rpc::types::Filter,
+};
 use alloy_chains::NamedChain;
 use cartesi_rollups_contracts::i_input_box::IInputBox::InputAdded;
 use cartesi_rollups_prt_node::{chain::Chain, provider::create_rpc_provider};
@@ -137,4 +141,33 @@ async fn maximum_size_inputs_are_complete() {
             started.elapsed()
         );
     }
+}
+
+/// The node's retry policy (provider.rs, RateLimitOnly) skips resending
+/// Infura's result-count rejection by its wording, since Infura reuses its
+/// rate-limit code for it. This pins the wording.
+#[tokio::test]
+#[ignore = "live providers: run `just test-live-rpc`"]
+async fn infura_words_its_result_count_rejection_as_the_retry_policy_expects() {
+    let Ok(url) = std::env::var("INFURA_MAINNET_URL") else {
+        println!("INFURA_MAINNET_URL is unset: skipped");
+        return;
+    };
+    let provider = create_rpc_provider(&url.parse().unwrap(), NamedChain::Mainnet)
+        .await
+        .unwrap_or_else(|error| panic!("INFURA_MAINNET_URL: {error:#}"));
+    // About 30,000 logs: over the 10,000-result cap, light enough to answer.
+    let filter = Filter::new()
+        .address(USDC)
+        .from_block(USDC_RANGE.0)
+        .to_block(USDC_RANGE.0 + 999);
+    let error = provider.get_logs(&filter).await.unwrap_err();
+    let payload = error
+        .as_error_resp()
+        .unwrap_or_else(|| panic!("not an error response: {error}"));
+    assert_eq!(payload.code, -32005, "{error}");
+    assert!(
+        payload.message.contains("query returned more than"),
+        "{error}"
+    );
 }

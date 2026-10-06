@@ -21,7 +21,7 @@ use alloy::{
 use alloy_chains::NamedChain;
 use alloy_transport::{
     HttpError, RpcError, TransportError, TransportErrorKind, TransportFut,
-    layers::RetryBackoffLayer,
+    layers::{RateLimitRetryPolicy, RetryBackoffLayer, RetryPolicy},
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use log::{debug, error, info, trace, warn};
@@ -112,31 +112,71 @@ pub(crate) async fn create_signer(
     Ok((wallet_address, wallet))
 }
 
-async fn create_client(url: &Url) -> RpcClient {
-    let retry = RetryBackoffLayer::new(
-        5,   // max_rate_limit_retries
-        200, // initial_backoff_ms
-        500, // compute_units_per_sec
-    );
-
-    let h2_client = reqwest::Client::builder()
-        .http2_adaptive_window(true)
+/// reqwest's defaults, except where noted: HTTP/2 where TLS negotiates it
+/// (every hosted provider), HTTP/1.1 on plain http, and TCP keepalive.
+fn create_client(url: &Url) -> Result<RpcClient> {
+    let client = reqwest::Client::builder()
+        // A request timeout does not evict a shared HTTP/2 connection; an
+        // unanswered PING does. Its timeout sits below the request timeout,
+        // so a dead connection fails, and leaves the pool, before the
+        // caller's next request.
         .http2_keep_alive_interval(Duration::from_secs(30))
         .http2_keep_alive_timeout(Duration::from_secs(10))
-        .http2_keep_alive_while_idle(true)
-        .pool_max_idle_per_host(1)
+        // Below the idle closes of nginx (75 s) and geth (120 s), so an
+        // HTTP/1.1 connection is not reused just as the server drops it.
         .pool_idle_timeout(Duration::from_secs(60))
-        .tcp_keepalive(Some(Duration::from_secs(60)))
+        // Per attempt, connect through body. alloy never resends a timeout,
+        // and logs_bisecting splits on it.
         .timeout(Duration::from_secs(20))
         .build()
-        .expect("failed to build reqwest client");
-    let transport = Http::with_client(h2_client, url.clone());
+        .context(
+            "failed to build the HTTP client (on Linux it needs the system's CA certificates)",
+        )?;
+    let transport = Http::with_client(client, url.clone());
     let is_local = transport.guess_local();
 
-    RpcClient::builder()
-        .layer(retry)
+    Ok(RpcClient::builder()
+        .layer(retry_layer())
         .layer(RedactUrlLayer(url.to_string()))
-        .transport(transport, is_local)
+        .transport(transport, is_local))
+}
+
+/// Two resends, one second apart, of what [`RateLimitOnly`] lets through:
+/// enough to clear a per-second cap that rejects part of a tick's
+/// concurrent reads. A longer limit is the next tick's to wait out.
+fn retry_layer() -> RetryBackoffLayer<RateLimitOnly> {
+    // A fixed backoff, not an exponential base. u64::MAX turns off alloy's
+    // compute-unit queueing, which models a provider's plan the node does
+    // not know.
+    RetryBackoffLayer::new_with_policy(2, 1_000, u64::MAX, RateLimitOnly::default())
+}
+
+/// The longest server-requested wait a resend honors within a tick.
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(5);
+
+/// alloy's rate-limit policy minus two resends that cannot help within a
+/// tick: Infura's result-count rejection, which reuses its rate-limit code
+/// (-32005) but clears only by narrowing the range (logs_bisecting), and a
+/// server asking to wait longer than [`MAX_RETRY_WAIT`]. Should Infura
+/// reword the rejection, it is resent as before: wasteful, never stuck.
+#[derive(Clone, Copy, Debug, Default)]
+struct RateLimitOnly(RateLimitRetryPolicy);
+
+impl RetryPolicy for RateLimitOnly {
+    fn should_retry(&self, error: &TransportError) -> bool {
+        let size_rejection = error.as_error_resp().is_some_and(|payload| {
+            payload.code == -32005 && payload.message.contains("query returned more than")
+        });
+        let long_wait = self
+            .0
+            .backoff_hint(error)
+            .is_some_and(|wait| wait > MAX_RETRY_WAIT);
+        !size_rejection && !long_wait && self.0.should_retry(error)
+    }
+
+    fn backoff_hint(&self, error: &TransportError) -> Option<Duration> {
+        self.0.backoff_hint(error)
+    }
 }
 
 /// Strips the endpoint's URL, which often carries an API key, from
@@ -218,7 +258,7 @@ fn redact_url(error: TransportError, url: &str) -> TransportError {
 /// Callers name the endpoint's flag; no error, here or from any later
 /// request, quotes the URL, which may carry an API key.
 pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> Result<DynProvider> {
-    let client = create_client(url).await;
+    let client = create_client(url)?;
     let provider = ProviderBuilder::new()
         .disable_recommended_fillers()
         .with_chain(arg_chain_id)
@@ -739,12 +779,89 @@ mod tests {
         transports::mock::Asserter,
     };
 
+    fn error_response(code: i64, message: &'static str) -> TransportError {
+        RpcError::ErrorResp(ErrorPayload {
+            code,
+            message: message.into(),
+            data: None,
+        })
+    }
+
+    #[test]
+    fn the_retry_policy_resends_rate_limits_only_within_the_tick() {
+        let policy = RateLimitOnly::default();
+        for retried in [
+            error_response(429, "Too Many Requests"),
+            error_response(-32005, "Rate limit exceeded"),
+            error_response(-32005, "project ID request rate exceeded"),
+            TransportErrorKind::http_error_with_retry_after(
+                429,
+                "Too Many Requests".into(),
+                Some(Duration::from_secs(2)),
+            ),
+        ] {
+            assert!(policy.should_retry(&retried), "{retried}");
+        }
+        let backoff = serde_json::value::to_raw_value(
+            &serde_json::json!({ "rate": { "backoff_seconds": 30 } }),
+        )
+        .unwrap();
+        for sent_once in [
+            // Infura's result-count rejection clears only by splitting.
+            error_response(
+                -32005,
+                "query returned more than 10000 results. Try with this block range [0x15ef3c0, 0x15ef4ff].",
+            ),
+            // A longer wait is the next tick's.
+            TransportErrorKind::http_error_with_retry_after(
+                429,
+                "Too Many Requests".into(),
+                Some(Duration::from_secs(30)),
+            ),
+            RpcError::ErrorResp(ErrorPayload {
+                code: -32005,
+                message: "project ID request rate exceeded".into(),
+                data: Some(backoff),
+            }),
+            // A hang or a dead endpoint is never resent.
+            TransportErrorKind::custom_str("operation timed out"),
+        ] {
+            assert!(!policy.should_retry(&sent_once), "{sent_once}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_rate_limit_is_sent_three_times() {
+        let asserter = Asserter::new();
+        for _ in 0..3 {
+            asserter.push_failure(ErrorPayload {
+                code: 429,
+                message: "Too Many Requests".into(),
+                data: None,
+            });
+        }
+        let client = RpcClient::builder().layer(retry_layer()).transport(
+            alloy::transports::mock::MockTransport::new(asserter.clone()),
+            true,
+        );
+
+        let error = client
+            .request_noparams::<U64>("eth_blockNumber")
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("Max retries exceeded"),
+            "{error}"
+        );
+        assert!(asserter.read_q().is_empty());
+    }
+
     /// A provider URL often carries an API key; no request error may quote
     /// it, while the error still says what failed.
     #[tokio::test]
     async fn request_errors_do_not_quote_the_rpc_url() {
         let url: Url = "http://127.0.0.1:1/v2/not-a-real-api-key".parse().unwrap();
-        let client = create_client(&url).await;
+        let client = create_client(&url).unwrap();
         let error = client
             .request_noparams::<U64>("eth_blockNumber")
             .await

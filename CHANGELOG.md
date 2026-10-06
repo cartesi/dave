@@ -77,6 +77,11 @@ needed.
 - SQLite commits sync fully, and release builds keep overflow checks.
 - Logged RPC errors no longer quote the endpoint URL, which often carries an
   API key.
+- The RPC client keeps reqwest's defaults apart from a 20 s timeout, HTTP/2
+  keep-alive PINGs and a 60 s idle timeout. A rate-limited request is resent
+  at most twice, a second apart, never after a server-requested wait over
+  5 s, and never for Infura's result-count rejection, which the log fetch
+  splits instead.
 
 ### For developers
 

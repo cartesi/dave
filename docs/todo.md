@@ -62,6 +62,15 @@ carry no backlog (reviews/README.md).
   it fronts errors in the prune's first commit, or the prune turns a retry
   into a common-mode panic. `InvalidBisectingHeight` must keep its bound of
   2, not relax to nonzero. (node-architecture.md, failure policy)
+- Give the submit client its own configuration: sends are idempotent raw
+  transactions with nonces from the mined count, so their retry and timeout
+  needs differ from reads', and a relay's errors differ from a node's. Today
+  both endpoints share `create_client`. (node-architecture.md, RPC client)
+- Under a provider's per-second cap, a tick's point reads grow with the
+  tournaments Sybils create, and one read failing every attempt fails the
+  whole tick; the levers are the read concurrency and per-read failure
+  isolation, not more retries. A lead to measure first.
+  (node-architecture.md, RPC client)
 
 ## Contracts and assurance
 

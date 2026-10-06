@@ -357,6 +357,25 @@ One schema note to know about:
   machine like any nested level; leaf runs are not persisted. Completed-epoch
   collection deletes released `sling_nodes` rows, window roots included.
 
+## RPC client
+
+Every RPC client (`provider.rs`, `create_client`) keeps reqwest's defaults:
+HTTP/2 where TLS negotiates it, which every hosted provider does, and
+HTTP/1.1 on plain http. Four settings are the node's own. A 20 s timeout
+bounds each attempt, connect through body. A 30 s HTTP/2 keep-alive PING
+with a 10 s timeout is the only thing that evicts a silently dead shared
+connection, since a request timeout does not. A 60 s idle timeout closes
+pooled connections before nginx's or geth's server-side idle close.
+
+The retry layer resends a rate-limited request at most twice, a second
+apart, which clears a per-second cap that rejects part of a tick's
+concurrent reads. It never resends a timeout or a connection error. It
+also skips two resends: a wait the server asks for beyond 5 s, which the
+next tick serves instead, and Infura's result-count rejection, which reuses
+its rate-limit code (-32005) but clears only by splitting the range. The
+tick is the retry for everything else. The submit endpoint shares this
+configuration.
+
 ## Chain ingestion stance
 
 Epoch and input ingestion consumes logs only up to the chain's finalized block

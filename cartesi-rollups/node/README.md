@@ -184,6 +184,10 @@ Options:
 
 ## Operator notes
 
+- The node's HTTP client honors the `HTTP_PROXY`, `HTTPS_PROXY` and
+  `ALL_PROXY` environment variables (and macOS's system proxy settings), and
+  on Linux it needs the system's CA certificates even for a plain-http
+  endpoint: without them it stops at startup with an error saying so.
 - Supported chains are Ethereum mainnet and Sepolia. OP Mainnet, Base and
   their Sepolia testnets have experimental deployments: the node runs there
   but is not validated, and refunds leave out the L1 data fee. On Arbitrum
