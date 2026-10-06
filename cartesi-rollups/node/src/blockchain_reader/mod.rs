@@ -545,9 +545,12 @@ fn repeated_check(previous: Option<LogCheck>, error: &anyhow::Error) -> (Option<
 }
 
 /// The tail check contiguity cannot make: once ingestion reaches the
-/// finalized head, its totals must be the chain's own there. A provider
-/// that truncates a log response fails the tick before anything is stored,
-/// instead of leaving a gap the watermark has already passed.
+/// finalized head, its totals must be the chain's own there. A response
+/// truncated in the chunk that reaches the head, as every steady-state
+/// tick's does, fails the tick before anything is stored. One truncated at
+/// the tail of an earlier catch-up chunk is already stored when this check,
+/// or the next chunk's index check, sees the gap: no retry heals it, and
+/// the repeated failure's error says to rebuild the state directory.
 fn ensure_complete(head: u64, ingested: Totals, onchain: Totals) -> Result<()> {
     anyhow::ensure!(
         ingested.inputs == onchain.inputs,
@@ -578,8 +581,9 @@ fn ensure_complete(head: u64, ingested: Totals, onchain: Totals) -> Result<()> {
 
 /// Numbers the events of one epoch, up to its input upper bound
 /// (`u64::MAX` while open), checking each event's own index against the
-/// next expected one and a sealed epoch's end against its bound: a
-/// provider that drops a log fails the tick before anything is stored.
+/// next expected one and a sealed epoch's end against its bound: a log
+/// dropped before the chunk's last one fails the tick before anything is
+/// stored. One dropped at the chunk's tail is [`ensure_complete`]'s.
 fn construct_input_ids<'a>(
     epoch_number: u64,
     input_index_boundary: u64,
