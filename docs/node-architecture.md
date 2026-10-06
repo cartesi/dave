@@ -373,6 +373,9 @@ concurrent reads. It never resends a timeout or a connection error. It
 also skips two resends: a wait the server asks for beyond 5 s, which the
 next tick serves instead, and Infura's result-count rejection, which reuses
 its rate-limit code (-32005) but clears only by splitting the range. The
+skipped wait is the hint the layer itself sleeps on, so no resend waits
+longer than 5 s. alloy drops a `Retry-After` header that comes with a
+JSON-RPC error body, so such a 429 is resent at the one-second backoff. The
 tick is the retry for everything else. The submit endpoint shares this
 configuration.
 

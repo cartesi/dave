@@ -157,8 +157,11 @@ const MAX_RETRY_WAIT: Duration = Duration::from_secs(5);
 /// alloy's rate-limit policy minus two resends that cannot help within a
 /// tick: Infura's result-count rejection, which reuses its rate-limit code
 /// (-32005) but clears only by narrowing the range (logs_bisecting), and a
-/// server asking to wait longer than [`MAX_RETRY_WAIT`]. Should Infura
-/// reword the rejection, it is resent as before: wasteful, never stuck.
+/// server asking to wait longer than [`MAX_RETRY_WAIT`]. That wait is the
+/// hint the layer sleeps on, so no resend waits longer. alloy drops a
+/// Retry-After header that comes with a JSON-RPC error body, and resends
+/// that 429 at the one-second backoff. Should Infura reword the rejection,
+/// it is resent as before: wasteful, never stuck.
 #[derive(Clone, Copy, Debug, Default)]
 struct RateLimitOnly(RateLimitRetryPolicy);
 

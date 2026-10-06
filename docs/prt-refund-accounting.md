@@ -173,9 +173,13 @@ fixed by the state transition, so padding earns nothing. The remaining slack
 is bounded: `Gas.TX` per action in a batch that pays the intrinsic cost once
 (about a fifth of an advance's allocation); for a recipient that also builds
 the block, its own priority fee up to `Bond.REFUND_PRIORITY_FEE_CAP` (a fifth
-of the 50 gwei work price); and the gap between 16 units and the zero-byte
-price on the leaf proof's input bytes, which the input's author chooses
-(under about 0.8M units at the maximum input).
+of the 50 gwei work price); and the gap between the 16 units metered per
+leaf-proof byte and what that byte costs to supply. Sent as calldata, the
+maximum input's zero bytes leave under about 0.8M units. A wrapper contract
+can instead rebuild authenticated bytes in memory (zero input bytes, or
+pristine-subtree siblings from its own code), so the gap can approach the
+whole metered component: 16 units per byte of the fixed proof length, about
+1.5M at the maximum input's 94,180 bytes, within the action's cap.
 
 Adding an independent attacker loss would be a new policy. Doubling the work
 reserve without increasing refund liability would merely disguise that stake
