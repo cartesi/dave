@@ -95,30 +95,30 @@ async fn validate_deployed_tournament_configuration(
 #[command(about = "Arguments of Cartesi PRT")]
 pub struct PRTArgs {
     /// address of application
-    #[arg(long, env)]
+    #[arg(long, env, hide_env_values = true)]
     pub app_address: Address,
 
     /// path to machine template image
-    #[arg(long, env)]
+    #[arg(long, env, hide_env_values = true)]
     pub machine_path: PathBuf,
 
     /// blockchain read gateway endpoint URL
-    #[arg(long, env, default_value = ANVIL_URL)]
+    #[arg(long, env, hide_env_values = true, default_value = ANVIL_URL)]
     pub web3_rpc_url: Url,
 
     /// raw-transaction submission endpoint URL; defaults to the read gateway
-    #[arg(long, env)]
+    #[arg(long, env, hide_env_values = true)]
     pub web3_submit_rpc_url: Option<Url>,
 
     /// blockchain chain id
-    #[arg(long, env, default_value_t = ANVIL_CHAIN_ID)]
+    #[arg(long, env, hide_env_values = true, default_value_t = ANVIL_CHAIN_ID)]
     pub web3_chain_id: u64,
 
     #[clap(subcommand)]
     pub signer: SignerArgs,
 
     /// polling sleep interval
-    #[arg(long, env, default_value_t = SLEEP_DURATION)]
+    #[arg(long, env, hide_env_values = true, default_value_t = SLEEP_DURATION)]
     pub sleep_duration_seconds: u64,
 
     /// execute and durably publish open-epoch inputs in batches of N;
@@ -127,16 +127,17 @@ pub struct PRTArgs {
     #[arg(
         long,
         env,
+        hide_env_values = true,
         default_value_t = crate::storage::DEFAULT_SNAPSHOT_GAP_INPUTS,
         value_parser = clap::value_parser!(u64).range(1..)
     )]
     pub snapshot_gap_inputs: u64,
 
-    #[arg(long, env, default_value_os_t = std::env::temp_dir())]
+    #[arg(long, env, hide_env_values = true, default_value_os_t = std::env::temp_dir())]
     pub state_dir: PathBuf,
 
     /// error codes to retry `get_logs` with shorter block range
-    #[arg(long, env, default_values = &["-32005", "-32600", "-32602", "-32616"])]
+    #[arg(long, env, hide_env_values = true, default_values = &["-32005", "-32600", "-32602", "-32616"])]
     // -32005 Infura
     // -32600, -32602 Alchemy
     // -32616 QuickNode
@@ -154,10 +155,10 @@ pub enum SignerArgs {
         )
     )]
     Pk {
-        #[arg(long, env, group = "pk_source")]
+        #[arg(long, env, hide_env_values = true, group = "pk_source")]
         web3_private_key: Option<String>,
 
-        #[arg(long, env, group = "pk_source")]
+        #[arg(long, env, hide_env_values = true, group = "pk_source")]
         web3_private_key_file: Option<PathBuf>,
     },
 
@@ -170,18 +171,18 @@ pub enum SignerArgs {
         )
     )]
     AwsKms {
-        #[arg(long, env, group = "kms_source")]
+        #[arg(long, env, hide_env_values = true, group = "kms_source")]
         aws_kms_key_id: Option<String>,
 
-        #[arg(long, env, group = "kms_source")]
+        #[arg(long, env, hide_env_values = true, group = "kms_source")]
         aws_kms_key_id_file: Option<PathBuf>,
 
         /// aws endpoint url
-        #[arg(long, env)]
+        #[arg(long, env, hide_env_values = true)]
         aws_endpoint_url: Option<String>,
 
         /// aws region
-        #[arg(long, env, default_value = "us-east-1")]
+        #[arg(long, env, hide_env_values = true, default_value = "us-east-1")]
         aws_region: String,
     },
 }
