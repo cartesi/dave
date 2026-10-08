@@ -217,7 +217,8 @@ level. Terms marked (code) appear verbatim in identifiers.
   (`src/sync.rs`). Deliberately carries no errors - worker errors return
   through join handles; its retired predecessor (Watch) conflated the
   two.
-- sling node: working name for the productized rewrite of the prototype
-  node. The geometry module itself is named `engine`; "sling" survives as the
-  codename in the schema's table names (`sling_config`, `sling_nodes`). The
-  tables were deliberately not renamed.
+- sling node: the PRT validator node, the productized rewrite of the
+  prototype node. The name covers the `cartesi-sling-node` crate, binary and
+  release asset, the `CARTESI_SLING_` prefix of its environment variables,
+  and the schema's tables (`sling_config`, `sling_nodes`). The geometry
+  module itself is named `engine`.
