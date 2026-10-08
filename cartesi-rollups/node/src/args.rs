@@ -138,6 +138,12 @@ pub(crate) async fn discover_deployed_tournament(
 #[derive(Clone, Parser)]
 #[command(name = "cartesi_prt_args")]
 #[command(about = "Arguments of Cartesi PRT")]
+// Help never echoes an env value: one can carry a secret (a signer key, an
+// RPC URL with an API key).
+#[command(
+    mut_args = |arg| arg.hide_env_values(true),
+    mut_subcommands = |cmd| cmd.mut_args(|arg| arg.hide_env_values(true)),
+)]
 pub struct PRTArgs {
     /// address of application
     #[arg(long, env = "CARTESI_SLING_APP_ADDRESS")]
@@ -416,6 +422,21 @@ mod tests {
             "--auth-private-key",
             "unused-by-parser",
         ]
+    }
+
+    #[test]
+    fn help_never_echoes_env_values() {
+        fn check(cmd: &clap::Command) {
+            for arg in cmd.get_arguments().filter(|arg| arg.get_env().is_some()) {
+                assert!(
+                    arg.is_hide_env_values_set(),
+                    "{} would echo its env value",
+                    arg.get_id()
+                );
+            }
+            cmd.get_subcommands().for_each(check);
+        }
+        check(&<PRTArgs as clap::CommandFactory>::command());
     }
 
     #[test]
