@@ -17,7 +17,7 @@ use cartesi_prt_contracts::{
     cartesi_state_transition::CartesiStateTransition,
     multi_level_tournament_factory::MultiLevelTournamentFactory,
 };
-use clap::{ArgGroup, Parser, Subcommand};
+use clap::{ArgGroup, Command, CommandFactory, FromArgMatches, Parser, Subcommand};
 use std::{fmt, path::PathBuf, time::Duration};
 
 use crate::provider::{TransactionLane, create_rpc_provider, create_signer};
@@ -90,6 +90,14 @@ async fn validate_deployed_tournament_configuration(
     })
 }
 
+// Env values often carry secrets (private keys, RPC URLs with API keys);
+// never echo them in help output. Applied recursively so new args and
+// subcommands are covered without per-field opt-in.
+fn hide_env_values(cmd: Command) -> Command {
+    cmd.mut_args(|a| a.hide_env_values(true))
+        .mut_subcommands(hide_env_values)
+}
+
 #[derive(Clone, Parser)]
 #[command(name = "cartesi_prt_args")]
 #[command(about = "Arguments of Cartesi PRT")]
@@ -145,6 +153,17 @@ pub struct PRTArgs {
     // -32600, -32602 Alchemy
     // -32616 QuickNode
     pub long_block_range_error_codes: Vec<String>,
+}
+
+impl PRTArgs {
+    pub fn command_redacted() -> Command {
+        hide_env_values(Self::command())
+    }
+
+    pub fn parse_redacted() -> Self {
+        let matches = Self::command_redacted().get_matches();
+        Self::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
+    }
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -273,7 +292,7 @@ impl NodeConfig {
     }
 
     pub async fn setup() -> Result<(Self, Storage)> {
-        let args = PRTArgs::parse();
+        let args = PRTArgs::parse_redacted();
 
         let chain_id = args
             .blockchain_id
@@ -347,6 +366,21 @@ mod tests {
             "--auth-private-key",
             "unused-by-parser",
         ]
+    }
+
+    #[test]
+    fn help_never_renders_env_values() {
+        fn check(cmd: &Command) {
+            for a in cmd.get_arguments().filter(|a| a.get_env().is_some()) {
+                assert!(
+                    a.is_hide_env_values_set(),
+                    "{} leaks its env value",
+                    a.get_id()
+                );
+            }
+            cmd.get_subcommands().for_each(check);
+        }
+        check(&PRTArgs::command_redacted());
     }
 
     #[test]
