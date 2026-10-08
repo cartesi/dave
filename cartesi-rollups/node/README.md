@@ -163,21 +163,21 @@ Commands:
 
 Options:
       --app-address <APP_ADDRESS>
-          address of application [env: CARTESI_SLING_APP_ADDRESS=]
+          address of application [env: CARTESI_SLING_APP_ADDRESS]
       --template-path <TEMPLATE_PATH>
-          path to machine template image [env: CARTESI_SLING_TEMPLATE_PATH=]
+          path to machine template image [env: CARTESI_SLING_TEMPLATE_PATH]
       --blockchain-http-endpoint <BLOCKCHAIN_HTTP_ENDPOINT>
-          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT=] [default: http://127.0.0.1:8545]
+          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT] [default: http://127.0.0.1:8545]
       --blockchain-http-submit-endpoint <BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT>
-          raw-transaction submission endpoint URL; defaults to the read gateway [env: CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT=]
+          raw-transaction submission endpoint URL; defaults to the read gateway [env: CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT]
       --blockchain-id <BLOCKCHAIN_ID>
-          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID=] [default: 31337]
+          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID] [default: 31337]
       --polling-interval <POLLING_INTERVAL>
-          polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL=] [default: 30]
+          polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
-          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS=] [default: 64]
+          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS] [default: 64]
       --data-dir <DATA_DIR>
-          node state (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR=]
+          node state (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR]
   -h, --help
           Print help
 ```
