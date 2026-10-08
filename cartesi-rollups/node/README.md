@@ -152,7 +152,7 @@ the deployed table; recompute them when any of them changes.
 Here are its arguments:
 
 ```
-Arguments of Cartesi PRT
+The sling node: a PRT validator for Cartesi Rollups applications
 
 Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --template-path <TEMPLATE_PATH> --data-dir <DATA_DIR> <COMMAND>
 

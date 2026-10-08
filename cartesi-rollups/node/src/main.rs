@@ -10,7 +10,7 @@ use log::info;
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
-    info!("Hello from PRT Rollup Node!");
+    info!("Hello from the sling node!");
 
     let config = NodeConfig::setup().await?;
     info!("Running with config:\n{}", config);
