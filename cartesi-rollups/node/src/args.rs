@@ -395,7 +395,7 @@ mod tests {
 
     fn args_with_snapshot_gap(gap: &str) -> Vec<&str> {
         vec![
-            "cartesi-rollups-prt-node",
+            "cartesi-sling-node",
             "--app-address",
             "0x0000000000000000000000000000000000000000",
             "--machine-path",
@@ -518,7 +518,7 @@ mod tests {
         let key = |signer: usize| alloy::hex::encode(anvil.keys()[signer].to_bytes());
         let args_for = |app: Address, machine_path: &Path, signer: usize| {
             PRTArgs::try_parse_from([
-                "cartesi-rollups-prt-node",
+                "cartesi-sling-node",
                 "--app-address",
                 &app.to_string(),
                 "--machine-path",

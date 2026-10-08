@@ -16,12 +16,12 @@ use std::time::{Duration, Instant};
 use alloy::primitives::{Address, U256};
 use alloy::sol_types::SolCall;
 use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
-use cartesi_rollups_prt_node::engine::{
+use cartesi_sling_node::engine::{
     DisputeSource, Hashing, Level, MachineStf, Positioner, Quartet, Stf, Structure,
     TournamentGeometry, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
 };
-use cartesi_rollups_prt_node::merkle::Digest;
-use cartesi_rollups_prt_node::storage::{
+use cartesi_sling_node::merkle::Digest;
+use cartesi_sling_node::storage::{
     DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Storage, Template,
 };
 
@@ -1183,7 +1183,7 @@ mod versus {
     use cartesi_machine::machine::Machine;
     use cartesi_machine::types::{LogType, cmio::CmioResponseReason};
     use cartesi_machine::{EXPECTED_EMULATOR_VERSION, format_emulator_version};
-    use cartesi_rollups_prt_node::engine::LevelCoords;
+    use cartesi_sling_node::engine::LevelCoords;
     use serde_json::{Value, json};
 
     const EPOCH: u64 = 0;

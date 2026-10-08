@@ -6,7 +6,7 @@
 //! lib's unit-test binary they would swallow Ctrl-C and CI's SIGTERM for
 //! every later test.
 
-use cartesi_rollups_prt_node::sync::StopSignals;
+use cartesi_sling_node::sync::StopSignals;
 use std::time::Duration;
 
 /// One test raising both signals in turn: a signal reaches every listener

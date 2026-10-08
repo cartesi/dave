@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use cartesi_rollups_prt_node::{args::NodeConfig, run, sync::ShutdownSignal};
+use cartesi_sling_node::{args::NodeConfig, run, sync::ShutdownSignal};
 
 use anyhow::Result;
 use env_logger::Env;
