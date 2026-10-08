@@ -585,8 +585,8 @@ lane observes no receipts, so a call that passes its estimate and loses a
 race before inclusion is paid for. Every contested step races among the
 honest nodes that share a commitment, so each may pay for the reverts of
 steps another won, a reverted leaf proof's calldata included. A
-revert-protecting endpoint behind `--blockchain-http-submit-endpoint` avoids that cost;
-the node recommends one and does not require it.
+revert-protecting endpoint behind `--blockchain-http-submit-endpoint` avoids
+that cost; the node recommends one and does not require it.
 
 A slot the pool turns down on price is signed once more at the quote's max
 fee with the tip raised to it. geth replaces only on 10% more of both fees,
