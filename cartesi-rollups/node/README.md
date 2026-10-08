@@ -89,23 +89,23 @@ Commands:
 
 Options:
       --app-address <APP_ADDRESS>
-          address of application [env: CARTESI_SLING_APP_ADDRESS=]
+          address of application [env: CARTESI_SLING_APP_ADDRESS]
       --template-path <TEMPLATE_PATH>
-          path to machine template image [env: CARTESI_SLING_TEMPLATE_PATH=]
+          path to machine template image [env: CARTESI_SLING_TEMPLATE_PATH]
       --blockchain-http-endpoint <BLOCKCHAIN_HTTP_ENDPOINT>
-          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT=] [default: http://127.0.0.1:8545]
+          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT] [default: http://127.0.0.1:8545]
       --blockchain-http-submit-endpoint <BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT>
-          raw-transaction submission endpoint URL; defaults to the read gateway [env: CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT=]
+          raw-transaction submission endpoint URL; defaults to the read gateway [env: CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT]
       --blockchain-id <BLOCKCHAIN_ID>
-          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID=] [default: 31337]
+          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID] [default: 31337]
       --polling-interval <POLLING_INTERVAL>
-          polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL=] [default: 30]
+          polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
-          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS=] [default: 64]
+          execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS] [default: 64]
       --data-dir <DATA_DIR>
-          [env: CARTESI_SLING_DATA_DIR=] [default: /tmp]
+          [env: CARTESI_SLING_DATA_DIR] [default: /tmp]
       --long-block-range-error-codes <LONG_BLOCK_RANGE_ERROR_CODES>
-          error codes to retry `get_logs` with shorter block range [env: CARTESI_SLING_LONG_BLOCK_RANGE_ERROR_CODES=] [default: -32005 -32600 -32602 -32616]
+          error codes to retry `get_logs` with shorter block range [env: CARTESI_SLING_LONG_BLOCK_RANGE_ERROR_CODES] [default: -32005 -32600 -32602 -32616]
   -h, --help
           Print help
 ```
