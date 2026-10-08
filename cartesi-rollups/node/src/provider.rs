@@ -40,14 +40,14 @@ pub(crate) async fn create_signer(
 ) -> Result<(Address, EthereumWallet)> {
     let signer: Box<CommonSignature> = match signer_args {
         SignerArgs::Pk {
-            web3_private_key,
-            web3_private_key_file,
+            auth_private_key,
+            auth_private_key_file,
         } => {
-            let pk = if let Some(file) = web3_private_key_file {
+            let pk = if let Some(file) = auth_private_key_file {
                 fs::read_to_string(file)
                     .with_context(|| {
                         format!(
-                            "failed to read --web3-private-key-file `{}`",
+                            "failed to read --auth-private-key-file `{}`",
                             file.display()
                         )
                     })?
@@ -57,18 +57,18 @@ pub(crate) async fn create_signer(
                     .trim()
                     .to_string()
             } else {
-                web3_private_key.clone().unwrap()
+                auth_private_key.clone().unwrap()
             };
 
             let local_signer = PrivateKeySigner::from_str(&pk).map_err(|_| {
-                anyhow!("--web3-private-key(-file) does not hold a valid private key")
+                anyhow!("--auth-private-key(-file) does not hold a valid private key")
             })?;
 
             Box::new(local_signer)
         }
         SignerArgs::AwsKms {
-            aws_kms_key_id,
-            aws_kms_key_id_file,
+            auth_aws_kms_key_id,
+            auth_aws_kms_key_id_file,
             aws_endpoint_url,
             aws_region,
             ..
@@ -77,10 +77,13 @@ pub(crate) async fn create_signer(
                 .clone()
                 .unwrap_or_else(|| format!("https://kms.{}.amazonaws.com", aws_region));
 
-            let key_id = if let Some(file) = aws_kms_key_id_file {
+            let key_id = if let Some(file) = auth_aws_kms_key_id_file {
                 fs::read_to_string(file)
                     .with_context(|| {
-                        format!("failed to read --aws-kms-key-id-file `{}`", file.display())
+                        format!(
+                            "failed to read --auth-aws-kms-key-id-file `{}`",
+                            file.display()
+                        )
                     })?
                     .lines()
                     .next()
@@ -88,7 +91,7 @@ pub(crate) async fn create_signer(
                     .trim()
                     .to_string()
             } else {
-                aws_kms_key_id.clone().unwrap()
+                auth_aws_kms_key_id.clone().unwrap()
             };
 
             let kms_signer = KmsSignerBuilder::new(&key_id, chain_id.into())
@@ -97,7 +100,7 @@ pub(crate) async fn create_signer(
                 .build()
                 .await
                 .context(
-                    "failed to create the AWS KMS signer (--aws-kms-key-id(-file), \
+                    "failed to create the AWS KMS signer (--auth-aws-kms-key-id(-file), \
                      --aws-endpoint-url, --aws-region)",
                 )?;
 
@@ -273,7 +276,7 @@ pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> Result<
         .context("failed to query the endpoint's chain id")?;
     ensure!(
         chain_id == arg_chain_id as u64,
-        "the endpoint serves chain {chain_id}, not --web3-chain-id {}",
+        "the endpoint serves chain {chain_id}, not --blockchain-id {}",
         arg_chain_id as u64
     );
 

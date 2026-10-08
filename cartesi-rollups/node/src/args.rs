@@ -24,7 +24,7 @@ use crate::provider::{TransactionLane, create_rpc_provider, create_signer};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
-const SLEEP_DURATION: u64 = 30;
+const POLLING_INTERVAL: u64 = 30;
 
 /// The deepest leaf level the measured dense rate builds within the
 /// selected commitment budget (docs/measurements/constants.md). A deeper one
@@ -58,7 +58,7 @@ fn tournament_geometry_from_rows(
 /// Chain ids the node knows by name; any other is refused.
 fn named_chain(chain_id: u64) -> Result<NamedChain> {
     NamedChain::try_from(chain_id)
-        .map_err(|_| anyhow::anyhow!("--web3-chain-id {chain_id} is not a chain this node knows"))
+        .map_err(|_| anyhow::anyhow!("--blockchain-id {chain_id} is not a chain this node knows"))
 }
 
 fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
@@ -140,38 +140,38 @@ pub(crate) async fn discover_deployed_tournament(
 #[command(about = "Arguments of Cartesi PRT")]
 pub struct PRTArgs {
     /// address of application
-    #[arg(long, env)]
+    #[arg(long, env = "CARTESI_SLING_APP_ADDRESS")]
     pub app_address: Address,
 
     /// path to machine template image
-    #[arg(long, env)]
-    pub machine_path: PathBuf,
+    #[arg(long, env = "CARTESI_SLING_TEMPLATE_PATH")]
+    pub template_path: PathBuf,
 
     /// blockchain read gateway endpoint URL
-    #[arg(long, env, default_value = ANVIL_URL)]
-    pub web3_rpc_url: Url,
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT", default_value = ANVIL_URL)]
+    pub blockchain_http_endpoint: Url,
 
     /// raw-transaction submission endpoint URL; defaults to the read gateway
-    #[arg(long, env)]
-    pub web3_submit_rpc_url: Option<Url>,
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT")]
+    pub blockchain_http_submit_endpoint: Option<Url>,
 
     /// blockchain chain id
-    #[arg(long, env, default_value_t = ANVIL_CHAIN_ID)]
-    pub web3_chain_id: u64,
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_ID", default_value_t = ANVIL_CHAIN_ID)]
+    pub blockchain_id: u64,
 
     #[clap(subcommand)]
     pub signer: SignerArgs,
 
-    /// polling sleep interval
-    #[arg(long, env, default_value_t = SLEEP_DURATION)]
-    pub sleep_duration_seconds: u64,
+    /// polling interval in seconds
+    #[arg(long, env = "CARTESI_SLING_POLLING_INTERVAL", default_value_t = POLLING_INTERVAL)]
+    pub polling_interval: u64,
 
     /// execute and durably publish open-epoch inputs in batches of N;
     /// 1 processes each input immediately, and sealing flushes a
     /// shorter final batch
     #[arg(
         long,
-        env,
+        env = "CARTESI_SLING_SNAPSHOT_GAP_INPUTS",
         default_value_t = crate::storage::DEFAULT_SNAPSHOT_GAP_INPUTS,
         value_parser = clap::value_parser!(u64).range(1..)
     )]
@@ -179,8 +179,8 @@ pub struct PRTArgs {
 
     /// node state (database, snapshots, dispute scratch); keep it across
     /// restarts, on a filesystem with reflinks
-    #[arg(long, env)]
-    pub state_dir: PathBuf,
+    #[arg(long, env = "CARTESI_SLING_DATA_DIR")]
+    pub data_dir: PathBuf,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -190,15 +190,15 @@ pub enum SignerArgs {
         group(
             ArgGroup::new("pk_source")
                 .required(true)
-                .args(&["web3_private_key", "web3_private_key_file"])
+                .args(&["auth_private_key", "auth_private_key_file"])
         )
     )]
     Pk {
-        #[arg(long, env, group = "pk_source")]
-        web3_private_key: Option<String>,
+        #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY", group = "pk_source")]
+        auth_private_key: Option<String>,
 
-        #[arg(long, env, group = "pk_source")]
-        web3_private_key_file: Option<PathBuf>,
+        #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY_FILE", group = "pk_source")]
+        auth_private_key_file: Option<PathBuf>,
     },
 
     /// AWS KMS signer
@@ -206,15 +206,19 @@ pub enum SignerArgs {
         group(
             ArgGroup::new("kms_source")
                 .required(true)
-                .args(&["aws_kms_key_id", "aws_kms_key_id_file"])
+                .args(&["auth_aws_kms_key_id", "auth_aws_kms_key_id_file"])
         )
     )]
     AwsKms {
-        #[arg(long, env, group = "kms_source")]
-        aws_kms_key_id: Option<String>,
+        #[arg(long, env = "CARTESI_SLING_AUTH_AWS_KMS_KEY_ID", group = "kms_source")]
+        auth_aws_kms_key_id: Option<String>,
 
-        #[arg(long, env, group = "kms_source")]
-        aws_kms_key_id_file: Option<PathBuf>,
+        #[arg(
+            long,
+            env = "CARTESI_SLING_AUTH_AWS_KMS_KEY_ID_FILE",
+            group = "kms_source"
+        )]
+        auth_aws_kms_key_id_file: Option<PathBuf>,
 
         /// aws endpoint url
         #[arg(long, env)]
@@ -280,13 +284,15 @@ impl NodeConfig {
     pub async fn read_provider(&self) -> Result<DynProvider> {
         create_rpc_provider(&self.ethereum_gateway, self.chain_id)
             .await
-            .context("--web3-rpc-url")
+            .context("--blockchain-http-endpoint")
     }
 
     pub async fn transaction_lane(&self, read_provider: DynProvider) -> Result<TransactionLane> {
         let submit_provider = create_rpc_provider(&self.ethereum_submit_gateway, self.chain_id)
             .await
-            .context("--web3-submit-rpc-url (defaults to --web3-rpc-url)")?;
+            .context(
+                "--blockchain-http-submit-endpoint (defaults to --blockchain-http-endpoint)",
+            )?;
         Ok(TransactionLane::new(
             read_provider,
             submit_provider,
@@ -305,34 +311,34 @@ impl NodeConfig {
     /// deployment or template creates nothing, and a refused pin leaves the
     /// existing directory untouched.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
-        let chain_id = named_chain(args.web3_chain_id)?;
+        let chain_id = named_chain(args.blockchain_id)?;
 
-        let provider = create_rpc_provider(&args.web3_rpc_url, chain_id)
+        let provider = create_rpc_provider(&args.blockchain_http_endpoint, chain_id)
             .await
-            .context("--web3-rpc-url")?;
+            .context("--blockchain-http-endpoint")?;
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await?;
         // Sampled before the deployment blocks are read: it bounds a new
         // directory's watermark (AddressBook::initial_watermark).
         let finalized = Chain::new(provider.clone())
             .finalized_block_number()
             .await
-            .context("--web3-rpc-url: failed to read the finalized block")?;
+            .context("--blockchain-http-endpoint: failed to read the finalized block")?;
         let address_book = AddressBook::new(args.app_address, &provider)
             .await
             .with_context(|| {
                 format!(
                     "--app-address {}: is it a Dave application on chain {}?",
-                    args.app_address, args.web3_chain_id
+                    args.app_address, args.blockchain_id
                 )
             })?;
         let geometry =
             discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
         log::info!("deployed tournament geometry (stride/height, top first): {geometry}");
-        let template = Template::inspect(&args.machine_path).context("--machine-path")?;
+        let template = Template::inspect(&args.template_path).context("--template-path")?;
         ensure!(
             *template.hash() == address_book.initial_hash,
-            "--machine-path holds template {}, but application {} starts from {}: fix \
-             --machine-path, or check --app-address",
+            "--template-path holds template {}, but application {} starts from {}: fix \
+             --template-path, or check --app-address",
             alloy::hex::encode_prefixed(template.hash()),
             address_book.app,
             alloy::hex::encode_prefixed(address_book.initial_hash),
@@ -341,22 +347,24 @@ impl NodeConfig {
         // input; from any other one the Hero would only warn every tick.
         ensure!(
             template.awaits_input(),
-            "--machine-path matches application {}'s template, but the template is not paused \
+            "--template-path matches application {}'s template, but the template is not paused \
              at a manual accepted yield (awaiting input), so no epoch can start from it: the \
              deployed application's template is unusable for the node",
             address_book.app,
         );
         let ethereum_submit_gateway = args
-            .web3_submit_rpc_url
-            .unwrap_or_else(|| args.web3_rpc_url.clone());
+            .blockchain_http_submit_endpoint
+            .unwrap_or_else(|| args.blockchain_http_endpoint.clone());
         // Fail a wrong submit endpoint now, not when the manager starts.
         create_rpc_provider(&ethereum_submit_gateway, chain_id)
             .await
-            .context("--web3-submit-rpc-url (defaults to --web3-rpc-url)")?;
+            .context(
+                "--blockchain-http-submit-endpoint (defaults to --blockchain-http-endpoint)",
+            )?;
 
-        let state_lock = StateDirLock::acquire(&args.state_dir)?;
+        let state_lock = StateDirLock::acquire(&args.data_dir)?;
         let storage = Storage::initialize(
-            &args.state_dir,
+            &args.data_dir,
             &template,
             address_book.initial_watermark(finalized),
             address_book.app,
@@ -369,12 +377,12 @@ impl NodeConfig {
         Ok(Self {
             address_book,
             state_dir: storage.state_dir().to_owned(),
-            machine_path: args.machine_path,
+            machine_path: args.template_path,
             chain_id,
             signer_address,
-            ethereum_gateway: args.web3_rpc_url,
+            ethereum_gateway: args.blockchain_http_endpoint,
             ethereum_submit_gateway,
-            sleep_duration: Duration::from_secs(args.sleep_duration_seconds),
+            sleep_duration: Duration::from_secs(args.polling_interval),
             wallet,
             snapshot_gap_inputs: args.snapshot_gap_inputs,
             _state_lock: Arc::new(state_lock),
@@ -398,14 +406,14 @@ mod tests {
             "cartesi-sling-node",
             "--app-address",
             "0x0000000000000000000000000000000000000000",
-            "--machine-path",
+            "--template-path",
             "/tmp/machine",
-            "--state-dir",
+            "--data-dir",
             "/tmp/state",
             "--snapshot-gap-inputs",
             gap,
             "pk",
-            "--web3-private-key",
+            "--auth-private-key",
             "unused-by-parser",
         ]
     }
@@ -415,7 +423,7 @@ mod tests {
         assert_eq!(named_chain(31337).unwrap(), NamedChain::AnvilHardhat);
         let error = named_chain(0xdead_beef).unwrap_err();
         assert!(
-            error.to_string().contains("--web3-chain-id"),
+            error.to_string().contains("--blockchain-id"),
             "unexpected error: {error}"
         );
     }
@@ -521,16 +529,16 @@ mod tests {
                 "cartesi-sling-node",
                 "--app-address",
                 &app.to_string(),
-                "--machine-path",
+                "--template-path",
                 machine_path.to_str().unwrap(),
-                "--web3-rpc-url",
+                "--blockchain-http-endpoint",
                 &endpoint,
-                "--web3-chain-id",
+                "--blockchain-id",
                 &chain_id,
-                "--state-dir",
+                "--data-dir",
                 state_dir.to_str().unwrap(),
                 "pk",
-                "--web3-private-key",
+                "--auth-private-key",
                 &key(signer),
             ])
             .unwrap()
@@ -555,7 +563,7 @@ mod tests {
             .map(|_| ())
             .unwrap_err();
         assert!(
-            format!("{error:#}").contains("--machine-path"),
+            format!("{error:#}").contains("--template-path"),
             "unexpected error: {error:#}"
         );
         assert!(!state_dir.exists(), "a refused start must not write");
