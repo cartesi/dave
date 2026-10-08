@@ -100,7 +100,7 @@ run_corpus_test() {
     local test_name="$1"
 
     CARTESI_COMPUTATION_HASH_CORPUS_PATH="$corpus" \
-        cargo test --locked -p cartesi-rollups-prt-node \
+        cargo test --locked -p cartesi-sling-node \
             --test engine_machine \
             "$test_name" \
             -- --ignored --exact --nocapture
