@@ -20,7 +20,7 @@ use alloy::{
 };
 use alloy_chains::NamedChain;
 use cartesi_rollups_contracts::i_input_box::IInputBox::InputAdded;
-use cartesi_rollups_prt_node::{chain::Chain, provider::create_rpc_provider};
+use cartesi_sling_node::{chain::Chain, provider::create_rpc_provider};
 
 /// USDC on Ethereum mainnet: about 30 logs per block.
 const USDC: Address = address!("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
@@ -64,7 +64,7 @@ async fn chains(variables: &[&str], chain: NamedChain) -> Vec<(String, Chain)> {
 
 fn init_logging() {
     let _ = env_logger::builder()
-        .filter_module("cartesi_rollups_prt_node::chain", log::LevelFilter::Debug)
+        .filter_module("cartesi_sling_node::chain", log::LevelFilter::Debug)
         .try_init();
 }
 

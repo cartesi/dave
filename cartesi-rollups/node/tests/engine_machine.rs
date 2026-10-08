@@ -20,16 +20,16 @@ use cartesi_machine::config::runtime::RuntimeConfig;
 use cartesi_machine::constants::break_reason;
 use cartesi_machine::machine::Machine;
 use cartesi_machine::types::{Hash, cmio::CmioResponseReason};
-use cartesi_rollups_prt_node::engine::{
+use cartesi_sling_node::engine::{
     Collector, DisputeSource, Hashing, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler,
     Stf, Structure, TournamentGeometry, fold_runs,
 };
-use cartesi_rollups_prt_node::machine_runner::MachineRunner;
-use cartesi_rollups_prt_node::merkle::{Digest, MerkleProof};
-use cartesi_rollups_prt_node::storage::{
+use cartesi_sling_node::machine_runner::MachineRunner;
+use cartesi_sling_node::merkle::{Digest, MerkleProof};
+use cartesi_sling_node::storage::{
     Epoch, Input as StorageInput, InputId, LeafProof, Storage, Template,
 };
-use cartesi_rollups_prt_node::sync::ShutdownSignal;
+use cartesi_sling_node::sync::ShutdownSignal;
 use common::epoch_data::EpochData;
 use common::instance::MachineInstance;
 use std::collections::BTreeMap;
@@ -1550,7 +1550,7 @@ fn scratch_quartet_root(image: &Path, inputs: &[Vec<u8>], level: &LevelCoords) -
     let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
     ruler.advance(level.base_cycle).unwrap();
     let end = level.base_cycle + (U256::from(1) << level.height);
-    let mut builder = cartesi_rollups_prt_node::merkle::MerkleBuilder::default();
+    let mut builder = cartesi_sling_node::merkle::MerkleBuilder::default();
     for run in ruler.collect(end, 0).unwrap() {
         builder.append_repeated(run.hash, run.repetitions);
     }

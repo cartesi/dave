@@ -7,11 +7,11 @@ use cartesi_machine::{
     types::access_proof::{AccessLog, AccessType},
     types::{LogType, cmio::CmioResponseReason},
 };
-use cartesi_rollups_prt_node::arithmetic;
-use cartesi_rollups_prt_node::engine::constants::{
+use cartesi_sling_node::arithmetic;
+use cartesi_sling_node::engine::constants::{
     BARCH_MASK_TO_INPUT, INPUT_MASK_TO_EPOCH, LOG2_INPUT_WINDOW_SPAN, UARCH_MASK_TO_BARCH,
 };
-use cartesi_rollups_prt_node::merkle::Digest;
+use cartesi_sling_node::merkle::Digest;
 use log::trace;
 
 use alloy::primitives::U256;
