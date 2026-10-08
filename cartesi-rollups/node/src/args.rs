@@ -136,8 +136,7 @@ pub(crate) async fn discover_deployed_tournament(
 }
 
 #[derive(Clone, Parser)]
-#[command(name = "cartesi_prt_args")]
-#[command(about = "Arguments of Cartesi PRT")]
+#[command(about = "The sling node: a PRT validator for Cartesi Rollups applications")]
 // Help never echoes an env value: one can carry a secret (a signer key, an
 // RPC URL with an API key).
 #[command(
