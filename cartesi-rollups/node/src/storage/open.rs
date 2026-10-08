@@ -381,14 +381,14 @@ fn check_pinned(
     ensure!(
         pinned.app == given.app,
         "state directory `{dir}` belongs to application {}, not --app-address {}: restart \
-         with the right --app-address or use another --state-dir",
+         with the right --app-address or use another --data-dir",
         alloy::hex::encode_prefixed(&pinned.app),
         alloy::hex::encode_prefixed(&given.app),
     );
     ensure!(
         pinned.chain_id == given.chain_id,
-        "state directory `{dir}` belongs to chain {}, not --web3-chain-id {}: restart with \
-         the right --web3-chain-id or use another --state-dir",
+        "state directory `{dir}` belongs to chain {}, not --blockchain-id {}: restart with \
+         the right --blockchain-id or use another --data-dir",
         pinned.chain_id,
         given.chain_id,
     );
@@ -396,7 +396,7 @@ fn check_pinned(
         pinned.template_hash == given.template_hash,
         "state directory `{dir}` was seeded from template {}, but the given template is {}: \
          the directory belongs to another deployment or is an old one; use another \
-         --state-dir or wipe it",
+         --data-dir or wipe it",
         pinned.template_hash,
         given.template_hash,
     );
@@ -542,7 +542,7 @@ mod tests {
 
         let error = initialize_at(&state_dir, &second, 0, Address::ZERO, 1).unwrap_err();
         assert!(
-            format!("{error:#}").contains("--state-dir"),
+            format!("{error:#}").contains("--data-dir"),
             "unexpected error: {error:#}"
         );
         let second_hash = Template::inspect(&second).unwrap().hash;
@@ -582,7 +582,7 @@ mod tests {
 
         let error = initialize_at(&state_dir, &template, 1000, Address::ZERO, 2).unwrap_err();
         assert!(
-            format!("{error:#}").contains("--web3-chain-id"),
+            format!("{error:#}").contains("--blockchain-id"),
             "unexpected error: {error:#}"
         );
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
