@@ -33,7 +33,7 @@ between one big cycle and one input window). It does not judge whether a
 table can be built in time (one warning for a leaf taller than its measured
 capacity) and does not pin or check `T`. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
-linked Cartesi Machine library. It then inspects the `--machine-path` template
+linked Cartesi Machine library. It then inspects the `--template-path` template
 (one private load: its root hash, the pristine-uarch check, and whether it is
 paused at a manual accepted yield) and requires that hash to equal the
 consensus's initial hash. A matching template paused elsewhere is the deployed
@@ -42,7 +42,7 @@ state awaiting input, so the node could not defend any of its epochs. Only
 then does it take the state-directory lock and open the directory. A seeded
 directory is compared with its `sling_config` pins (app, chain, consensus,
 template, emulator and table) before anything is written. A mismatch names the
-flag to fix (`--app-address`, `--web3-chain-id`), calls the directory another
+flag to fix (`--app-address`, `--blockchain-id`), calls the directory another
 deployment's or an old one (the template), or asks for a rebuild (consensus,
 emulator, table). A new directory is seeded in one transaction: the initial
 watermark, the epoch-0 boundary, the template row and the pins. So a deployment
@@ -199,10 +199,10 @@ are declined for lack of a consumer: the level and the target suffice.
 
 ## Storage
 
-Everything lives under `--state-dir`:
+Everything lives under `--data-dir`:
 
 ```
-state_dir/
+data_dir/
   node.lock           held by the one node process using the directory
   db.sqlite3          main database (WAL mode, busy_timeout 10s)
   snapshots/0x<hash>/ machine snapshots, named by machine root hash
@@ -585,7 +585,7 @@ lane observes no receipts, so a call that passes its estimate and loses a
 race before inclusion is paid for. Every contested step races among the
 honest nodes that share a commitment, so each may pay for the reverts of
 steps another won, a reverted leaf proof's calldata included. A
-revert-protecting endpoint behind `--web3-submit-rpc-url` avoids that cost;
+revert-protecting endpoint behind `--blockchain-http-submit-endpoint` avoids that cost;
 the node recommends one and does not require it.
 
 A slot the pool turns down on price is signed once more at the quote's max
