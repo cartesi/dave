@@ -190,13 +190,13 @@ test-rust-workspace: bind
 # the AWS KMS signer against LocalStack
 test-kms: bind
     ./script/ensure-docker.sh
-    cargo test -p cartesi-rollups-prt-node --lib kms:: -- --ignored
+    cargo test -p cartesi-sling-node --lib kms:: -- --ignored
 
 # fail-loud real-machine differentials and golden fixtures
 test-engine-machine: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
-    {{ RAISE_OPEN_FILES }} cargo test -p cartesi-rollups-prt-node --test engine_machine -- \
+    {{ RAISE_OPEN_FILES }} cargo test -p cartesi-sling-node --test engine_machine -- \
       --ignored --skip computation_hash_corpus --skip reference_cli_goldens_hold
 
 # the node's workers against a deterministic anvil, serially (see
@@ -207,21 +207,21 @@ test-engine-machine: bind
 test-node-harness: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/devnet-fingerprint.sh verify
-    cargo test -p cartesi-rollups-prt-node --lib -- --ignored --test-threads 1 \
+    cargo test -p cartesi-sling-node --lib -- --ignored --test-threads 1 \
       harness:: blockchain_reader:: provider:: args::
 
 # eth_getLogs splitting against live providers, outside check and CI: export
 # any of INFURA_MAINNET_URL, ALCHEMY_MAINNET_URL, INFURA_SEPOLIA_URL and
 # ALCHEMY_SEPOLIA_URL first (it spends their quota)
 test-live-rpc: bind
-    cargo test -p cartesi-rollups-prt-node --test live_rpc -- --ignored --nocapture --test-threads 1
+    cargo test -p cartesi-sling-node --test live_rpc -- --ignored --nocapture --test-threads 1
 
 # the released CLI's answers behind the runner goldens (needs cartesi-machine
 # 0.21.0 on PATH; UPDATE_FIXTURES=1 regenerates them)
 test-reference-cli-goldens: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
-    cargo test -p cartesi-rollups-prt-node --test engine_machine \
+    cargo test -p cartesi-sling-node --test engine_machine \
       reference_cli_goldens_hold -- --ignored --exact --nocapture
 
 # download and verify v0.21's released computation-hash corpus
@@ -244,20 +244,20 @@ test-computation-hash-corpus: \
 # regenerate the measurement baselines (docs/measurements/)
 measure *ARGS: bind
     ./script/machine-image-fingerprint.sh verify echo
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/echo/machine-image \
       --out docs/measurements/measurements.md --profile echo "$@"
 
 measure-stress *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/stress/machine-image \
       --out docs/measurements/measurements-stress.md --profile stress "$@"
 
 # time the dense two-level leaf build and its peak RSS
 measure-two-level-leaf *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/stress/machine-image --two-level-leaf \
       --out docs/measurements/two-level-leaf.md "$@"
 
@@ -265,14 +265,14 @@ measure-two-level-leaf *ARGS: bind
 # about an hour at the defaults, and TMPDIR should be the node's filesystem)
 measure-node-vs-emulator *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/stress/machine-image --node-vs-emulator \
       --out docs/measurements/node-vs-emulator.md "$@"
 
 # derive tournament level constants (docs/measurements/constants.md)
 measure-level-constants *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-rollups-prt-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --bin measure -- \
       --machine test/programs/stress/machine-image --constants \
       --out docs/measurements/constants.md --profile stress "$@"
 
