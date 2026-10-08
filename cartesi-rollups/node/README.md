@@ -57,11 +57,11 @@ The executable will appear at:
 
 Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
 Reads use `--blockchain-http-endpoint`. Raw signed transactions use
-`--blockchain-http-submit-endpoint`, which defaults to the read endpoint and may instead
-name a private relay with revert protection: honest nodes that share a
-commitment race on every step, and without it each pays for its reverted
-copies of the steps another node landed first. The relay must not land
-reverting transactions and must reach builders covering most blocks. For
+`--blockchain-http-submit-endpoint`, which defaults to the read endpoint and
+may instead name a private relay with revert protection: honest nodes that
+share a commitment race on every step, and without it each pays for its
+reverted copies of the steps another node landed first. The relay must not
+land reverting transactions and must reach builders covering most blocks. For
 example, MEV Blocker's `/noreverts` endpoint qualifies, while its default
 endpoint lands reverts, and Flashbots Protect's default endpoint reaches only
 the Flashbots builder. The signer must be exclusive to
