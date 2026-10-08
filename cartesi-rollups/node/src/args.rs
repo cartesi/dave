@@ -256,13 +256,21 @@ impl fmt::Display for NodeConfig {
         writeln!(f, "Signer address: {}", self.signer_address)?;
         writeln!(f, "Chain Id: {} ({})", self.chain_id, self.chain_id as u64)?;
         writeln!(f, "Ethereum read gateway: <redacted>")?;
-        writeln!(f, "Ethereum submit gateway: <redacted>")?;
+        // The URLs stay redacted, but whether submissions have their own
+        // endpoint (a revert-protecting relay) still shows.
+        let submit_gateway = if self.ethereum_submit_gateway == self.ethereum_gateway {
+            "the read gateway"
+        } else {
+            "<redacted>"
+        };
+        writeln!(f, "Ethereum submit gateway: {submit_gateway}")?;
         writeln!(f, "Data directory: {}", self.state_dir.display())?;
-        write!(
+        writeln!(
             f,
             "Polling interval: {} seconds",
             self.sleep_duration.as_secs()
         )?;
+        write!(f, "Snapshot gap inputs: {}", self.snapshot_gap_inputs)?;
         Ok(())
     }
 }
