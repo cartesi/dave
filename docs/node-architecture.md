@@ -12,7 +12,7 @@ boundary. The per-epoch side databases retired during the rewrite.
 
 ## Process layout
 
-`cartesi-rollups-prt-node` (binary) runs three workers on one tokio
+`cartesi-sling-node` (binary) runs three workers on one tokio
 runtime (`lib.rs run()`), each owning its own SQLite connection:
 
 - blockchain-reader (async task): chain logs -> db (inputs, epochs,
@@ -194,7 +194,7 @@ disposition holds the epoch, and with it the next one). WARN
 means the node carries on: the next tick retries, an action is skipped or
 falls back, or best-effort work failed. INFO is protocol progress. Every
 line's target is its module path, so `RUST_LOG` narrows the output to one
-subsystem (`RUST_LOG=cartesi_rollups_prt_node::hero=debug`). Structured fields
+subsystem (`RUST_LOG=cartesi_sling_node::hero=debug`). Structured fields
 are declined for lack of a consumer: the level and the target suffice.
 
 ## Storage

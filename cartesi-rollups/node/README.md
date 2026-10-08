@@ -50,7 +50,7 @@ just build-release-rust-workspace
 
 The executable will appear at:
 ```
-./target/release/cartesi-rollups-prt-node
+./target/release/cartesi-sling-node
 ```
 
 ## Run
@@ -154,7 +154,7 @@ Here are its arguments:
 ```
 Arguments of Cartesi PRT
 
-Usage: cartesi-rollups-prt-node [OPTIONS] --app-address <APP_ADDRESS> --machine-path <MACHINE_PATH> --state-dir <STATE_DIR> <COMMAND>
+Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --machine-path <MACHINE_PATH> --state-dir <STATE_DIR> <COMMAND>
 
 Commands:
   pk       private-key signer
