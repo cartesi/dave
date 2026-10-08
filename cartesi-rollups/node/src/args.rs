@@ -192,13 +192,7 @@ pub struct PRTArgs {
 #[derive(Subcommand, Debug, Clone)]
 pub enum SignerArgs {
     /// private-key signer
-    #[command(
-        group(
-            ArgGroup::new("pk_source")
-                .required(true)
-                .args(&["auth_private_key", "auth_private_key_file"])
-        )
-    )]
+    #[command(group(ArgGroup::new("pk_source").required(true)))]
     Pk {
         #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY", group = "pk_source")]
         auth_private_key: Option<String>,
@@ -208,13 +202,7 @@ pub enum SignerArgs {
     },
 
     /// AWS KMS signer
-    #[command(
-        group(
-            ArgGroup::new("kms_source")
-                .required(true)
-                .args(&["auth_aws_kms_key_id", "auth_aws_kms_key_id_file"])
-        )
-    )]
+    #[command(group(ArgGroup::new("kms_source").required(true)))]
     AwsKms {
         #[arg(long, env = "CARTESI_SLING_AUTH_AWS_KMS_KEY_ID", group = "kms_source")]
         auth_aws_kms_key_id: Option<String>,
