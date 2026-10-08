@@ -44,5 +44,5 @@ done
     || fail "devnet bundle is stale, mixed, or unverified (just rollups-contracts::build-devnet)"
 "$image_checker" verify "$program" >/dev/null 2>&1 \
     || fail "test/programs/$program/machine-image is stale or unverified (rebuild it under test/programs)"
-[[ -x "${repo_root}/target/debug/cartesi-rollups-prt-node" ]] \
+[[ -x "${repo_root}/target/debug/cartesi-sling-node" ]] \
     || fail "node binary not built (just build-rust-workspace at the repo root)"
