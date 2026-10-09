@@ -7,32 +7,25 @@ carry no backlog (reviews/README.md).
 
 ## Next release
 
-- Cut a release candidate after this PR for the staging pipeline and
-  testnet. It is a new deployment generation, whose notes are CHANGELOG.md's
-  Unreleased section: at the cut, title it with the tag and add the
-  generation's addresses. (build-system.md, CHANGELOG.md)
+- Cut a release candidate after the canonical two-level switch for the
+  staging pipeline and testnet; it does not wait for the validator-grade
+  confirmation below. It is a new deployment generation, whose notes are
+  CHANGELOG.md's Unreleased section: at the cut, title it with the tag and
+  add the generation's addresses. (build-system.md, CHANGELOG.md)
 
-## Before the canonical two-level switch (a later PR)
+## Before the audited release
 
-- Switch `ArbitrationConstants` to two levels, `[37, 0]` / `[55, 37]` with
-  `COMMITMENT_BUDGET = 60 minutes`, plus `testCheckedInCanonicalTable`,
-  through the contract-change gate; regenerate bindings and the devnet, and
-  recompute the node README's funding floor for the new bonds.
-  (dimensioning.md)
-- On the first two-level staging, stop and restart the node mid leaf build:
-  three-level releases never take the span-by-span, resumable tall build,
-  which only the spec and engine-machine tests exercise.
-  (computation-hash.md)
-
-## Before a two-level release
-
-- Confirm `[55, 37]` at `T = 60` on v0.21 and validator-grade hardware, and
-  settle which root-slowdown figure governs stride 37 (the hash-cost hump at
-  2^16 to 2^18 big cycles); the per-input compute contract's numbers and the
-  worst-case leaf proof plus fallback latency (CF-01) follow from it.
+- Confirm `[38, 0]` / `[54, 38]` at `T = 120` on validator-grade hardware
+  (measured on one M5 Max laptop, v0.21.0); the per-input compute contract
+  and the worst-case leaf proof plus fallback latency (CF-01) follow from it.
   (measurements/constants.md, dimensioning.md)
-- Link a tagged emulator release; development may pin unreleased commits.
-  (build-system.md)
+- On the release candidate's staging, the first on two levels, stop and
+  restart the node mid leaf build: three-level releases never took the
+  span-by-span, resumable tall build, which only the spec and engine-machine
+  tests exercise. Take a dispute there through the height-38 leaf seal (an
+  even height, so commitment two seals), the step proof and settlement, since
+  nothing has run the canonical table node-against-chain.
+  (computation-hash.md, dispute-game.md)
 
 ## Upstream (Cartesi Machine, arm's length: nothing waits on it)
 
@@ -110,8 +103,8 @@ carry no backlog (reviews/README.md).
 
 ## Decisions
 
-- The tournament events ABI stays as is in this PR; a follow-up may add
-  fields if consumers request them.
+- The tournament events ABI stays as cartesi/dave#287 left it; a follow-up
+  may add fields if consumers request them.
 - The safety-gate branch stays tabled: the delay lives in DaveConsensus
   staging and sentries, and the branch is kept for its `ITask` genericity.
 - Open: the external audit's scope, firm and date, and whether R19 gates it
