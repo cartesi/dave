@@ -142,17 +142,19 @@ one input is replayed, never cached, by three honest actions:
 - A join's positioning and a leaf proof replay the disputed input's prefix
   from its boundary.
 
-Under the two-level table (`[55, 37]`, `G` of five minutes, hardware slack
-2), the hash-cost curve in docs/measurements/constants.md (stress workload,
-measured on v0.21) gives about 5 ns per big cycle sampled at stride 2^37
-(run plus root hash, between its 2^16 and 2^18 rows). Replaying whole inputs
-is one unbroken run, which its long rows put at about 1.1 ns per big cycle,
-close to the v0.21 positioning in docs/measurements/node-vs-emulator.md. With
-`G` halved by the slack to 150 s, the contract is near 2^34.8 big cycles per
-input at a gap of 1, and near 2^30.9 at the default gap of 64 (63 replayed
-inputs and one sampled), where the prefix replay dominates. These are
-estimates on one workload; a re-measurement on validator-grade hardware
-confirms or replaces them. Heavy applications lower the gap.
+Under the canonical table (`[38, 0]` / `[54, 38]`, `G` of five minutes,
+hardware slack 2), the hash-cost curve in docs/measurements/constants.md
+(stress workload, measured on v0.21) gives about 3.5 ns per big cycle sampled
+at stride 2^38 (its 2^18 row: 557 us of run plus 370 us of root hash per 2^18
+big cycles). Replaying whole inputs is one unbroken run, which its long rows
+put at about 1.1 ns per big cycle, close to the v0.21 positioning in
+docs/measurements/node-vs-emulator.md. With `G` halved by the slack to 150 s,
+the contract is near 2^35.3 big cycles per input at a gap of 1
+(150 s / 3.5 ns), and near 2^30.9 at the default gap of 64 (63 replayed
+inputs and one sampled: 150 s / (63 x 1.1 + 3.5) ns), where the prefix
+replay dominates. These are estimates on one workload; a re-measurement on
+validator-grade hardware confirms or replaces them. Heavy applications lower
+the gap.
 
 An overrun is charged to the honest clock beyond `G` and draws on `C`: it
 spends censorship tolerance before it loses a dispute. Past the contract, as
@@ -214,7 +216,7 @@ Keep three wall-clock quantities separate:
 - `T`: the supported time to construct the commitment needed for one inner
   tournament, the same at every inner level. It belongs with the geometry
   (`ArbitrationConstants.COMMITMENT_BUDGET`): a generated geometry is only
-  valid for the `T` it was generated against.
+  valid for a `T` at least the one it was generated against.
 - `G`: the small per-response inclusion and execution budget for a tournament
   transaction.
 
@@ -269,13 +271,15 @@ balances, but would not remove the preserved-clock strategy that
 or a formal recursive delay theorem. Any corresponding leniency toward a
 correct participant is incidental, not the security rationale.
 
-The three-level table predates the current measurement tooling and is not a
-`T = 30` derivation (a fresh one produces a different geometry); `T = 30
-minutes` is the conservative policy value it runs with, and on Ethereum it
-gives one week plus 85 minutes. The two-level table uses `T = 60 minutes`,
-`log2step = [37, 0]`, and `height = [55, 37]`, and gives one week plus 75
-minutes. `ArbitrationConstants` holds the deployed table together with its
-`T`.
+The canonical table is two levels, `log2step = [38, 0]` and
+`height = [54, 38]`: the `T = 60` derivation in
+docs/measurements/constants.md, which prices the leaf on the node's bulk
+collection path with hardware slack 2, deployed with `T = 120 minutes` for
+double slack. On Ethereum it gives one week plus 135 minutes. The three-level
+table (`[44, 27, 0]` / `[48, 17, 27]`) predates the current measurement
+tooling and is not a `T = 30` derivation; it remains the devnet test table
+that CI and local tests run, at `T = 30 minutes`.
+`ArbitrationConstants` holds the deployed table together with its `T`.
 
 Before adopting any generated table, run the test-only whole-table validator
 under `prt/contracts/test/config/`. It checks the declared level count, positive
@@ -291,7 +295,9 @@ table, validates it (the root spans the 92-bit ruler, rows tile, the leaf
 stride is zero, and the root stride lies between one big cycle and one input
 window), and pins it; the Hero checks each tournament descriptor on its path
 against the pinned row for its level. Cross-implementation commitment
-agreement at the deployed strides remains a release gate.
+agreement at the deployed strides is a separate gate; dispute-game.md
+(tournament roles and configuration) names the evidence that carries it for
+the canonical table.
 
 `G` is not commitment-construction time. The contracts store the per-response
 value, currently five minutes, in the `responseBudget` field. A
@@ -363,9 +369,9 @@ be objectively provable and does not impose an honest strategy, so it is a
 clock-only upper envelope. A general attacker-versus-honest upper bound still
 needs an unbounded proof or counterexample.
 
-For the two-level target heights `[55, 37]`, a root match can earn at most 275
+For the canonical heights `[54, 38]`, a root match can earn at most 270
 minutes of discounts (a timeout win replaces its seal, since a sealed inner
-match resolves through its child) and a leaf match at most 190 minutes,
+match resolves through its child) and a leaf match at most 195 minutes,
 including its win. One descent through one match at each level totals 465
 minutes. These are per-match cumulative
 ceilings, not values deposited into a clock or a whole-tournament maximum.
