@@ -92,7 +92,7 @@ pub(crate) fn compute_and_store<F: RulerFactory>(
 /// A single-transition quartet whose fanout stays above big-cycle
 /// granularity is built from big-cycle roots: the stored levels never
 /// reach inside a cycle, and memory stays one cycle's runs. That is what
-/// makes a whole leaf-level commitment (2^37 transitions under two
+/// makes a whole leaf-level commitment (2^38 transitions under two
 /// levels) buildable. It is built span by span over its bottom fanout
 /// stratum, storing each span's row as it completes, so a stop between
 /// spans keeps them and the next build resumes after them; a span row

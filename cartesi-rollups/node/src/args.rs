@@ -26,11 +26,6 @@ const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const POLLING_INTERVAL: u64 = 30;
 
-/// The deepest leaf level the measured dense rate builds within the
-/// selected commitment budget (docs/measurements/constants.md). A deeper one
-/// may not be defensible in time, so the node says so at startup.
-const MEASURED_LEAF_HEIGHT_CAPACITY: u64 = 37;
-
 /// One `tournamentParameters(level)` row: (levels, log2step, height).
 type TableRow = (u64, u64, u64);
 
@@ -106,13 +101,6 @@ pub(crate) async fn discover_deployed_tournament(
     }
     let geometry = tournament_geometry_from_rows(level_count, &rows)
         .with_context(|| format!("tournament factory {tournament_factory} is incompatible"))?;
-    if geometry.leaf_height() > MEASURED_LEAF_HEIGHT_CAPACITY {
-        log::warn!(
-            "leaf level height {} exceeds the measured capacity {MEASURED_LEAF_HEIGHT_CAPACITY}: \
-             leaf commitments may not build within the commitment budget",
-            geometry.leaf_height()
-        );
-    }
 
     let state_transition = factory.stateTransition().call().await.with_context(|| {
         format!("failed to query state transition from tournament factory {tournament_factory}")
@@ -463,7 +451,7 @@ mod tests {
     fn accepts_any_valid_factory_table() {
         let three_level = tournament_geometry_from_rows(3, &[(3, 44, 48), (3, 27, 17), (3, 0, 27)]);
         assert_eq!(three_level.unwrap(), TournamentGeometry::three_level());
-        let two_level = tournament_geometry_from_rows(2, &[(2, 37, 55), (2, 0, 37)]);
+        let two_level = tournament_geometry_from_rows(2, &[(2, 38, 54), (2, 0, 38)]);
         assert_eq!(two_level.unwrap(), TournamentGeometry::two_level());
     }
 
@@ -519,10 +507,10 @@ mod tests {
         .await
         .unwrap();
         // The devnet bundle serves the table of the geometry profile it was
-        // built with (DEVNET_GEOMETRY, canonical by default).
+        // built with (DEVNET_GEOMETRY, the three-level test table by default).
         let expected = match std::env::var("DEVNET_GEOMETRY").as_deref() {
-            Ok("two-level") => TournamentGeometry::two_level(),
-            _ => TournamentGeometry::checked_in(),
+            Ok("canonical") => TournamentGeometry::checked_in(),
+            _ => TournamentGeometry::three_level(),
         };
         assert_eq!(
             geometry, expected,

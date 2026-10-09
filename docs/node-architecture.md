@@ -29,9 +29,9 @@ configured state transition. The node compiles in no tournament geometry: it
 accepts any table that passes `engine::TournamentGeometry`'s validator (the
 root spans the 92-bit machine coordinate, each level tiles one leaf of its
 parent, the leaf level steps single transitions, and the root stride lies
-between one big cycle and one input window). It does not judge whether a
-table can be built in time (one warning for a leaf taller than its measured
-capacity) and does not pin or check `T`. It refuses to start unless
+between one big cycle and one input window). It does not judge whether a table
+can be built in time and does not pin or check `T`: sizing the leaf to `T` is
+the operator's and the geometry's concern. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
 linked Cartesi Machine library. It then inspects the `--template-path` template
 (one private load: its root hash, the pristine-uarch check, and whether it is
@@ -618,14 +618,15 @@ provisioning floor and its assumed peak fee live in the node README.
 ## Performance stance
 
 The node claims only that it adds no work over the emulator's own. Whether
-a geometry fits an application on given hardware is measured with the
-emulator (docs/measurements/constants.md) and sized by the operator; the
-node never refuses to run for performance. CI gates deterministic work
+a geometry fits an application on given hardware is measured on the node's
+own leaf path (the node crate's `measure.rs --constants`,
+docs/measurements/constants.md) and sized by the operator; the node never
+refuses to run for performance. CI gates deterministic work
 counts, never time (`engine/spec.rs`: a leaf build runs each ustep once, an
 idle stretch costs one captured cycle per stratum span (at most 256 per
 build), folded spans cost no machine work; a join
 replays the disputed input's prefix once for the build and once per stored
-fanout stratum, five times at height 37, within the measured overhead).
+fanout stratum, five times at height 38, within the measured overhead).
 Before releases and hot-path changes, `just measure-node-vs-emulator` times a
 cold join and a deep proof against the emulator on the same host, with peak
 RSS and disk (docs/measurements/node-vs-emulator.md). At runtime the Hero

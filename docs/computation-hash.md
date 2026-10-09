@@ -206,19 +206,20 @@ machine.
 
 Nobody can build (or store) 2^92 leaves. The dispute is split into levels;
 `prt/contracts/src/arbitration-config/ArbitrationConstants.sol` holds the
-deployed table. The two tables in use are three levels and two:
+deployed table, two levels. The devnet that CI and local tests run serves a
+three-level test table instead:
 
 ```
-three levels
+two levels (canonical)
+level  log2step  height   leaf =                       tree covers
+0      38        54       one hash per 2^38 usteps     whole epoch (2^92)
+1      0         38       one hash per ustep           one level-0 stride
+
+three levels (devnet test table)
 level  log2step  height   leaf =                       tree covers
 0      44        48       one hash per 2^44 usteps     whole epoch (2^92)
 1      27        17       one hash per 2^27 usteps     one level-0 stride
 2      0         27       one hash per ustep           one level-1 stride
-
-two levels
-level  log2step  height   leaf =                       tree covers
-0      37        55       one hash per 2^37 usteps     whole epoch (2^92)
-1      0         37       one hash per ustep           one level-0 stride
 ```
 
 Invariants: `log2step[i] == log2step[i+1] + height[i+1]`, and
@@ -275,17 +276,17 @@ and survives as a differential test oracle):
   of that reset state.
 
 A stride-0 quartet tall enough that its 8 stored levels stay above big-cycle
-granularity (a two-level leaf commitment is 2^37 transitions) is built from
+granularity (a two-level leaf commitment is 2^38 transitions) is built from
 one root per big cycle. The node takes the active cycles' roots from the
 emulator's uarch collector (`cm_collect_uarch_cycle_root_hashes` bundled at
 2^20, so each mcycle's entries end with its cycle's root), and an idle
 stretch steps one captured span and repeats its root. The tree is the one
 stepping every span would build. It is built span by span over the bottom
-stratum of its stored fanout (256 spans, 512 big cycles each at height 37),
+stratum of its stored fanout (256 spans, 1024 big cycles each at height 38),
 storing each span's row as it completes, so a stopped build keeps its
 finished spans and the next one resumes after them; those rows are ones a
 whole build stores anyway. Only such tall quartets use the collector, so
-only the two-level table's height-37 leaf does: every other quartet, every leaf
+only the two-level table's height-38 leaf does: every other quartet, every leaf
 of the three-level table (height 27) included, is stepped through
 `Ruler::collect`. `Collector::Stepped`, which steps a tall build as well, stays
 permanently as the collector's test reference. In production stepping also
@@ -303,7 +304,7 @@ per build) however long it is.
 The rollups node computes level-0 leaves eagerly while processing
 inputs, at the root stride of the deployed tournament table (pinned at
 initialization; 2^44 under three levels, one leaf per 2^24 big cycles, and
-2^37 under two, one per 2^17) and
+2^38 under two, one per 2^18) and
 folds each closed window's runs into its window-root quartet row as
 it commits - the unfolded runs are never persisted. At dispute time
 the facade serves level 0 at or above window granularity from those

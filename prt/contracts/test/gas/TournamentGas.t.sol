@@ -27,12 +27,16 @@ import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
 
 using TournamentInspector for ITournament;
 
+/// @dev An envelope over the canonical [38, 0] / [54, 38], not a deployable
+/// table: each height is at least its canonical one and odd, so commitment
+/// one is the final revealer, as `_sealCall` assumes. The rows tile, which
+/// puts the root extent at 94 rather than 92.
 library GasTestGeometry {
     uint64 internal constant LEVELS = 2;
-    uint64 internal constant ROOT_LOG2_STEP = 37;
+    uint64 internal constant ROOT_LOG2_STEP = 39;
     uint64 internal constant ROOT_HEIGHT = 55;
     uint64 internal constant LEAF_LOG2_STEP = 0;
-    uint64 internal constant LEAF_HEIGHT = 37;
+    uint64 internal constant LEAF_HEIGHT = 39;
     uint64 internal constant RESPONSE_BUDGET = 300;
     uint64 internal constant MAX_ALLOWANCE = 1_000_000;
 }

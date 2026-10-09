@@ -12,53 +12,57 @@ protocol worst cases or a representative application average.
 Not yet measured: get_logs probe, RSS per worker, disk breakdown
 per epoch (logged node-side at roll).
 
-## Seed fold (synthetic runs, level-0 tiling)
+## Level-0 fold (synthetic runs, one 2^24-leaf tier)
 
 | runs | fold time |
 |---:|---:|
-| 1000 | 417 us |
-| 10000 | 2.3 ms |
-| 100000 | 21.7 ms |
-| 1000000 | 216.8 ms |
+| 1000 | 687 us |
+| 10000 | 4.9 ms |
+| 100000 | 34.3 ms |
+| 1000000 | 220.0 ms |
 
 ## Snapshot store and load
 
 | operation | time |
 |---|---:|
-| load template | 6.6 ms |
-| store | 216.3 ms |
-| resume from store | 3.7 ms |
-| stored size | 532.9 MB |
+| load template | 5.7 ms |
+| store | 234.2 ms |
+| resume from store | 3.3 ms |
+| stored size | 543.4 MB |
+
+## The boundary clone loop
+
+Chain of clones over workload inputs: clone the previous boundary,
+load SHARING_ALL, advance one input, root_hash (sidecars exact),
+destroy. Boundary cost is the free-space delta of one whole
+iteration - what keeping that boundary physically costs.
+Template clone: 2.2 ms.
+
+| input | clone | load | advance | root_hash | destroy | boundary cost |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 4.4 ms | 168.8 ms | 805.1 ms | 4.3 ms | 9.7 ms | 20.5 MB |
+| 1 | 2.6 ms | 134.4 ms | 807.0 ms | 2.3 ms | 5.7 ms | 12.3 MB |
+
+| hash-hot pairs (uarch step + root_hash) | rate |
+|---|---:|
+| private mapping (CONFIG) | 46332/s |
+| shared mapping (ALL) | 49012/s |
 
 ## Machine atoms
 
 | atom | rate |
 |---|---:|
-| idle big cycles (churn + ureset) | 39136/s (34.0 usteps/cycle) |
-| input feed | 216.9 ms |
-| active usteps | 17.09 M/s |
-| ustep + state_hash pair | 83708/s |
+| idle big cycles (churn + ureset) | 38842/s (43.0 usteps/cycle) |
+| input feed | 228.9 ms |
+| active usteps | 17.20 M/s |
+| ustep + state_hash pair | 84522/s |
 
 ## Span replays (get_or_compute, two-input stress epoch)
 
 | span | quartet | miss | cache hit |
 |---|---|---:|---:|
-| uarch span | r0 h20 | 232.5 ms | 35 us |
-| mid stride | r27 h10 | 356.4 ms | 39 us |
-| coarse | r44 h4 | 547.9 ms | 38 us |
-| level-2 root shape | r0 h27 | 1.49 s | 38 us |
-| level-1 root shape | r27 h17 | 5.20 s | 40 us |
-
-## Clock budget
-
-matchEffort grants five minutes of clock per height unit
-(ClockBudgets), so a bisection move budgets ~300 s.
-Total allowances, C + G + (L - 1)(T + 2G) at T = 30 min: devnet 85 min,
-testnet 9 h 25 min, mainnet 1 week + 85 min.
-Level 0 never replays (seed-served); levels 1 and 2 pay their
-root-shape replay on the first cold descent.
-
-| level | root span | measured (this workload) | budget | margin |
-|---|---|---:|---:|---:|
-| 1 | 2^44 usteps | 5.20 s | 300 s | 58x |
-| 2 | 2^27 usteps | 1.49 s | 300 s | 201x |
+| uarch span | r0 h20 | 26.5 ms | 7 us |
+| mid stride | r27 h10 | 148.5 ms | 15 us |
+| coarse | r44 h4 | 404.6 ms | 11 us |
+| dense 2^27 usteps | r0 h27 | 1.27 s | 15 us |
+| 2^44 usteps at mid stride | r27 h17 | 4.85 s | 17 us |

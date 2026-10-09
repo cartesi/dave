@@ -77,11 +77,11 @@ before the freeze.
    A counterexample would be a bytecode change, so it must come before the
    freeze.
 2. Contract code shaped for tests. `_getClockModel(Seconds commitmentBudget)`
-   in `prt/contracts/script/Deployment.s.sol:226` takes a parameter only the
-   devnet script varies (`test/devnet/DevnetGeometryDeployment.s.sol:55`);
-   production passes `ArbitrationConstants.COMMITMENT_BUDGET` (:208-210).
-   Declare `test/devnet/` out of scope; collapse the parameter when
-   `DEVNET_GEOMETRY` retires, unless a test-shape profile keeps it.
+   in `prt/contracts/script/Deployment.s.sol:232` takes a parameter only the
+   devnet script varies (`test/devnet/DevnetGeometryDeployment.s.sol:63`);
+   production passes `ArbitrationConstants.COMMITMENT_BUDGET` (:214-216).
+   Declare `test/devnet/` out of scope. The parameter stays: the devnet's
+   three-level test table runs with its own commitment budget.
 3. Geometry validation is test-only. `MultiLevelTournamentFactory`'s
    constructor checks only that its dependencies have code
    (`src/tournament/factories/MultiLevelTournamentFactory.sol:36-46`); the
@@ -131,11 +131,11 @@ The refill review's release-evidence item ("Remaining assurance work", 3) is
 covered elsewhere: the gas calibration by the calldata refund calibration
 (reviews/2026-10-02-prt-calldata-refund-calibration), active real-machine
 tall-leaf differentials by the leaf builder's active-big-cycle differential
-(cartesi/dave#287), dense height-37 performance by
-measurements/two-level-leaf.md and node-vs-emulator.md with the v0.21
-confirmation in todo.md; full E2E is the per-PR smoke, since dense disputes
-left e2e by design when the suite was cut to the black-box smoke
-(cartesi/dave#287).
+(cartesi/dave#287), dense height-38 performance by
+measurements/node-vs-emulator.md and the leaf rate in constants.md, with the
+validator-grade hardware confirmation in todo.md; full E2E is the per-PR
+smoke, since dense disputes left e2e by design when the suite was cut to the
+black-box smoke (cartesi/dave#287).
 
 ## Freeze and audit identity
 
@@ -149,7 +149,7 @@ against the released one:
   fingerprints only `Tournament` and `MultiLevelTournamentFactory`: wire
   ABI, storage layout, and creation and runtime bytecode with and without
   metadata. Extend it to `CanonicalTournamentParametersProvider` (the
-  canonical switch changes it), `CartesiStateTransition` (the `CM_MARCHID`
+  canonical switch changed it), `CartesiStateTransition` (the `CM_MARCHID`
   import and upstream PR #390 change it), `DaveConsensus` and
   `DaveAppFactory`.
 - Record its output and a clean `just measure-prt-gas` at the audit commit
@@ -166,7 +166,7 @@ addresses (build-system.md).
 
 ## Ordering
 
-1. This PR (cartesi/dave#287): the node debts and R10, and the docs. Its
+1. cartesi/dave#287, merged: the node debts and R10, and the docs. Its
    calldata refund change set the allocations, and their calibration was
    accepted under release Forge; the contracts' later code changes, the
    child-return clamp on the `winInnerTournament` path and the narrowing of
@@ -174,30 +174,32 @@ addresses (build-system.md).
    pass). The deployment script registers the
    Arbitrum entries at the parent chain's 12 s, so their addresses now equal
    Ethereum's and Sepolia's.
-2. A release candidate for the staging pipeline and testnet. It is a new
-   generation: this PR's child-return refill changed the
+2. The canonical two-level switch: done, `[38, 0]` / `[54, 38]` at
+   `T = 120`, ahead of the release candidate, which is therefore two-level.
+   It changed only the provider: the `Tournament` and factory fingerprints
+   held, the provider's initcode and the addresses built from it moved, and
+   it moved no gas; the reserve checkpoint pins its bonds.
+3. A release candidate for the staging pipeline and testnet. It is a new
+   generation: #287's child-return refill changed the
    `TournamentParameters` row and the clone arguments, so this node cannot
-   start against earlier contracts, and this PR's node fixes (the
+   start against earlier contracts, and #287's node fixes (the
    terminal-application hold, seam 2, input-index continuity) reach
    integrators only with it. The candidate is their main path, not an extra.
-3. R19, in its own PR.
-4. The canonical two-level switch, in its own PR. It changes only the
-   provider: the `Tournament` and factory fingerprints hold, the provider's
-   initcode and the addresses built from it move, and the bonds it implies
-   are already pinned (`prt/contracts/test/accounting/RefundReserve.t.sol:114-115`).
-   What remains to review is the allowance (one refill level fewer) and the
-   provider's bytecode, which the hashes do not yet cover. It moves no gas.
-5. The remaining pre-audit items.
-6. Freeze: record the identity above, and tag a pre-release so integrators
+4. R19, in its own PR.
+5. The canonical table confirmed on validator-grade hardware (todo.md),
+   before the freeze: a replacement table moves the provider's bytecode and
+   CREATE2 addresses, which the freeze forbids.
+6. The remaining pre-audit items.
+7. Freeze: record the identity above, and tag a pre-release so integrators
    can bump against the frozen ABI while the audit runs.
-7. The audit, on that exact commit.
-8. Audit fixes only, as above.
-9. Tag the audited release, naming the generation, addresses, geometry and
-   bonds in the release notes.
+8. The audit, on that exact commit.
+9. Audit fixes only, as above.
+10. Tag the audited release, naming the generation, addresses, geometry and
+    bonds in the release notes.
 
-The tournament events ABI stays as is in this PR. A later field addition is
-a wire break: it lands before the freeze or waits for the next generation
-(upstream PR #390 already forces one).
+The tournament events ABI stays as cartesi/dave#287 left it. A later field
+addition is a wire break: it lands before the freeze or waits for the next
+generation (upstream PR #390 already forces one).
 
 ## Open questions
 
@@ -206,7 +208,4 @@ a wire break: it lands before the freeze or waits for the next generation
 - The firm and the date.
 - Whether R19 gates the audit's start or is handed to the auditors with the
   scope.
-- Whether the canonical switch lands before the freeze; if its measurement
-  slips, audit three levels and review the switch afterwards as a
-  provider-only delta, or wait.
 - Whether the deployer's table is formally inside the trust boundary.

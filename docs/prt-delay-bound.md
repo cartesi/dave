@@ -174,7 +174,7 @@ charging each elapsed interval at most once: a paused bisection winner inherits
 the responder's overdue interval, while a running leaf winner has already paid
 for it through its live remainder. The win then forgives at most one `G` of it.
 
-For the intended two-level deployment, let `A_i` denote the allowance-scale
+For the canonical two-level deployment, let `A_i` denote the allowance-scale
 term available at level `i`. An attack with `R` root claims and `S` claims in
 each slow child has the approximate allowance-only delay shape
 

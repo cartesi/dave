@@ -7,57 +7,59 @@ machine is neither yielded nor halted; rounding is floor, never
 floor+1.
 
 Workload `test/programs/stress/machine-image`; root slowdown budget 2; hardware slack 2 (divide-
-measured-throughput stand-in for a reference machine).
+measured-throughput stand-in for a reference machine). Host macos aarch64
+with 18 threads; emulator 0.21.0.
 
 ## Steady-state atoms
 
 | atom | value |
 |---|---:|
-| executed usteps per big cycle (density label) | 616.2 |
-| dense ustep+hash pairs | 87427/s |
-| dense big cycles (leaf-level build rate) | 142/s |
+| executed usteps per big cycle (density label) | 566.0 |
+| dense big cycles, the node's bulk leaf path (leaf build rate) | 173/s |
+
+The leaf rate is the median of 5 samples of 2^10 big cycles
+through MachineStf::big_cycle_roots, the emulator's bulk uarch
+collector that build_tall drives for tall leaves, on a machine
+loaded as a leaf build loads it. The density label comes from a
+separate, untimed stepped sample.
 
 ## Hash-cost curve (dirt accumulated over delta big cycles)
 
 | delta (bigs) | stride | run | root hash | slowdown |
 |---:|---|---:|---:|---:|
-| 2^8 | 2^28 | 2 us | 24 us | 17.08x |
-| 2^10 | 2^30 | 2 us | 149 us | 72.71x |
-| 2^12 | 2^32 | 6 us | 149 us | 25.76x |
-| 2^14 | 2^34 | 29 us | 168 us | 6.90x |
-| 2^16 | 2^36 | 247 us | 365 us | 2.48x |
-| 2^18 | 2^38 | 829 us | 502 us | 1.61x |
-| 2^20 | 2^40 | 2.0 ms | 737 us | 1.36x |
-| 2^22 | 2^42 | 4.9 ms | 190 us | 1.04x |
-| 2^24 | 2^44 | 19.4 ms | 214 us | 1.01x |
+| 2^8 | 2^28 | 3 us | 137 us | 51.70x |
+| 2^10 | 2^30 | 5 us | 139 us | 31.26x |
+| 2^12 | 2^32 | 13 us | 161 us | 13.36x |
+| 2^14 | 2^34 | 57 us | 167 us | 3.92x |
+| 2^16 | 2^36 | 270 us | 183 us | 1.68x |
+| 2^18 | 2^38 | 557 us | 370 us | 1.66x |
+| 2^20 | 2^40 | 1.2 ms | 183 us | 1.15x |
+| 2^22 | 2^42 | 4.8 ms | 196 us | 1.04x |
+| 2^24 | 2^44 | 18.6 ms | 219 us | 1.01x |
 
 ## Derivations
 
 | commitment budget | levels | log2step | height | root slowdown |
 |---|---|---|---|---:|
-| 60 min | 2 | [37, 0] | [55, 37] | 1.81x |
-| 30 min | 3 | [56, 36, 0] | [36, 20, 36] | 1.01x |
-| (current) | 3 | [44, 27, 0] | [48, 17, 27] | - |
+| 60 min | 2 | [38, 0] | [54, 38] | 1.66x |
+| 120 min | 2 | [39, 0] | [53, 39] | 1.31x |
 
-Heights always sum to 92, so matchEffort's five-minutes-per-
-height-unit total is shape-invariant; level count changes only
-the per-level join and nested-tournament overhead.
-
-A derived root height exceeds the current 48: verify contract-
-side assumptions before adopting (tree math, position widths).
+Heights always sum to 92, and one descent earns at most one
+response discount (G, responseBudget) per height unit plus the leaf
+win (docs/dimensioning.md), whatever the shape; level count changes
+only the per-level join and its T + 2G refill.
 
 ## Coordinated-bump checklist
 
 Constants changes cross the contract-client compatibility boundary.
 Adopt a bump only with coordinated validation of:
-ArbitrationConstants.sol (LEVELS, log2step, height);
+ArbitrationConstants.sol (LEVELS, log2step, height, COMMITMENT_BUDGET);
 docs/computation-hash.md's level table; harness fixtures. The node
 discovers and pins the deployed table, so it carries no stride constant.
-A small test-shape profile would also let e2e disputes run in seconds.
 
 ## Caveats
 
-Single-machine, single-run numbers; the density label above is
+One host, one run (medians within it); the density label above is
 this workload's, and clocks dimensioned here inherit the
 trusted-app assumption (docs/dimensioning.md). The root
 slowdown figure interpolates the curve's steepest band, so it

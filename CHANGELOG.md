@@ -25,12 +25,20 @@ needed.
   the budgets (`ClockBudgets`) and can revert with `BlockTimeCannotBeZero`;
   `CartesiStateTransition` gains one error. Tournament's function and event
   ABI is unchanged.
-- An epoch now settles no sooner than about one week and 85 minutes after it
-  seals on mainnet with the canonical three-level table (one week and 60
-  minutes before), and about 9 hours 25 minutes on testnets, plus the claim
-  staging period unless every sentry agrees.
+- The canonical table is two levels: `log2step = [38, 0]`,
+  `height = [54, 38]`, with a 120-minute commitment budget. Existing
+  applications keep the table of the factory that deployed them:
+  `DaveConsensus` binds its tournament factory immutably. Off-chain
+  claimers now build the root commitment at one leaf per 2^38 meta-cycles
+  (an emulator mcycle computation-hash period of 2^18, 2^30 leaves per
+  input window, root height 54), so a claimer pinned to the three-level
+  root (2^44, height 48) cannot join applications from the new factory.
+- An epoch now settles no sooner than about one week and 135 minutes after it
+  seals on mainnet (one week and 60 minutes before), and about 10 hours 15
+  minutes on testnets, plus the claim staging period unless every sentry
+  agrees.
 - Join bonds at the 50 gwei work-price cap, canonical table: root (height
-  48) 0.3353 ETH, middle (17) 0.1369 ETH, leaf (27) 0.45115 ETH.
+  54) 0.3737 ETH, leaf (38) 0.52155 ETH.
 
 ### Chains
 
@@ -101,3 +109,12 @@ needed.
   needed only for `just test-kms` and the honeypot image.
 - Each worktree's devnet needs one rebuild:
   `just rollups-contracts::build-devnet`.
+- `build-devnet` now deploys a three-level test table through a test-only
+  provider (`TableTournamentParametersProvider`), the one CI and local tests
+  run; `DEVNET_GEOMETRY=canonical` deploys the production contracts and
+  geometry, as the release's `-anvil-` asset does. That asset's clocks assume
+  12 s blocks and no censorship slack: an epoch settles no sooner than 675
+  blocks (135 minutes) after it seals, and a leaf join gets 600 blocks to
+  build its commitment. A dense two-level leaf takes tens of minutes to
+  build, so on a devnet that mines faster an honest node can run out of
+  clock.

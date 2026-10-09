@@ -85,10 +85,6 @@ impl TournamentGeometry {
         self.levels[0].log2_stride
     }
 
-    pub fn leaf_height(&self) -> u64 {
-        self.levels.last().expect("non-empty").height
-    }
-
     /// The pinned text form: `stride/height` per level, top first.
     pub fn encode(&self) -> String {
         self.to_string()
@@ -166,9 +162,9 @@ impl TournamentGeometry {
         Self::from_pairs(&[(44, 48), (27, 17), (0, 27)])
     }
 
-    /// The two-level table [37, 0] / [55, 37] (docs/dimensioning.md).
+    /// The two-level table [38, 0] / [54, 38] (docs/dimensioning.md).
     pub fn two_level() -> Self {
-        Self::from_pairs(&[(37, 55), (0, 37)])
+        Self::from_pairs(&[(38, 54), (0, 38)])
     }
 
     pub fn from_pairs(pairs: &[(u64, u64)]) -> Self {
@@ -206,10 +202,8 @@ mod tests {
     fn accepts_the_three_and_two_level_tables() {
         let three_level = TournamentGeometry::three_level();
         assert_eq!(three_level.root_stride(), 44);
-        assert_eq!(three_level.leaf_height(), 27);
         let two_level = TournamentGeometry::two_level();
-        assert_eq!(two_level.root_stride(), 37);
-        assert_eq!(two_level.leaf_height(), 37);
+        assert_eq!(two_level.root_stride(), 38);
         // The minimum root stride and four levels are valid too.
         assert!(table(&[(20, 72), (0, 20)]).is_ok());
         assert!(table(&[(60, 32), (40, 20), (20, 20), (0, 20)]).is_ok());

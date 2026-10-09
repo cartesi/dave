@@ -30,7 +30,7 @@ Then:
    blockchain and node, drive epochs with `run_steered_epoch` when the dispute
    must reach a specific transition and with `run_epoch` otherwise. Take
    strides and heights from `env.reader:read_tournament_levels()`, never
-   literals, so the scenario runs on either devnet geometry. Copy a sibling:
+   literals, so the scenario runs on any table. Copy a sibling:
    `simple.lua` (one dispute), `stf_all.lua` (steered disputes),
    `kill_catchup_batched.lua` (a kill on a log marker; a new marker joins the
    contract in `docs/test-harness.md`, "Node introspection seam").

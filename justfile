@@ -254,13 +254,6 @@ measure-stress *ARGS: bind
       --machine test/programs/stress/machine-image \
       --out docs/measurements/measurements-stress.md --profile stress "$@"
 
-# time the dense two-level leaf build and its peak RSS
-measure-two-level-leaf *ARGS: bind
-    ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-sling-node --bin measure -- \
-      --machine test/programs/stress/machine-image --two-level-leaf \
-      --out docs/measurements/two-level-leaf.md "$@"
-
 # time a cold leaf join and a deep proof against the emulator (runbook;
 # about an hour at the defaults, and TMPDIR should be the node's filesystem)
 measure-node-vs-emulator *ARGS: bind
@@ -333,8 +326,3 @@ e2e-smoke: build-rust-workspace
 # follow an e2e node log (TEST_INSTANCE=<id> picks that instance's)
 e2e-logs:
     just rollups-tests::read-node-logs
-
-# echo simple on two levels: needs a devnet built with
-# DEVNET_GEOMETRY=two-level (the preflight refuses any other bundle)
-test-rollups-two-level-smoke: build-rust-workspace
-    DEVNET_GEOMETRY=two-level just rollups-tests::test echo simple

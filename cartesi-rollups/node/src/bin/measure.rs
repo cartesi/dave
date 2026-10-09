@@ -25,12 +25,6 @@ use cartesi_sling_node::storage::{
     DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Storage, Template,
 };
 
-/// Five minutes of clock per tree height unit: the inclusion budget each
-/// response is discounted by (ClockBudgets; Deployment.s.sol
-/// `_getInclusionBudget`). Every replay a bisection move needs must fit well
-/// inside this.
-const PER_MOVE_BUDGET_SECS: u64 = 300;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum BaselineProfile {
     Echo,
@@ -78,8 +72,8 @@ struct Args {
     #[arg(long)]
     out: Option<PathBuf>,
 
-    /// Include the three-level table's level-1 root replay: a 2^44-ustep
-    /// span, potentially minutes of machine time.
+    /// Include the 2^44-ustep span replay at stride 2^27, potentially
+    /// minutes of machine time.
     #[arg(long)]
     full: bool,
 
@@ -96,7 +90,7 @@ struct Args {
 
     /// Commitment budgets T (minutes) to derive for: the time every inner
     /// tournament's commitment must build within.
-    #[arg(long, value_delimiter = ',', default_values_t = vec![60u64, 30])]
+    #[arg(long, value_delimiter = ',', default_values_t = vec![60u64, 120])]
     commitment_budget_minutes: Vec<u64>,
 
     /// Pragmatic stand-in for a reference machine: measured throughput
@@ -104,12 +98,6 @@ struct Args {
     /// printed into the output so results carry their caveat.
     #[arg(long, default_value_t = 2.0)]
     hardware_slack: f64,
-
-    /// Time only the two-level leaf build (stride 0, height 37) over the
-    /// first input, with the process's peak RSS. A mode of its own keeps
-    /// that figure the build's rather than the other benches'.
-    #[arg(long)]
-    two_level_leaf: bool,
 
     /// Time a cold leaf join and a deep proof against the emulator doing
     /// the same work in process: the runbook recipe for the node's
@@ -122,9 +110,9 @@ struct Args {
     #[arg(long, default_value_t = DEFAULT_SNAPSHOT_GAP_INPUTS)]
     gap_inputs: u64,
 
-    /// Leaf-tournament height for --node-vs-emulator: 37 is the
-    /// two-level table's; lower it for a quick run.
-    #[arg(long, default_value_t = 37)]
+    /// Leaf-tournament height for --node-vs-emulator: 38 is the
+    /// canonical two-level leaf; lower it for a quick run.
+    #[arg(long, default_value_t = 38)]
     leaf_height: u64,
 
     /// Internal: runs one --node-vs-emulator row in this process, so its
@@ -157,13 +145,6 @@ fn main() -> Result<()> {
         return emit(&report, args.out.as_deref());
     }
 
-    if args.two_level_leaf {
-        let mut report = String::new();
-        two_level_leaf_report(&mut report, &args, &image, &scratch_root)?;
-        let _ = fs::remove_dir_all(&scratch_root);
-        return emit(&report, args.out.as_deref());
-    }
-
     let mut report = String::new();
     // Reports record the workload path as given, not canonicalized:
     // absolute session-worktree paths rotted in committed baselines.
@@ -172,8 +153,7 @@ fn main() -> Result<()> {
     bench_snapshot(&mut report, &image, &scratch_root)?;
     bench_clone_loop(&mut report, &image, &scratch_root)?;
     bench_atoms(&mut report, &image, &scratch_root)?;
-    let quartets = bench_quartets(&mut report, &image, &scratch_root, args.full)?;
-    budget(&mut report, &quartets)?;
+    bench_quartets(&mut report, &image, &scratch_root, args.full)?;
 
     let _ = fs::remove_dir_all(&scratch_root);
     emit(&report, args.out.as_deref())
@@ -211,7 +191,7 @@ fn preamble(report: &mut String, image: &Path, profile: BaselineProfile, full: b
         if full {
             ""
         } else {
-            "\nLevel-1 root replay skipped (run with --full)."
+            "\n2^44-ustep span replay skipped (run with --full)."
         }
     )?;
     writeln!(report)?;
@@ -220,10 +200,12 @@ fn preamble(report: &mut String, image: &Path, profile: BaselineProfile, full: b
 
 /// Worst-case folds: alternating distinct hashes, no adjacent-run
 /// merging, tail-padded to one 2^24-leaf tier - the shape of the
-/// frontier's top fold (window roots plus padding) and of the
-/// per-window fold the runner pays at each record. The 1M-run row is
-/// the OQ9 corner, now amortized one window per input instead of a
-/// whole-epoch fold at every Hero construction.
+/// frontier's top fold (window roots plus padding). The per-window
+/// fold the runner pays at each record has the same shape at height
+/// 68 minus the root stride, 24 only at a 2^44 root stride; folds are
+/// run-compressed, so the run count, more than the height, drives cost.
+/// The 1M-run row is the OQ9 corner, now amortized one window per
+/// input instead of a whole-epoch fold at every Hero construction.
 fn bench_level0_fold(report: &mut String) -> Result<()> {
     writeln!(
         report,
@@ -232,7 +214,7 @@ fn bench_level0_fold(report: &mut String) -> Result<()> {
     writeln!(report)?;
     writeln!(report, "| runs | fold time |")?;
     writeln!(report, "|---:|---:|")?;
-    const LOG2_LEAVES: u64 = 24; // window interior = top tree = 2^24
+    const LOG2_LEAVES: u64 = 24; // the top tree: 2^24 windows
     for &count in &[1_000u64, 10_000, 100_000, 1_000_000] {
         let total: u64 = 1 << LOG2_LEAVES;
         let runs = (0..count).map(move |i| {
@@ -304,7 +286,7 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     writeln!(report)?;
     writeln!(
         report,
-        "Chain of clones over echo inputs: clone the previous boundary,\n\
+        "Chain of clones over workload inputs: clone the previous boundary,\n\
          load SHARING_ALL, advance one input, root_hash (sidecars exact),\n\
          destroy. Boundary cost is the free-space delta of one whole\n\
          iteration - what keeping that boundary physically costs.\n\
@@ -318,7 +300,9 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     )?;
     writeln!(report, "|---:|---:|---:|---:|---:|---:|---:|")?;
 
-    const INPUTS: u64 = 4;
+    // The echo fixture rejects input 2 (build-echo.sh), and a rejected
+    // yield takes no further input until the node reverts it.
+    const INPUTS: u64 = 2;
     for k in 0..INPUTS {
         let working = chain_root.join("working");
         let free_before = free_space_kb(&chain_root)?;
@@ -355,9 +339,9 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     writeln!(report)?;
 
     // The hash-hot sampling loop under each mapping mode: does
-    // MAP_SHARED slow the ustep + root_hash pair the level-2 collect
-    // lives in? A fresh clone per mode (ALL locks and mutates its
-    // directory).
+    // MAP_SHARED slow the ustep + root_hash pair the leaf level's
+    // collect lives in? A fresh clone per mode (ALL locks and mutates
+    // its directory).
     writeln!(report, "| hash-hot pairs (uarch step + root_hash) | rate |")?;
     writeln!(report, "|---|---:|")?;
     for (tag, label, mode) in [
@@ -431,7 +415,7 @@ fn free_space_kb(path: &Path) -> Result<u64> {
 /// The primitive rates every extrapolation is built from, measured on
 /// the real machine: idle churn (the ustep/ureset cycle a yielded
 /// machine burns per big cycle), the input feed, active usteps, and
-/// the ustep+state_hash pair that level-2 sampling pays per leaf.
+/// the ustep+state_hash pair that leaf-level sampling pays per leaf.
 fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     let input = evm_advance_input(0, b"measure");
     let mut stf = MachineStf::load(image, scratch(scratch_root, "atoms")?, Hashing::PerStep)?
@@ -472,8 +456,8 @@ fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result
     }
     let active_elapsed = start.elapsed();
 
-    // The level-2 sampling workload: every ustep dirties state, every
-    // sample pays a root hash.
+    // The leaf level's sampling workload: every ustep dirties state,
+    // every sample pays a root hash.
     let pairs = 500u64;
     let start = Instant::now();
     for _ in 0..pairs {
@@ -513,22 +497,21 @@ fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result
 
 /// Real span replays through the facade's node(), each on a fresh
 /// storage and factory (guaranteed miss), then the same quartet
-/// again (hit). Returns (label, miss latency) rows for the budget
-/// table.
+/// again (hit).
 fn bench_quartets(
     report: &mut String,
     image: &Path,
     scratch_root: &Path,
     full: bool,
-) -> Result<Vec<(String, u64, u64, Duration)>> {
+) -> Result<()> {
     let mut spans: Vec<(&str, u64, u64)> = vec![
         ("uarch span", 0, LOG2_MAX_UARCH_CYCLES_PER_MCYCLE),
         ("mid stride", 27, 10),
         ("coarse", 44, 4),
-        ("level-2 root shape", 0, 27),
+        ("dense 2^27 usteps", 0, 27),
     ];
     if full {
-        spans.push(("level-1 root shape", 27, 17));
+        spans.push(("2^44 usteps at mid stride", 27, 17));
     }
 
     let workload = image
@@ -544,7 +527,6 @@ fn bench_quartets(
     writeln!(report, "| span | quartet | miss | cache hit |")?;
     writeln!(report, "|---|---|---:|---:|")?;
 
-    let mut results = Vec::new();
     for (index, (label, log2_stride, height)) in spans.into_iter().enumerate() {
         let mut source = two_input_epoch(image, scratch_root, &format!("quartet-{index}"))?;
         let quartet = Quartet::level_root(0, log2_stride, height);
@@ -557,10 +539,8 @@ fn bench_quartets(
             fmt_duration(miss),
             fmt_duration(hit),
         )?;
-        results.push((label.to_string(), log2_stride, height, miss));
     }
-    writeln!(report)?;
-    Ok(results)
+    Ok(())
 }
 
 /// A dispute source over a two-input epoch 0 of the workload.
@@ -597,46 +577,6 @@ fn two_input_epoch(
     DisputeSource::on_store(storage, 0, scratch(scratch_root, &format!("{tag}-work"))?)
 }
 
-/// The two-level leaf a party builds before joining, within the
-/// commitment budget T. On the stress workload each input burns about
-/// 2^27 dense big cycles, so all 2^17 big cycles of the span execute.
-fn two_level_leaf_report(
-    report: &mut String,
-    args: &Args,
-    image: &Path,
-    scratch_root: &Path,
-) -> Result<()> {
-    const T_SECS: f64 = 60.0 * 60.0;
-    let mut source = two_input_epoch(image, scratch_root, "two-level-leaf")?;
-    let (_, build) = timed(|| source.node(&Quartet::level_root(0, 0, 37)))?;
-    let target = T_SECS / args.hardware_slack;
-
-    writeln!(report, "# Two-level leaf build")?;
-    writeln!(report)?;
-    writeln!(
-        report,
-        "Generated by `just measure-two-level-leaf` (measure.rs --two-level-leaf).\n\
-         One sample. Workload `{}`, first input.",
-        args.machine.display(),
-    )?;
-    writeln!(report)?;
-    writeln!(
-        report,
-        "| quartet | build | peak RSS | target (T / slack {}) |",
-        args.hardware_slack
-    )?;
-    writeln!(report, "|---|---:|---:|---:|")?;
-    writeln!(
-        report,
-        "| r0 h37 | {} | {:.0} MiB | {:.0} min |",
-        fmt_duration(build),
-        peak_rss_bytes() as f64 / (1u64 << 20) as f64,
-        target / 60.0,
-    )?;
-    writeln!(report)?;
-    Ok(())
-}
-
 /// Peak resident set size of this process so far.
 fn peak_rss_bytes() -> u64 {
     let mut usage = std::mem::MaybeUninit::<libc::rusage>::zeroed();
@@ -652,48 +592,6 @@ fn peak_rss_bytes() -> u64 {
     } else {
         max * 1024
     }
-}
-
-fn budget(report: &mut String, quartets: &[(String, u64, u64, Duration)]) -> Result<()> {
-    writeln!(report, "## Clock budget")?;
-    writeln!(report)?;
-    writeln!(
-        report,
-        "responseBudget grants five minutes of clock per height unit\n\
-         (ClockBudgets), so a bisection move budgets ~{PER_MOVE_BUDGET_SECS} s.\n\
-         Total allowances, C + G + (L - 1)(T + 2G) at T = 30 min: devnet 85 min,\n\
-         testnet 9 h 25 min, mainnet 1 week + 85 min.\n\
-         Level 0 never replays (seed-served); levels 1 and 2 pay their\n\
-         root-shape replay on the first cold descent."
-    )?;
-    writeln!(report)?;
-    writeln!(
-        report,
-        "| level | root span | measured (this workload) | budget | margin |"
-    )?;
-    writeln!(report, "|---|---|---:|---:|---:|")?;
-    for (level, stride, height) in [(1u64, 27u64, 17u64), (2, 0, 27)] {
-        let row = quartets
-            .iter()
-            .find(|(_, s, h, _)| *s == stride && *h == height);
-        let (measured, margin) = match row {
-            Some((_, _, _, d)) => {
-                let secs = d.as_secs_f64();
-                (
-                    fmt_duration(*d),
-                    format!("{:.0}x", PER_MOVE_BUDGET_SECS as f64 / secs.max(1e-9)),
-                )
-            }
-            None => ("not measured".into(), "-".into()),
-        };
-        writeln!(
-            report,
-            "| {level} | 2^{} usteps | {measured} | {PER_MOVE_BUDGET_SECS} s | {margin} |",
-            stride + height,
-        )?;
-    }
-    writeln!(report)?;
-    Ok(())
 }
 
 /// The canonical input encoding (Inputs.sol EvmAdvance), mirroring the
@@ -790,11 +688,16 @@ fn bench_geometry() -> Result<TournamentGeometry> {
     TournamentGeometry::new(levels, &Structure::PRODUCTION)
 }
 
+/// Big cycles per timed leaf-build sample, and the samples whose median
+/// prices the leaf.
+const LEAF_SAMPLE_BIGS: u64 = 1 << 10;
+const LEAF_SAMPLES: usize = 5;
+
 /// Steady-state rates plus the hash-cost curve, all measured
 /// mid-computation on a fed machine.
 struct SteadyAtoms {
     avg_usteps_per_big: f64,
-    dense_pairs_per_sec: f64,
+    dense_bigs_per_sec: f64,
     /// (delta in big cycles, median run time, median hash time).
     curve: Vec<(u64, Duration, Duration)>,
 }
@@ -810,7 +713,7 @@ struct ActiveMachine {
 
 impl ActiveMachine {
     /// Loaded as the dispute loads the work being priced: per-step for
-    /// leaf pairs, sampled for the hash-cost curve.
+    /// the leaf build, sampled for the hash-cost curve.
     fn load(image: &Path, scratch_root: &Path, hashing: Hashing) -> Result<Self> {
         let inputs: Vec<Vec<u8>> = (0..16)
             .map(|i| evm_advance_input(i, b"constants"))
@@ -831,7 +734,9 @@ impl ActiveMachine {
     }
 
     /// Feeds the next input if the workload yielded, then skips the
-    /// input handler's prologue so sampling sees the workload proper.
+    /// input handler's prologue so sampling sees the workload proper:
+    /// the stress handler's process startup (fork/exec, the first ~15k
+    /// big cycles) is denser and slower than the steady burn after it.
     fn ensure_active(&mut self) -> Result<()> {
         anyhow::ensure!(
             !self.stf.terminal()?,
@@ -846,8 +751,9 @@ impl ActiveMachine {
             let window = self.next_input as u64;
             self.next_input += 1;
             self.stf.feed(window)?;
-            let ran = self.stf.run_big(10_000)?;
-            anyhow::ensure!(ran == 10_000, "input's compute too small to sample");
+            const PROLOGUE_BIGS: u64 = 1 << 20;
+            let ran = self.stf.run_big(PROLOGUE_BIGS)?;
+            anyhow::ensure!(ran == PROLOGUE_BIGS, "input's compute too small to sample");
         }
         Ok(())
     }
@@ -863,14 +769,12 @@ impl ActiveMachine {
 
 fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms> {
     let machine = &mut ActiveMachine::load(image, scratch_root, Hashing::PerStep)?;
-    // Density and the dense pair rate: the leaf-level workload (hash
-    // after every executed ustep and every reset), over whole big
-    // cycles mid-computation.
+    // The density label, stepped and untimed: the bulk collector does
+    // not report usteps.
     machine.ensure_active()?;
     let bigs_target = 500u64;
     let mut usteps = 0u64;
     let mut bigs = 0u64;
-    let start = Instant::now();
     while bigs < bigs_target {
         if machine.stf.uarch_halted()? {
             machine.stf.ureset()?;
@@ -879,12 +783,27 @@ fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms
             machine.stf.ustep()?;
             usteps += 1;
         }
-        machine.stf.state_hash()?;
     }
-    let dense_elapsed = start.elapsed();
-    machine.assert_active("the dense sample")?;
+    machine.assert_active("the density sample")?;
     let avg_usteps_per_big = usteps as f64 / bigs as f64;
-    let dense_pairs_per_sec = (usteps + bigs) as f64 / dense_elapsed.as_secs_f64();
+
+    // The leaf build rate on the node's own path: the bulk collection
+    // build_tall drives (MachineStf::load collects in bulk). Mid-input
+    // it returns every requested root: the seam-1 guard declines only
+    // the input budget's last cycle, 2^48 big cycles past delivery.
+    let mut leaf = Vec::new();
+    for _ in 0..LEAF_SAMPLES {
+        let start = Instant::now();
+        let roots = machine.stf.big_cycle_roots(LEAF_SAMPLE_BIGS)?;
+        leaf.push(start.elapsed());
+        machine.assert_active("the leaf sample")?;
+        anyhow::ensure!(
+            roots.len() as u64 == LEAF_SAMPLE_BIGS,
+            "leaf sample ran short"
+        );
+    }
+    leaf.sort();
+    let dense_bigs_per_sec = LEAF_SAMPLE_BIGS as f64 / leaf[LEAF_SAMPLES / 2].as_secs_f64();
 
     // The hash-cost curve: per delta, clear the dirty set with an
     // untimed hash, run delta big cycles, then time one root hash
@@ -923,7 +842,7 @@ fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms
 
     Ok(SteadyAtoms {
         avg_usteps_per_big,
-        dense_pairs_per_sec,
+        dense_bigs_per_sec,
         curve,
     })
 }
@@ -971,8 +890,7 @@ fn derive(
 
     // Leaf level: the tallest dense build that fits the budget at the
     // measured average density, hardware slack applied, floor rounded.
-    let dense_bigs_per_sec = atoms.dense_pairs_per_sec / (atoms.avg_usteps_per_big + 1.0) / slack;
-    let n_bigs = dense_bigs_per_sec * budget_secs;
+    let n_bigs = atoms.dense_bigs_per_sec / slack * budget_secs;
     anyhow::ensure!(
         n_bigs >= 2.0,
         "commitment budget too small for any leaf level"
@@ -1049,10 +967,15 @@ fn constants_report(
     writeln!(
         report,
         "Workload `{}`; root slowdown budget {}; hardware slack {} (divide-\n\
-         measured-throughput stand-in for a reference machine).",
+         measured-throughput stand-in for a reference machine). Host {} {}\n\
+         with {} threads; emulator {}.",
         args.machine.display(),
         args.root_slowdown,
         args.hardware_slack,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        std::thread::available_parallelism().map_or(0, |n| n.get()),
+        cartesi_machine::format_emulator_version(cartesi_machine::EXPECTED_EMULATOR_VERSION),
     )?;
     writeln!(report)?;
 
@@ -1067,13 +990,18 @@ fn constants_report(
     )?;
     writeln!(
         report,
-        "| dense ustep+hash pairs | {:.0}/s |",
-        atoms.dense_pairs_per_sec
+        "| dense big cycles, the node's bulk leaf path (leaf build rate) | {:.0}/s |",
+        atoms.dense_bigs_per_sec
     )?;
+    writeln!(report)?;
     writeln!(
         report,
-        "| dense big cycles (leaf-level build rate) | {:.0}/s |",
-        atoms.dense_pairs_per_sec / (atoms.avg_usteps_per_big + 1.0)
+        "The leaf rate is the median of {LEAF_SAMPLES} samples of 2^{} big cycles\n\
+         through MachineStf::big_cycle_roots, the emulator's bulk uarch\n\
+         collector that build_tall drives for tall leaves, on a machine\n\
+         loaded as a leaf build loads it. The density label comes from a\n\
+         separate, untimed stepped sample.",
+        LEAF_SAMPLE_BIGS.ilog2(),
     )?;
     writeln!(report)?;
 
@@ -1123,9 +1051,10 @@ fn constants_report(
     writeln!(report)?;
     writeln!(
         report,
-        "Heights always sum to {LOG2_EPOCH_RULER_SPAN}, so responseBudget's five-minutes-per-\n\
-         height-unit total is shape-invariant; level count changes only\n\
-         the per-level join and nested-tournament overhead."
+        "Heights always sum to {LOG2_EPOCH_RULER_SPAN}, and one descent earns at most one\n\
+         response discount (G, responseBudget) per height unit plus the leaf\n\
+         win (docs/dimensioning.md), whatever the shape; level count changes\n\
+         only the per-level join and its T + 2G refill."
     )?;
     writeln!(report)?;
 
@@ -1137,16 +1066,14 @@ fn constants_report(
          Adopt a bump only with coordinated validation of:\n\
          ArbitrationConstants.sol (LEVELS, log2step, height, COMMITMENT_BUDGET);\n\
          docs/computation-hash.md's level table; harness fixtures. The node\n\
-         discovers and pins the deployed table, so it carries no stride constant.\n\
-         A small test-shape profile would also let e2e disputes run in\n\
-         seconds."
+         discovers and pins the deployed table, so it carries no stride constant."
     )?;
     writeln!(report)?;
     writeln!(report, "## Caveats")?;
     writeln!(report)?;
     writeln!(
         report,
-        "Single-machine, single-run numbers; the density label above is\n\
+        "One host, one run (medians within it); the density label above is\n\
          this workload's, and clocks dimensioned here inherit the\n\
          trusted-app assumption (docs/dimensioning.md). The root\n\
          slowdown figure interpolates the curve's steepest band, so it\n\
@@ -1294,7 +1221,7 @@ mod versus {
         writeln!(report)?;
         writeln!(
             report,
-            "Source `{source}`; workload fingerprint `{fingerprint}`."
+            "Source tree `{source}`; workload fingerprint `{fingerprint}`."
         )?;
         writeln!(report)?;
         writeln!(
@@ -1357,16 +1284,27 @@ mod versus {
         Ok(())
     }
 
-    /// The source revision (dirty when uncommitted) and the workload's
-    /// fingerprint line, so runs can be compared.
+    /// The source tree (dirty when tracked files are uncommitted) and the
+    /// workload's fingerprint line, so runs can be compared. A tree hash,
+    /// not a commit: the repository merges by rebase, which rewrites every
+    /// commit hash, while a tree hash names the measured content itself.
     fn provenance(image: &Path) -> (String, String) {
-        let source = std::process::Command::new("git")
-            .args(["describe", "--always", "--dirty", "--abbrev=8"])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-            .unwrap_or_else(|| "unknown".into());
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        };
+        let source = match (
+            git(&["rev-parse", "HEAD^{tree}"]),
+            git(&["status", "--porcelain", "--untracked-files=no"]),
+        ) {
+            (Some(tree), Some(status)) if status.is_empty() => tree,
+            (Some(tree), Some(_)) => format!("{tree}-dirty"),
+            _ => "unknown".into(),
+        };
         let fingerprint = fs::read_to_string(image.with_extension("fingerprint"))
             .map(|text| text.trim().to_string())
             .unwrap_or_else(|_| "unknown".into());

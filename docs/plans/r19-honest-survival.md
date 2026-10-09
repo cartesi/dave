@@ -101,7 +101,7 @@ Paths under `prt/contracts/` unless stated.
 | `test/properties/ConcurrentRecursivePopulation.t.sol:101`, `FourLevelRecursiveLifecycle.t.sol:96` | Fixed recursive plumbing traces | Adversarial schedules |
 | `test/Tournament.t.sol:1072` | One censorship scenario (a sacrificial leaf cannot amplify censorship) | Everything else |
 | [Clock refill review](../reviews/2026-09-29-prt-clock-refill/REVIEW.md):66-76 | The balance `remaining censorship + (D - d) * F + d * G` | Reasoning, not a checked invariant |
-| The e2e smoke (`test/e2e/rollups/scenarios/simple.lua:26-29`, and the two-level smoke) | The real node beats an eager Sybil at `C = 0` | Scenario evidence, not adversarial schedules |
+| The e2e smoke (`test/e2e/rollups/scenarios/simple.lua:26-29`) | The real node beats an eager Sybil at `C = 0` | Scenario evidence, not adversarial schedules |
 | CF-01 probes (refill review :142-160) | The adverse handover trace at `C = 0` | Temporary Foundry probes with a state-transition stub, not retained; nothing in the repository pins that trace |
 
 No evidence combines an honest actor, Sybil-populated children, one `C`
@@ -139,9 +139,8 @@ devnet's own claim, that with `C = 0` "clocks cover only the honest path"
    the development flake; the repository has no `.tla` file) only if random
    search proves too weak: each adds a second specification to maintain.
 
-Two levels first: it is the shape of the generation to be audited (the
-canonical switch is a later PR). The paper argument should not depend on
-`L`.
+Two levels first: it is the shape of the generation to be audited, the
+canonical table. The paper argument should not depend on `L`.
 
 ## CF-01: the accepted tradeoff and its latency assumption
 
@@ -151,7 +150,7 @@ It stays the accepted tradeoff: nothing is added to eliminate it. The model
 states its latency assumption explicitly instead: the honest proof plus its
 fallback timeout claim land within `G` of the seal (proof-plus-fallback
 latency `< G`), under which CF-01 costs nothing. That assumption is a
-measured operator requirement (todo.md, before a two-level release); the
+measured operator requirement (todo.md, before the audited release); the
 worst case today is estimated at 2 to 2.5 minutes against a five-minute `G`
 (a lead, not measured). Beyond it, each occurrence would cost
 `max(0, d1 + d2 - G)` of `C`, for one Sybil leaf match and one bond each,

@@ -432,8 +432,8 @@ mod tests {
     #[test]
     fn levels_must_run_as_the_pinned_table_says() {
         let pinned = TournamentGeometry::two_level();
-        let root = descriptor(ROOT, 0, TournamentKind::NonLeaf, digest(1), 0, 37, 55);
-        let leaf = descriptor(CHILD, 1, TournamentKind::Leaf, digest(2), 0, 0, 37);
+        let root = descriptor(ROOT, 0, TournamentKind::NonLeaf, digest(1), 0, 38, 54);
+        let leaf = descriptor(CHILD, 1, TournamentKind::Leaf, digest(2), 0, 0, 38);
         check_pinned_level(root, &pinned);
         check_pinned_level(leaf, &pinned);
     }
@@ -447,9 +447,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "runs level 2 as stride 2^0, height 37")]
+    #[should_panic(expected = "runs level 2 as stride 2^0, height 38")]
     fn a_level_the_pinned_table_lacks_is_fatal() {
-        let deeper = descriptor(CHILD, 2, TournamentKind::Leaf, digest(2), 0, 0, 37);
+        let deeper = descriptor(CHILD, 2, TournamentKind::Leaf, digest(2), 0, 0, 38);
         check_pinned_level(deeper, &TournamentGeometry::two_level());
     }
 

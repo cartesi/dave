@@ -41,14 +41,12 @@ contract CanonicalTournamentGeometryTest is Util {
     }
 
     function testCheckedInCanonicalTable() public pure {
-        assertEq(ArbitrationConstants.LEVELS, 3);
-        assertEq(ArbitrationConstants.log2step(0), 44);
-        assertEq(ArbitrationConstants.height(0), 48);
-        assertEq(ArbitrationConstants.log2step(1), 27);
-        assertEq(ArbitrationConstants.height(1), 17);
-        assertEq(ArbitrationConstants.log2step(2), 0);
-        assertEq(ArbitrationConstants.height(2), 27);
-        assertEq(ArbitrationConstants.COMMITMENT_BUDGET, 30 minutes);
+        assertEq(ArbitrationConstants.LEVELS, 2);
+        assertEq(ArbitrationConstants.log2step(0), 38);
+        assertEq(ArbitrationConstants.height(0), 54);
+        assertEq(ArbitrationConstants.log2step(1), 0);
+        assertEq(ArbitrationConstants.height(1), 38);
+        assertEq(ArbitrationConstants.COMMITMENT_BUDGET, 120 minutes);
     }
 
     function _canonicalModel()

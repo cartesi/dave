@@ -121,10 +121,11 @@ tournament. They discover children from events and use each child's immutable
 descriptor when that child exists.
 
 The canonical provider configures the table in `ArbitrationConstants`: the
-three-level `log2step = [44, 27, 0]`, `height = [48, 17, 27]` or the two-level
-`log2step = [37, 0]`, `height = [55, 37]`. Generic and historical Solidity
-tests inject their own geometry, and the node compiles in no tournament
-geometry: it discovers, validates, and pins whatever table the factory serves.
+two-level `log2step = [38, 0]`, `height = [54, 38]`. The devnet that CI and
+local tests run serves the three-level test table `log2step = [44, 27, 0]`,
+`height = [48, 17, 27]` instead. Generic and historical Solidity tests inject
+their own geometry, and the node compiles in no tournament geometry: it
+discovers, validates, and pins whatever table the factory serves.
 The factory selects the immutable tournament kind from
 the configured row; runtime leaf behavior does not infer the kind again from
 the stride or height.
@@ -138,8 +139,14 @@ must span the expected coordinate width, and the leaf stride must be zero. It
 also rejects a zero root allowance while deliberately accepting a zero response
 budget. This is deployment evidence, not runtime validation. In particular, a
 well-formed Solidity table does not prove that an off-chain node constructs the
-same commitments. Adopting a table therefore needs node and Lua conformance
-at its strides.
+same commitments. At the canonical strides that evidence is the node's
+(`engine_machine`): its stride-38 roots equal the release CLI's (mcycle period
+2^18), the `Commitment` library opens its height-54 root and height-38 leaf
+proofs (`NodeProofsTest`), and the tall builder behind its height-38 leaf
+matches the CLI and stepping at height 28 and the emulator on a dense
+height-38 leaf ([node-vs-emulator.md](measurements/node-vs-emulator.md)). The
+Lua client is checked against the node only on the devnet's three-level test
+table ([test-harness.md](test-harness.md)).
 
 The generic recursion path is also exercised with a strict test-owned
 four-level table
@@ -627,17 +634,15 @@ Every honest action gets one inclusion `G`, and joining a child also gets the
 build `T`. `ClockBudgets` computes the allowance, with `responseBudget = G` and
 `commitmentBudget = T`, from wall-clock inputs: the deployment's block time and
 censorship budget `C`, `G = 5 minutes`, and `T`, which belongs with the
-tournament geometry, since a generated geometry is only valid for the `T` it
-was generated against. `ArbitrationConstants.COMMITMENT_BUDGET` is 30 minutes,
-the policy value the canonical three-level table runs with; the devnet-only
-two-level profile deploys its table with 60 minutes
-(`DevnetGeometryDeployment`), and the canonical two-level switch sets the
-constant to 60 together with that table. The root allowance holds the root join's inclusion and
-one delegation per inner level on a correct commitment's active path; each
-child return refunds its delegation. On Ethereum mainnet the three-level table
-gives one week plus 85 minutes and the two-level table one week plus 75
-minutes. The independent
-`prt/measure_constants` emulator benchmark and the Rust
+tournament geometry, since a generated geometry is only valid for a `T` at
+least the one it was generated against. `ArbitrationConstants.COMMITMENT_BUDGET`
+is 120 minutes, double the 60 the canonical two-level table was derived at.
+The devnet that CI and local tests run keeps a three-level test table, with
+its own 30 minutes (`DevnetGeometryDeployment`). The root allowance holds the
+root join's inclusion and one delegation per inner level on a correct
+commitment's active path; each child return refunds its delegation. On
+Ethereum mainnet the canonical table gives one week plus 135 minutes. The
+independent `prt/measure_constants` emulator benchmark and the Rust
 `just measure-level-constants` generator show how root slowdown and the
 commitment budget determine tournament strides and heights. On Ethereum `G`
 is 25 blocks. One root-to-leaf descent with one match at each level spans 92

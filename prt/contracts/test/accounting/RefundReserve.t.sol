@@ -106,13 +106,13 @@ contract RefundReserveTest is Test {
         assertEq(Bond.matchWorkAllocation(48, false), 6_706_000);
         assertEq(Bond.matchWorkAllocation(17, false), 2_738_000);
         assertEq(Bond.matchWorkAllocation(27, true), 9_023_000);
-        assertEq(Bond.matchWorkAllocation(55, false), 7_602_000);
-        assertEq(Bond.matchWorkAllocation(37, true), 10_303_000);
+        assertEq(Bond.matchWorkAllocation(54, false), 7_474_000);
+        assertEq(Bond.matchWorkAllocation(38, true), 10_431_000);
         assertEq(Bond.bondValue(48, false), 0.3353 ether);
         assertEq(Bond.bondValue(17, false), 0.1369 ether);
         assertEq(Bond.bondValue(27, true), 0.45115 ether);
-        assertEq(Bond.bondValue(55, false), 0.3801 ether);
-        assertEq(Bond.bondValue(37, true), 0.51515 ether);
+        assertEq(Bond.bondValue(54, false), 0.3737 ether);
+        assertEq(Bond.bondValue(38, true), 0.52155 ether);
 
         uint256 invalidZeroLeafWork = leafTerminal - Gas.ADVANCE_MATCH;
         uint256 invalidZeroLeafBond = invalidZeroLeafWork * Bond.WORK_PRICE_CAP;
