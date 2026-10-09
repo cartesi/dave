@@ -129,16 +129,16 @@ value, and the node logs an error on each tick whose batch reserves more than
 the signer holds. A dispute posts a join bond at every level it reaches, each
 the level's match work allocation at 50 gwei (`Bond.sol`), and a bond comes
 back only once its tournament's result is finalized, so a level whose next
-join comes due sooner holds two. With the canonical table (heights 48, 17,
-27) and a peak base fee of 100 gwei, twice the contracts' 50 gwei work-price
+join comes due sooner holds two. With the canonical table (heights 54 and
+38) and a peak base fee of 100 gwei, twice the contracts' 50 gwei work-price
 cap, which the node quotes as a max fee of about 200 gwei (twice the base fee
 plus the tip):
 
 ```
-floor = root bond + 2 x each inner level's bond
+floor = root bond + 2 x the leaf bond
         + (leaf-proof gas limit + 1M) x peak max fee
-      = 0.3353 + 2 x (0.1369 + 0.4512) + (7.62M + 1M) x 200 gwei
-      = about 3.2 ETH
+      = 0.3737 + 2 x 0.5216 + (7.62M + 1M) x 200 gwei
+      = about 3.1 ETH
 ```
 
 The 1M covers the settlement step and bond recoveries that share the leaf
@@ -215,8 +215,8 @@ Options:
   error persists, rebuild the data directory.
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
-  canonical three-level table that allowance is about one week and 85 minutes
-  on mainnets and about 9 hours 25 minutes on testnets.
+  canonical table that allowance is about one week and 135 minutes on
+  mainnets and about 10 hours 15 minutes on testnets.
 - A lost root, a root without a winner, and a won epoch whose final state
   cannot settle (a terminal application) each log an error every tick: they
   are the application guardian's to resolve, by foreclosure if need be
