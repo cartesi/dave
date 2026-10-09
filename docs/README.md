@@ -66,8 +66,7 @@ exploration. Active plans:
 Measurements: generated baselines live in [measurements/](measurements/) -
 `measurements.md` and `measurements-stress.md` (`just measure`,
 `just measure-stress --full`), `constants.md` (`just measure-level-constants`),
-`two-level-leaf.md` (`just measure-two-level-leaf`), and
-`node-vs-emulator.md` (`just measure-node-vs-emulator`, the runbook check
+and `node-vs-emulator.md` (`just measure-node-vs-emulator`, the runbook check
 that the node adds no overhead over the emulator).
 Regenerate on the machine that matters and commit the diff; each file
 carries its own caveats and density labels.
