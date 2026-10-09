@@ -110,9 +110,9 @@ struct Args {
     #[arg(long, default_value_t = DEFAULT_SNAPSHOT_GAP_INPUTS)]
     gap_inputs: u64,
 
-    /// Leaf-tournament height for --node-vs-emulator: 37 is the
-    /// two-level table's; lower it for a quick run.
-    #[arg(long, default_value_t = 37)]
+    /// Leaf-tournament height for --node-vs-emulator: 38 is the
+    /// canonical two-level leaf; lower it for a quick run.
+    #[arg(long, default_value_t = 38)]
     leaf_height: u64,
 
     /// Internal: runs one --node-vs-emulator row in this process, so its

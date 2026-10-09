@@ -131,7 +131,7 @@ The refill review's release-evidence item ("Remaining assurance work", 3) is
 covered elsewhere: the gas calibration by the calldata refund calibration
 (reviews/2026-10-02-prt-calldata-refund-calibration), active real-machine
 tall-leaf differentials by the leaf builder's active-big-cycle differential
-(cartesi/dave#287), dense height-37 performance by
+(cartesi/dave#287), dense height-38 performance by
 measurements/node-vs-emulator.md and the leaf rate in constants.md, with the
 v0.21 confirmation in todo.md; full E2E is the per-PR smoke, since dense
 disputes left e2e by design when the suite was cut to the black-box smoke
