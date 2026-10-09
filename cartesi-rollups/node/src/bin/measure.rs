@@ -96,7 +96,7 @@ struct Args {
 
     /// Commitment budgets T (minutes) to derive for: the time every inner
     /// tournament's commitment must build within.
-    #[arg(long, value_delimiter = ',', default_values_t = vec![60u64, 30])]
+    #[arg(long, value_delimiter = ',', default_values_t = vec![60u64, 120])]
     commitment_budget_minutes: Vec<u64>,
 
     /// Pragmatic stand-in for a reference machine: measured throughput
@@ -737,11 +737,16 @@ fn bench_geometry() -> Result<TournamentGeometry> {
     TournamentGeometry::new(levels, &Structure::PRODUCTION)
 }
 
+/// Big cycles per timed leaf-build sample, and the samples whose median
+/// prices the leaf.
+const LEAF_SAMPLE_BIGS: u64 = 1 << 10;
+const LEAF_SAMPLES: usize = 5;
+
 /// Steady-state rates plus the hash-cost curve, all measured
 /// mid-computation on a fed machine.
 struct SteadyAtoms {
     avg_usteps_per_big: f64,
-    dense_pairs_per_sec: f64,
+    dense_bigs_per_sec: f64,
     /// (delta in big cycles, median run time, median hash time).
     curve: Vec<(u64, Duration, Duration)>,
 }
@@ -757,7 +762,7 @@ struct ActiveMachine {
 
 impl ActiveMachine {
     /// Loaded as the dispute loads the work being priced: per-step for
-    /// leaf pairs, sampled for the hash-cost curve.
+    /// the leaf build, sampled for the hash-cost curve.
     fn load(image: &Path, scratch_root: &Path, hashing: Hashing) -> Result<Self> {
         let inputs: Vec<Vec<u8>> = (0..16)
             .map(|i| evm_advance_input(i, b"constants"))
@@ -778,7 +783,9 @@ impl ActiveMachine {
     }
 
     /// Feeds the next input if the workload yielded, then skips the
-    /// input handler's prologue so sampling sees the workload proper.
+    /// input handler's prologue so sampling sees the workload proper:
+    /// the stress handler's process startup (fork/exec, the first ~15k
+    /// big cycles) is denser and slower than the steady burn after it.
     fn ensure_active(&mut self) -> Result<()> {
         anyhow::ensure!(
             !self.stf.terminal()?,
@@ -793,8 +800,9 @@ impl ActiveMachine {
             let window = self.next_input as u64;
             self.next_input += 1;
             self.stf.feed(window)?;
-            let ran = self.stf.run_big(10_000)?;
-            anyhow::ensure!(ran == 10_000, "input's compute too small to sample");
+            const PROLOGUE_BIGS: u64 = 1 << 20;
+            let ran = self.stf.run_big(PROLOGUE_BIGS)?;
+            anyhow::ensure!(ran == PROLOGUE_BIGS, "input's compute too small to sample");
         }
         Ok(())
     }
@@ -810,14 +818,12 @@ impl ActiveMachine {
 
 fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms> {
     let machine = &mut ActiveMachine::load(image, scratch_root, Hashing::PerStep)?;
-    // Density and the dense pair rate: the leaf-level workload (hash
-    // after every executed ustep and every reset), over whole big
-    // cycles mid-computation.
+    // The density label, stepped and untimed: the bulk collector does
+    // not report usteps.
     machine.ensure_active()?;
     let bigs_target = 500u64;
     let mut usteps = 0u64;
     let mut bigs = 0u64;
-    let start = Instant::now();
     while bigs < bigs_target {
         if machine.stf.uarch_halted()? {
             machine.stf.ureset()?;
@@ -826,12 +832,27 @@ fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms
             machine.stf.ustep()?;
             usteps += 1;
         }
-        machine.stf.state_hash()?;
     }
-    let dense_elapsed = start.elapsed();
-    machine.assert_active("the dense sample")?;
+    machine.assert_active("the density sample")?;
     let avg_usteps_per_big = usteps as f64 / bigs as f64;
-    let dense_pairs_per_sec = (usteps + bigs) as f64 / dense_elapsed.as_secs_f64();
+
+    // The leaf build rate on the node's own path: the bulk collection
+    // build_tall drives (MachineStf::load collects in bulk). Mid-input
+    // it returns every requested root: the seam-1 guard declines only
+    // the input budget's last cycle, 2^48 big cycles past delivery.
+    let mut leaf = Vec::new();
+    for _ in 0..LEAF_SAMPLES {
+        let start = Instant::now();
+        let roots = machine.stf.big_cycle_roots(LEAF_SAMPLE_BIGS)?;
+        leaf.push(start.elapsed());
+        machine.assert_active("the leaf sample")?;
+        anyhow::ensure!(
+            roots.len() as u64 == LEAF_SAMPLE_BIGS,
+            "leaf sample ran short"
+        );
+    }
+    leaf.sort();
+    let dense_bigs_per_sec = LEAF_SAMPLE_BIGS as f64 / leaf[LEAF_SAMPLES / 2].as_secs_f64();
 
     // The hash-cost curve: per delta, clear the dirty set with an
     // untimed hash, run delta big cycles, then time one root hash
@@ -870,7 +891,7 @@ fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms
 
     Ok(SteadyAtoms {
         avg_usteps_per_big,
-        dense_pairs_per_sec,
+        dense_bigs_per_sec,
         curve,
     })
 }
@@ -918,8 +939,7 @@ fn derive(
 
     // Leaf level: the tallest dense build that fits the budget at the
     // measured average density, hardware slack applied, floor rounded.
-    let dense_bigs_per_sec = atoms.dense_pairs_per_sec / (atoms.avg_usteps_per_big + 1.0) / slack;
-    let n_bigs = dense_bigs_per_sec * budget_secs;
+    let n_bigs = atoms.dense_bigs_per_sec / slack * budget_secs;
     anyhow::ensure!(
         n_bigs >= 2.0,
         "commitment budget too small for any leaf level"
@@ -996,10 +1016,15 @@ fn constants_report(
     writeln!(
         report,
         "Workload `{}`; root slowdown budget {}; hardware slack {} (divide-\n\
-         measured-throughput stand-in for a reference machine).",
+         measured-throughput stand-in for a reference machine). Host {} {}\n\
+         with {} threads; emulator {}.",
         args.machine.display(),
         args.root_slowdown,
         args.hardware_slack,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        std::thread::available_parallelism().map_or(0, |n| n.get()),
+        cartesi_machine::format_emulator_version(cartesi_machine::EXPECTED_EMULATOR_VERSION),
     )?;
     writeln!(report)?;
 
@@ -1014,13 +1039,18 @@ fn constants_report(
     )?;
     writeln!(
         report,
-        "| dense ustep+hash pairs | {:.0}/s |",
-        atoms.dense_pairs_per_sec
+        "| dense big cycles, the node's bulk leaf path (leaf build rate) | {:.0}/s |",
+        atoms.dense_bigs_per_sec
     )?;
+    writeln!(report)?;
     writeln!(
         report,
-        "| dense big cycles (leaf-level build rate) | {:.0}/s |",
-        atoms.dense_pairs_per_sec / (atoms.avg_usteps_per_big + 1.0)
+        "The leaf rate is the median of {LEAF_SAMPLES} samples of 2^{} big cycles\n\
+         through MachineStf::big_cycle_roots, the emulator's bulk uarch\n\
+         collector that build_tall drives for tall leaves, on a machine\n\
+         loaded as a leaf build loads it. The density label comes from a\n\
+         separate, untimed stepped sample.",
+        LEAF_SAMPLE_BIGS.ilog2(),
     )?;
     writeln!(report)?;
 
@@ -1070,9 +1100,10 @@ fn constants_report(
     writeln!(report)?;
     writeln!(
         report,
-        "Heights always sum to {LOG2_EPOCH_RULER_SPAN}, so responseBudget's five-minutes-per-\n\
-         height-unit total is shape-invariant; level count changes only\n\
-         the per-level join and nested-tournament overhead."
+        "Heights always sum to {LOG2_EPOCH_RULER_SPAN}, and one descent earns at most one\n\
+         response discount (G, responseBudget) per height unit plus the leaf\n\
+         win (docs/dimensioning.md), whatever the shape; level count changes\n\
+         only the per-level join and its T + 2G refill."
     )?;
     writeln!(report)?;
 
@@ -1084,16 +1115,14 @@ fn constants_report(
          Adopt a bump only with coordinated validation of:\n\
          ArbitrationConstants.sol (LEVELS, log2step, height, COMMITMENT_BUDGET);\n\
          docs/computation-hash.md's level table; harness fixtures. The node\n\
-         discovers and pins the deployed table, so it carries no stride constant.\n\
-         A small test-shape profile would also let e2e disputes run in\n\
-         seconds."
+         discovers and pins the deployed table, so it carries no stride constant."
     )?;
     writeln!(report)?;
     writeln!(report, "## Caveats")?;
     writeln!(report)?;
     writeln!(
         report,
-        "Single-machine, single-run numbers; the density label above is\n\
+        "One host, one run (medians within it); the density label above is\n\
          this workload's, and clocks dimensioned here inherit the\n\
          trusted-app assumption (docs/dimensioning.md). The root\n\
          slowdown figure interpolates the curve's steepest band, so it\n\
