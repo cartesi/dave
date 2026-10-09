@@ -186,7 +186,7 @@ fn three_level() -> TournamentGeometry {
 }
 
 fn two_level() -> TournamentGeometry {
-    geometry(&[(37, 55), (0, 37)])
+    geometry(&[(38, 54), (0, 38)])
 }
 
 /// A real initialized node database in a temp state dir, the echo
@@ -850,9 +850,11 @@ fn golden_fixtures_hold() {
 
 /// The epochs the runner settles. Echo rejects its third input
 /// (`--reject=2`), so its epoch takes both record paths; that input
-/// runs about 151k mcycles, so at the two-level period 2^17 one sample
-/// falls inside it and the revert shows in the root. Yield rejects
-/// every input, so its epoch ends on the state it started from.
+/// runs about 151k mcycles, so at the two-level period 2^18 its window's
+/// first sample lands after the revert. Yield rejects every input, so
+/// its epoch ends on the state it started from; each runs about 702k
+/// mcycles, so two-level samples still fall inside and the revert shows
+/// in the root.
 fn runner_epochs() -> [(&'static str, PathBuf, Vec<Vec<u8>>); 2] {
     [
         (
@@ -1020,9 +1022,10 @@ impl LeafCase {
 /// change: a fed window start, an accepted yield (echo's input 0 runs
 /// 2,224,031 mcycles), a rejection's revert (echo's input 2 runs 151,403
 /// and yield's 702,302), a revert crossed while positioning (yield's
-/// input 1), and a padding window. Period 17, the two-level leaf, is the
-/// same builder at a greater height; the CLI spends about 2 minutes on a
-/// mostly idle period-17 leaf and more than 13 on a dense one.
+/// input 1), and a padding window. Period 18, the two-level leaf, is the
+/// same builder at a greater height; the CLI spent about 2 minutes on a
+/// mostly idle period-17 leaf and more than 13 on a dense one, and a
+/// period-18 leaf spans twice the cycles.
 fn leaf_cases() -> Vec<LeafCase> {
     let case = |program, log2_period, input, period| LeafCase {
         program,
@@ -1921,8 +1924,10 @@ fn leaf_proof_vector(proof: &LeafProof) -> serde_json::Value {
 /// the settlement the way DaveConsensus stages it, requiring the CLI's
 /// outputs Merkle root. The root proofs are the joins of a runner epoch
 /// under each table (served from the runner's rows); the leaf proofs are a
-/// seal's agree-state opening and a join's last leaf at the three-level
-/// leaf height.
+/// seal's agree-state opening and a join's last leaf at each table's leaf
+/// height. The two-level leaf is tall, so the span-by-span builder serves
+/// it; it lies in an idle stretch past echo's first yield, where that
+/// build captures one cycle per span.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn node_proof_vectors_hold() {
@@ -1952,14 +1957,22 @@ fn node_proof_vectors_hold() {
     let (state_dir, storage) = initialized_storage_with(&image, inputs);
     let work = scratch();
     let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
-    let level = LevelCoords::new(0, U256::ZERO, 0, 27);
-    let root_hash = source.node(&level.root()).unwrap();
-    let mid = (U256::ONE << 26) + U256::from(12345);
-    for (name, proof) in [
-        ("echo_leaf_agree", source.prove_leaf(&level, mid).unwrap()),
-        ("echo_leaf_last", source.prove_last(&level).unwrap()),
+    for (prefix, base, height) in [
+        ("echo_leaf", U256::ZERO, 27),
+        ("echo_two_level_leaf", U256::ONE << 44, 38),
     ] {
-        commitments.insert(name.into(), merkle_proof_vector(root_hash, 27, &proof));
+        let level = LevelCoords::new(0, base, 0, height);
+        let root_hash = source.node(&level.root()).unwrap();
+        let mid = (U256::ONE << (height - 1)) + U256::from(12345);
+        for (name, proof) in [
+            ("agree", source.prove_leaf(&level, mid).unwrap()),
+            ("last", source.prove_last(&level).unwrap()),
+        ] {
+            commitments.insert(
+                format!("{prefix}_{name}"),
+                merkle_proof_vector(root_hash, height, &proof),
+            );
+        }
     }
     drop((source, state_dir));
 

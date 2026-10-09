@@ -232,10 +232,11 @@ closing on the budget's last cycle. `NodeWitnessesTest` (`cartesi-rollups/contra
 replays each through `CartesiStateTransition`, with inputs rooted the way
 `DaveConsensus` roots them, and requires the node's post-state. Likewise
 `node_proof_vectors_hold` pins the node's commitment proofs (root joins under
-both tables, a leaf agree-state opening, a leaf join) and an epoch's
-settlement validity proof; `NodeProofsTest` opens the former with the
-tournament's `Commitment` library and validates the latter as `DaveConsensus`
-stages it, requiring the reference CLI's outputs Merkle root.
+both tables, and a leaf agree-state opening and a leaf join at each table's
+leaf height) and an epoch's settlement validity proof; `NodeProofsTest` opens
+the former with the tournament's `Commitment` library and validates the latter
+as `DaveConsensus` stages it, requiring the reference CLI's outputs Merkle
+root.
 A nonempty DA payload paired with the provider's zero out-of-range root is
 rejected (`StateTransition.t.sol`): a position with no input carries no input
 bytes, which fixes the proof's length for the leaf refund.

@@ -626,7 +626,7 @@ counts, never time (`engine/spec.rs`: a leaf build runs each ustep once, an
 idle stretch costs one captured cycle per stratum span (at most 256 per
 build), folded spans cost no machine work; a join
 replays the disputed input's prefix once for the build and once per stored
-fanout stratum, five times at height 37, within the measured overhead).
+fanout stratum, five times at height 38, within the measured overhead).
 Before releases and hot-path changes, `just measure-node-vs-emulator` times a
 cold join and a deep proof against the emulator on the same host, with peak
 RSS and disk (docs/measurements/node-vs-emulator.md). At runtime the Hero
