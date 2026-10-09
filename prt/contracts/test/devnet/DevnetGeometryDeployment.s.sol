@@ -26,8 +26,8 @@ contract DevnetGeometryDeploymentScript is DeploymentScript {
             + EmulatorConstants.ROLLUP_LOG2_MAX_MCYCLES_PER_ADVANCE_STATE
             + EmulatorConstants.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 
-    /// @notice The canonical three-level table's rows and 30-minute
-    /// commitment budget, kept as the test shape once production moves to
+    /// @notice The former canonical three-level table's rows and 30-minute
+    /// commitment budget, kept as the test shape now that production runs
     /// two levels.
     function runThreeLevel() external {
         _registerChains();
