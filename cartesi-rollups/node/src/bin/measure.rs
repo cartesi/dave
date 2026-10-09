@@ -291,7 +291,7 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     writeln!(report)?;
     writeln!(
         report,
-        "Chain of clones over echo inputs: clone the previous boundary,\n\
+        "Chain of clones over workload inputs: clone the previous boundary,\n\
          load SHARING_ALL, advance one input, root_hash (sidecars exact),\n\
          destroy. Boundary cost is the free-space delta of one whole\n\
          iteration - what keeping that boundary physically costs.\n\
@@ -305,7 +305,9 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     )?;
     writeln!(report, "|---:|---:|---:|---:|---:|---:|---:|")?;
 
-    const INPUTS: u64 = 4;
+    // The echo fixture rejects input 2 (build-echo.sh), and a rejected
+    // yield takes no further input until the node reverts it.
+    const INPUTS: u64 = 2;
     for k in 0..INPUTS {
         let working = chain_root.join("working");
         let free_before = free_space_kb(&chain_root)?;
