@@ -26,11 +26,6 @@ const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const POLLING_INTERVAL: u64 = 30;
 
-/// The deepest leaf level the measured dense rate builds within the
-/// selected commitment budget (docs/measurements/constants.md). A deeper one
-/// may not be defensible in time, so the node says so at startup.
-const MEASURED_LEAF_HEIGHT_CAPACITY: u64 = 37;
-
 /// One `tournamentParameters(level)` row: (levels, log2step, height).
 type TableRow = (u64, u64, u64);
 
@@ -106,13 +101,6 @@ pub(crate) async fn discover_deployed_tournament(
     }
     let geometry = tournament_geometry_from_rows(level_count, &rows)
         .with_context(|| format!("tournament factory {tournament_factory} is incompatible"))?;
-    if geometry.leaf_height() > MEASURED_LEAF_HEIGHT_CAPACITY {
-        log::warn!(
-            "leaf level height {} exceeds the measured capacity {MEASURED_LEAF_HEIGHT_CAPACITY}: \
-             leaf commitments may not build within the commitment budget",
-            geometry.leaf_height()
-        );
-    }
 
     let state_transition = factory.stateTransition().call().await.with_context(|| {
         format!("failed to query state transition from tournament factory {tournament_factory}")
