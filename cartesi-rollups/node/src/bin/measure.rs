@@ -1221,7 +1221,7 @@ mod versus {
         writeln!(report)?;
         writeln!(
             report,
-            "Source `{source}`; workload fingerprint `{fingerprint}`."
+            "Source tree `{source}`; workload fingerprint `{fingerprint}`."
         )?;
         writeln!(report)?;
         writeln!(
@@ -1284,16 +1284,27 @@ mod versus {
         Ok(())
     }
 
-    /// The source revision (dirty when uncommitted) and the workload's
-    /// fingerprint line, so runs can be compared.
+    /// The source tree (dirty when tracked files are uncommitted) and the
+    /// workload's fingerprint line, so runs can be compared. A tree hash,
+    /// not a commit: the repository merges by rebase, which rewrites every
+    /// commit hash, while a tree hash names the measured content itself.
     fn provenance(image: &Path) -> (String, String) {
-        let source = std::process::Command::new("git")
-            .args(["describe", "--always", "--dirty", "--abbrev=8"])
-            .output()
-            .ok()
-            .filter(|output| output.status.success())
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-            .unwrap_or_else(|| "unknown".into());
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(args)
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        };
+        let source = match (
+            git(&["rev-parse", "HEAD^{tree}"]),
+            git(&["status", "--porcelain", "--untracked-files=no"]),
+        ) {
+            (Some(tree), Some(status)) if status.is_empty() => tree,
+            (Some(tree), Some(_)) => format!("{tree}-dirty"),
+            _ => "unknown".into(),
+        };
         let fingerprint = fs::read_to_string(image.with_extension("fingerprint"))
             .map(|text| text.trim().to_string())
             .unwrap_or_else(|_| "unknown".into());
