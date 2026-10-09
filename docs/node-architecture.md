@@ -29,9 +29,9 @@ configured state transition. The node compiles in no tournament geometry: it
 accepts any table that passes `engine::TournamentGeometry`'s validator (the
 root spans the 92-bit machine coordinate, each level tiles one leaf of its
 parent, the leaf level steps single transitions, and the root stride lies
-between one big cycle and one input window). It does not judge whether a
-table can be built in time (one warning for a leaf taller than its measured
-capacity) and does not pin or check `T`. It refuses to start unless
+between one big cycle and one input window). It does not judge whether a table
+can be built in time and does not pin or check `T`: sizing the leaf to `T` is
+the operator's and the geometry's concern. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
 linked Cartesi Machine library. It then inspects the `--template-path` template
 (one private load: its root hash, the pristine-uarch check, and whether it is
