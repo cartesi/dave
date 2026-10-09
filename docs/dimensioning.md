@@ -58,7 +58,7 @@ to the average case.
   instructions vanish into a sum of millions of terms. The honest
   program lives at the average (typical code runs ~50 executed usteps
   per big cycle against the 2^20 span, a factor of ~20,000; even the
-  deliberately instruction-heavy stress workload measures ~616 - see
+  deliberately instruction-heavy stress workload measures ~566 - see
   the density labels in docs/measurements/constants.md), and the trusted
   party authors that distribution. So clocks are sized to average density
   plus a hardware slack factor - not to the worst instruction
@@ -144,15 +144,15 @@ one input is replayed, never cached, by three honest actions:
 
 Under the two-level table (`[55, 37]`, `G` of five minutes, hardware slack
 2), the hash-cost curve in docs/measurements/constants.md (stress workload,
-measured on v0.20) gives about 7 ns per big cycle sampled at stride 2^37
+measured on v0.21) gives about 5 ns per big cycle sampled at stride 2^37
 (run plus root hash, between its 2^16 and 2^18 rows). Replaying whole inputs
-is one unbroken run, which its long rows put at about 1.2 ns per big cycle,
-as does the v0.21 positioning in docs/measurements/node-vs-emulator.md. With
-`G` halved by the slack to 150 s, the contract is near 2^34 big cycles per input
-at a gap of 1, and near 2^30.8 at the default gap of 64 (63 replayed inputs
-and one sampled), where the prefix replay dominates. These are estimates on
-one workload; a v0.21 re-measurement on validator-grade hardware confirms or
-replaces them. Heavy applications lower the gap.
+is one unbroken run, which its long rows put at about 1.1 ns per big cycle,
+close to the v0.21 positioning in docs/measurements/node-vs-emulator.md. With
+`G` halved by the slack to 150 s, the contract is near 2^34.8 big cycles per
+input at a gap of 1, and near 2^30.9 at the default gap of 64 (63 replayed
+inputs and one sampled), where the prefix replay dominates. These are
+estimates on one workload; a re-measurement on validator-grade hardware
+confirms or replaces them. Heavy applications lower the gap.
 
 An overrun is charged to the honest clock beyond `G` and draws on `C`: it
 spends censorship tolerance before it loses a dispute. Past the contract, as
@@ -270,12 +270,12 @@ or a formal recursive delay theorem. Any corresponding leniency toward a
 correct participant is incidental, not the security rationale.
 
 The three-level table predates the current measurement tooling and is not a
-`T = 30` derivation (a fresh one produces a different geometry,
-docs/measurements/constants.md); `T = 30 minutes` is the conservative policy
-value it runs with, and on Ethereum it gives one week plus 85 minutes. The
-two-level table uses `T = 60 minutes`, `log2step = [37, 0]`, and
-`height = [55, 37]`, and gives one week plus 75 minutes. `ArbitrationConstants`
-holds the deployed table together with its `T`.
+`T = 30` derivation (a fresh one produces a different geometry); `T = 30
+minutes` is the conservative policy value it runs with, and on Ethereum it
+gives one week plus 85 minutes. The two-level table uses `T = 60 minutes`,
+`log2step = [37, 0]`, and `height = [55, 37]`, and gives one week plus 75
+minutes. `ArbitrationConstants` holds the deployed table together with its
+`T`.
 
 Before adopting any generated table, run the test-only whole-table validator
 under `prt/contracts/test/config/`. It checks the declared level count, positive
@@ -374,17 +374,19 @@ The independent `prt/measure_constants` emulator harness and the Rust
 `just measure-level-constants` generator expose the two inputs that shape the
 level layout: maximum acceptable root slowdown and the time budget for
 constructing an inner commitment. Both derive strides and heights bottom-up;
-the Rust generator owns the current checked-in result and caveats in
+the Rust generator, which prices the leaf on the node's own bulk collection
+path, owns the current checked-in result and caveats in
 `docs/measurements/constants.md`. The emulator harness supplies a second
 measurement method across explicitly selected stress-ng workloads. Generator
 output is evidence for a parameter set, not a permanent constant: workloads,
 hardware assumptions, rounding, and the intended level count must travel with
 the generated table. These tools take `T` and root slowdown as inputs and
-derive strides and heights; they do not derive `G`. The node-owned generator
-(`src/bin/measure.rs`) still describes `G` as "five minutes of clock per
-height unit", and its checked-in outputs still name `matchEffort`, a symbol
-that no longer exists; `G` is the per-response inclusion budget above. Fix
-the generator's wording and regenerate rather than hand-editing its output.
+derive strides and heights; they do not derive `G`. The same binary's
+baseline report (`src/bin/measure.rs`, its clock-budget section) still
+describes `G` as "five minutes of clock per height unit", and its checked-in
+outputs (measurements*.md) still name `matchEffort`, a symbol that no longer
+exists; `G` is the per-response inclusion budget above. Fix the wording and
+regenerate rather than hand-editing its output.
 
 This timing and geometry process is separate from EVM refund calibration.
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md) owns
@@ -398,7 +400,7 @@ measured validly:
 
 - Measure on real workloads and label the density. An idle machine
   churns ~34 usteps per big cycle; typical executing code runs ~50;
-  the instruction-heavy stress workload measures ~616 (the density
+  the instruction-heavy stress workload measures ~566 (the density
   label in docs/measurements/constants.md, and the basis for the candidate
   tables derived there); the span allows 2^20. A throughput number
   without its density label is meaningless for dimensioning.
