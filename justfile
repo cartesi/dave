@@ -326,8 +326,3 @@ e2e-smoke: build-rust-workspace
 # follow an e2e node log (TEST_INSTANCE=<id> picks that instance's)
 e2e-logs:
     just rollups-tests::read-node-logs
-
-# echo simple on two levels: needs a devnet built with
-# DEVNET_GEOMETRY=two-level (the preflight refuses any other bundle)
-test-rollups-two-level-smoke: build-rust-workspace
-    DEVNET_GEOMETRY=two-level just rollups-tests::test echo simple

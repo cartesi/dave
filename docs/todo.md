@@ -19,15 +19,9 @@ carry no backlog (reviews/README.md).
   through the contract-change gate; regenerate bindings and the devnet, and
   recompute the node README's funding floor for the new bonds.
   (dimensioning.md)
-- Place `stf_all` and `stf_revert` once leaves are two-level: the node
-  harness, or e2e on a small test-shape table kept under `test/` behind the
-  devnet guard. (test-harness.md)
-- After the switch, retire `DEVNET_GEOMETRY`: the devnet-only two-level
-  deployment, its CI smoke, the fingerprint branch, and the duplicated literal
-  in `TournamentGeometry::two_level`. (build-system.md)
 - On the first two-level staging, stop and restart the node mid leaf build:
   three-level releases never take the span-by-span, resumable tall build,
-  which only the spec, engine-machine and two-level devnet tests exercise.
+  which only the spec and engine-machine tests exercise.
   (computation-hash.md)
 
 ## Before a two-level release

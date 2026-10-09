@@ -101,3 +101,7 @@ needed.
   needed only for `just test-kms` and the honeypot image.
 - Each worktree's devnet needs one rebuild:
   `just rollups-contracts::build-devnet`.
+- `build-devnet` now deploys a three-level test table through a test-only
+  provider (`TableTournamentParametersProvider`), the one CI and local tests
+  run; `DEVNET_GEOMETRY=canonical` deploys the production contracts and
+  geometry, as the release's `-anvil-` asset does.

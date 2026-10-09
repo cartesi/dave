@@ -12,8 +12,9 @@ import {TableTournamentParametersProvider} from "../fixtures/TableTournamentPara
 import {DevnetGeometryDeploymentScript} from "./DevnetGeometryDeployment.s.sol";
 
 contract DevnetGeometryHarness is DevnetGeometryDeploymentScript {
-    /// @notice Deploy the two-level provider exactly as `runTwoLevel` encodes it.
-    function deployTwoLevelProvider()
+    /// @notice Deploy the three-level provider exactly as `runThreeLevel`
+    /// encodes it.
+    function deployThreeLevelProvider()
         external
         returns (TableTournamentParametersProvider provider)
     {
@@ -21,7 +22,7 @@ contract DevnetGeometryHarness is DevnetGeometryDeploymentScript {
         _registerChainKinds();
         bytes memory code = abi.encodePacked(
             type(TableTournamentParametersProvider).creationCode,
-            _twoLevelProviderArguments()
+            _threeLevelProviderArguments()
         );
         assembly ("memory-safe") {
             provider := create(0, add(code, 32), mload(code))
@@ -31,24 +32,27 @@ contract DevnetGeometryHarness is DevnetGeometryDeploymentScript {
 }
 
 contract DevnetGeometryDeploymentTest is Test {
-    function testTwoLevelProfileBudgets() public {
+    function testThreeLevelProfileBudgets() public {
         DevnetGeometryHarness harness = new DevnetGeometryHarness();
         vm.chainId(31337);
         TableTournamentParametersProvider provider =
-            harness.deployTwoLevelProvider();
+            harness.deployThreeLevelProvider();
 
-        for (uint64 level; level < 2; ++level) {
+        for (uint64 level; level < 3; ++level) {
             TournamentParameters memory row =
                 provider.tournamentParameters(level);
-            assertEq(row.levels, 2);
-            // 12 s blocks: 5 minutes and 60 minutes.
+            assertEq(row.levels, 3);
+            // 12 s blocks: 5 minutes and 30 minutes.
             assertEq(Time.Duration.unwrap(row.responseBudget), 25);
-            assertEq(Time.Duration.unwrap(row.commitmentBudget), 300);
+            assertEq(Time.Duration.unwrap(row.commitmentBudget), 150);
         }
         TournamentParameters memory root = provider.tournamentParameters(0);
-        assertEq(root.log2step, 37);
-        assertEq(root.height, 55);
-        // No censorship on devnets: the root join's inclusion plus one refill.
-        assertEq(Time.Duration.unwrap(root.maxAllowance), 25 + 300 + 2 * 25);
+        assertEq(root.log2step, 44);
+        assertEq(root.height, 48);
+        // No censorship on devnets: the root join's inclusion plus one refill
+        // per inner level.
+        assertEq(
+            Time.Duration.unwrap(root.maxAllowance), 25 + 2 * (150 + 2 * 25)
+        );
     }
 }

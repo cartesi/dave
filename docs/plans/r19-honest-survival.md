@@ -101,7 +101,7 @@ Paths under `prt/contracts/` unless stated.
 | `test/properties/ConcurrentRecursivePopulation.t.sol:101`, `FourLevelRecursiveLifecycle.t.sol:96` | Fixed recursive plumbing traces | Adversarial schedules |
 | `test/Tournament.t.sol:1072` | One censorship scenario (a sacrificial leaf cannot amplify censorship) | Everything else |
 | [Clock refill review](../reviews/2026-09-29-prt-clock-refill/REVIEW.md):66-76 | The balance `remaining censorship + (D - d) * F + d * G` | Reasoning, not a checked invariant |
-| The e2e smoke (`test/e2e/rollups/scenarios/simple.lua:26-29`, and the two-level smoke) | The real node beats an eager Sybil at `C = 0` | Scenario evidence, not adversarial schedules |
+| The e2e smoke (`test/e2e/rollups/scenarios/simple.lua:26-29`) | The real node beats an eager Sybil at `C = 0` | Scenario evidence, not adversarial schedules |
 | CF-01 probes (refill review :142-160) | The adverse handover trace at `C = 0` | Temporary Foundry probes with a state-transition stub, not retained; nothing in the repository pins that trace |
 
 No evidence combines an honest actor, Sybil-populated children, one `C`

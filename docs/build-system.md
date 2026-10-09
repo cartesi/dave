@@ -43,12 +43,17 @@ modules (`just <module>::<recipe>`, see `just --list`).
    production and deployment inputs that produced them. `build-devnet`
    produces the complete bundle and the e2e harness refuses an incomplete,
    stale, or mixed one. Release archives preserve the same three-part unit.
-   `DEVNET_GEOMETRY` selects the tournament table the bundle deploys: the
-   checked-in canonical one (default) or `two-level`, which serves the
-   selected two-level table through a test-only provider and a devnet-only
-   PRT script, leaving production scripts untouched. The marker records the
-   geometry, and every consumer verifies against the `DEVNET_GEOMETRY` it
-   runs with, so a bundle of one geometry never passes for another.
+   `DEVNET_GEOMETRY` selects the tournament table the bundle deploys. The
+   default, `three-level`, serves a three-level test table (`[44, 27, 0]` /
+   `[48, 17, 27]` at `T = 30 minutes`) through a test-only provider and a
+   devnet-only PRT script, leaving production scripts untouched; CI and local
+   tests run it whatever the canonical geometry is, for the reasons in
+   [test-harness.md](test-harness.md). `canonical` runs the production
+   deployment script with the checked-in table, and the release job builds
+   the `-anvil-` asset with it, so integrators get the production contracts
+   and geometry. The marker records the geometry, and every consumer verifies
+   against the `DEVNET_GEOMETRY` it runs with, so a bundle of one geometry
+   never passes for another.
 
 Consequence of (1) and (4): raw Cargo works after the gitignored Solidity
 bindings exist and either a valid external machine provider is selected or the
@@ -360,21 +365,23 @@ around either. The setup-tools action reads that pin through
 
 ## CI
 
-The per-PR and tag workflow (`.github/workflows/build.yml`) has jobs for PRT contracts (disputes,
-structured STF tests, and structured STF fuzz), consensus contracts, the e2e
-smoke (`just e2e-smoke`, one step over the list in `test/e2e/rollups/justfile`)
-plus the two-level smoke, a Rust workspace job (fmt, clippy, Lua lint and unit
-tests, Rust tests, the KMS signer tests, explicit image-backed machine
+The per-PR and tag workflow (`.github/workflows/build.yml`) has jobs for PRT
+contracts (disputes, structured STF tests, and structured STF fuzz), consensus
+contracts, the e2e smoke (`just e2e-smoke`, one step over the list in
+`test/e2e/rollups/justfile`), a Rust workspace job (fmt, clippy, Lua lint and
+unit tests, Rust tests, the KMS signer tests, explicit image-backed machine
 differentials, the node's half of the computation-hash release corpus, and the
 serial anvil harness), and the release pipeline (node binaries per arch,
-contract artifacts, deployment simulations, devnet state). The e2e lane, which
-has the released CLI, runs the corpus's CLI half and the reference CLI goldens.
-It needs no docker: the honeypot image is not a CI input. One smoke step keeps
-one scenario list; the Lua scenario deadline turns a hang into a failure, and a
-failed run uploads the per-scenario node logs. Actions are pinned by digest.
-When renaming just recipes, grep the workflow first; CI calls them
-by name. Shared acquisition and provider policy belongs in actions or Just
-targets, not copied shell programs in the workflow. In particular, the
+contract artifacts, deployment simulations, and the devnet state on the
+canonical geometry). The e2e and Rust workspace jobs, the only others that
+build a devnet, deploy the three-level test table. The e2e lane, which has
+the released CLI, runs the corpus's CLI half and the reference CLI goldens.
+It needs no docker: the honeypot image is not a CI input. One
+smoke step keeps one scenario list; the Lua scenario deadline turns a hang
+into a failure, and a failed run uploads the per-scenario node logs. Actions
+are pinned by digest. When renaming just recipes, grep the workflow first; CI
+calls them by name. Shared acquisition and provider policy belongs in actions
+or Just targets, not copied shell programs in the workflow. In particular, the
 emulator release commit and artifact digests live in the machine preparation
 script; CI only selects a lane and installs or consumes its result.
 

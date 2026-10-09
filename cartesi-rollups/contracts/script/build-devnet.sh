@@ -105,22 +105,22 @@ deploy_args=(
     --rpc-url "$rpc_url"
     --slow
 )
-case "${DEVNET_GEOMETRY:-canonical}" in
-    canonical)
-        ./script/deploy.sh "${deploy_args[@]}"
-        ;;
-    two-level)
+case "${DEVNET_GEOMETRY:-three-level}" in
+    three-level)
         # The devnet-only PRT script stores every contract under its
         # production name, so the rollups deployment below wires itself to
-        # the two-level factory unchanged.
+        # the test table's factory unchanged.
         # Forge resolves the script path from the working directory.
         forge script --root ../../prt/contracts \
             ../../prt/contracts/test/devnet/DevnetGeometryDeployment.s.sol:DevnetGeometryDeploymentScript \
-            --sig 'runTwoLevel()' "${deploy_args[@]}"
+            --sig 'runThreeLevel()' "${deploy_args[@]}"
         for root in "$base_contracts" '.'
         do
             forge script --root "$root" DeploymentScript "${deploy_args[@]}"
         done
+        ;;
+    canonical)
+        ./script/deploy.sh "${deploy_args[@]}"
         ;;
 esac
 

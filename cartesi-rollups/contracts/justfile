@@ -52,7 +52,9 @@ bind:
 bind-force: && bind
     rm -rf {{BINDINGS_DIR}} {{BIND_STAMP}}
 
-# DEVNET_GEOMETRY=two-level deploys the devnet-only two-level table instead
-# of the canonical one; bundle consumers verify against the same variable.
+# DEVNET_GEOMETRY=canonical deploys the production contracts and geometry
+# instead (the release asset); bundle consumers verify against the same
+# variable.
+# build the devnet bundle on the three-level test table CI and tests run
 build-devnet:
     ./script/build-devnet.sh

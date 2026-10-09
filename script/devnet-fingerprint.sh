@@ -21,10 +21,11 @@ readonly base_contracts="cartesi-rollups/contracts/dependencies/cartesi-rollups-
 readonly input_format="devnet-inputs-v7"
 readonly manifest_format="v5"
 
-# The tournament geometry the bundle deploys: the checked-in canonical table,
-# or a devnet-only profile served by a test provider. Every bundle consumer
-# verifies against the geometry it expects, so profiles never mix silently.
-readonly devnet_geometry="${DEVNET_GEOMETRY:-canonical}"
+# The tournament geometry the bundle deploys: the three-level test table CI
+# and local tests run, served by a test provider, or the checked-in canonical
+# table the release asset ships. Every bundle consumer verifies against the
+# geometry it expects, so profiles never mix silently.
+readonly devnet_geometry="${DEVNET_GEOMETRY:-three-level}"
 
 source_roots=(
     prt/contracts/src
@@ -48,16 +49,16 @@ deployment_files=(
     cartesi-rollups/contracts/script/deploy.sh
 )
 case "$devnet_geometry" in
-    canonical) geometry_files=() ;;
-    two-level)
+    three-level)
         geometry_files=(
             prt/contracts/test/devnet/DevnetGeometryDeployment.s.sol
             prt/contracts/test/fixtures/TableTournamentParametersProvider.sol
             prt/contracts/test/fixtures/TournamentParameterTableValidator.sol
         )
         ;;
+    canonical) geometry_files=() ;;
     *)
-        printf 'error: unknown DEVNET_GEOMETRY %s (canonical or two-level)\n' \
+        printf 'error: unknown DEVNET_GEOMETRY %s (three-level or canonical)\n' \
             "$devnet_geometry" >&2
         exit 2
         ;;
@@ -65,7 +66,7 @@ esac
 
 usage() {
     cat >&2 <<'EOF'
-usage (DEVNET_GEOMETRY selects the bundle's geometry: canonical or two-level):
+usage (DEVNET_GEOMETRY selects the bundle's geometry: three-level or canonical):
   script/devnet-fingerprint.sh
   script/devnet-fingerprint.sh inputs
   script/devnet-fingerprint.sh write EXPECTED_INPUTS [BUNDLE_DIR]
@@ -345,7 +346,11 @@ case "$mode" in
         bundle=${2:-cartesi-rollups/contracts}
         read_manifest "$bundle/state.fingerprint" || exit $?
         if [[ "$recorded_geometry" != "$devnet_geometry" ]]; then
-            stale "the devnet bundle deploys the ${recorded_geometry} geometry, not the expected ${devnet_geometry}; run: DEVNET_GEOMETRY=${devnet_geometry} just rollups-contracts::build-devnet"
+            rebuild="just rollups-contracts::build-devnet"
+            if [[ "$devnet_geometry" != three-level ]]; then
+                rebuild="DEVNET_GEOMETRY=${devnet_geometry} ${rebuild}"
+            fi
+            stale "the devnet bundle deploys the ${recorded_geometry} geometry, not the expected ${devnet_geometry}; run: ${rebuild}"
             exit 1
         fi
         current_inputs="$(inputs_digest)" || exit $?

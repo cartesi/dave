@@ -507,10 +507,10 @@ mod tests {
         .await
         .unwrap();
         // The devnet bundle serves the table of the geometry profile it was
-        // built with (DEVNET_GEOMETRY, canonical by default).
+        // built with (DEVNET_GEOMETRY, the three-level test table by default).
         let expected = match std::env::var("DEVNET_GEOMETRY").as_deref() {
-            Ok("two-level") => TournamentGeometry::two_level(),
-            _ => TournamentGeometry::checked_in(),
+            Ok("canonical") => TournamentGeometry::checked_in(),
+            _ => TournamentGeometry::three_level(),
         };
         assert_eq!(
             geometry, expected,
