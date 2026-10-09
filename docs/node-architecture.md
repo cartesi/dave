@@ -618,9 +618,10 @@ provisioning floor and its assumed peak fee live in the node README.
 ## Performance stance
 
 The node claims only that it adds no work over the emulator's own. Whether
-a geometry fits an application on given hardware is measured with the
-emulator (docs/measurements/constants.md) and sized by the operator; the
-node never refuses to run for performance. CI gates deterministic work
+a geometry fits an application on given hardware is measured on the node's
+own leaf path (the node crate's `measure.rs --constants`,
+docs/measurements/constants.md) and sized by the operator; the node never
+refuses to run for performance. CI gates deterministic work
 counts, never time (`engine/spec.rs`: a leaf build runs each ustep once, an
 idle stretch costs one captured cycle per stratum span (at most 256 per
 build), folded spans cost no machine work; a join
