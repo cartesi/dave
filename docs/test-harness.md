@@ -56,8 +56,8 @@ just e2e <program> <scenario>              (builds the node first)
   `DaveAppFactory`, and wires up a `Reader` and `Sender` (thin cast-style
   wrappers in `dave/reader.lua` / `dave/sender.lua`).
 - `spawn_node()` launches `target/debug/cartesi-sling-node` with a
-  private-key signer, state dir `_state/`, and logs to `dave.log`. Under
-  `TEST_INSTANCE=<id>`, the state and log become `_state-<id>/` and
+  private-key signer, data directory `_state/`, and logs to `dave.log`. Under
+  `TEST_INSTANCE=<id>`, the data directory and log become `_state-<id>/` and
   `dave-<id>.log`.
 - Dishonest players (sybils) drive the Lua semantic actor
   (`prt/client-lua/player/actor.lua`) as a coroutine. Its independent

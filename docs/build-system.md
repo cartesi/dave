@@ -161,7 +161,7 @@ the Keccak hash of the exact schema bytes, and the commitment semantics version
 (`COMMITMENT_SEMANTICS` in `storage/sql/schema.rs`). An existing database is
 never given DDL at startup; all three identity values must match the running
 binary. A
-mismatch requires deleting the state directory and rebuilding it from the
+mismatch requires deleting the data directory and rebuilding it from the
 chain and machine image.
 
 ## Open design questions

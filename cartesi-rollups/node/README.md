@@ -74,7 +74,7 @@ The node completes epochs in order: it waits for finalized settlement and its
 winning bond recoveries before participating in the next epoch. It resumes the
 same unfinished epoch after restart. Other participants may advance meanwhile;
 the operating timing assumption allows a modest delay while refunds finish.
-Changing the signer keeps the state directory: the node recovers the bonds of
+Changing the signer keeps the data directory: the node recovers the bonds of
 its current signer, and a previous signer's bonds stay recoverable by anyone
 through `tryRecoveringBond`, which pays the recorded claimer. A changed node
 version, schema, or commitment semantics requires a fresh directory under the
@@ -85,7 +85,7 @@ hash; a mismatch is refused before anything is written, and so is a matching
 image that is not paused at a manual accepted yield, from which no epoch can
 start.
 
-One node process owns a state directory: startup locks its `node.lock` and
+One node process owns a data directory: startup locks its `node.lock` and
 refuses a directory another process holds, or one on a filesystem without
 file locks. The lock does not cover the signer: nodes on different
 directories must still not share a key.
@@ -98,7 +98,7 @@ resumes after the restart. Give the stop timeout room for one input's
 execution and one tick's RPC calls; under three levels a dispute's leaf and
 middle commitment builds also run to completion. A second stop signal exits at
 once, as safely as SIGKILL. A restart refetches the live tournaments' logs.
-Upgrade or rebuild the state directory between disputes: a fresh directory
+Upgrade or rebuild the data directory between disputes: a fresh directory
 rebuilds every engaged level's commitment on the dispute clock.
 
 Put `--data-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
@@ -177,7 +177,7 @@ Options:
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
           execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS] [default: 64]
       --data-dir <DATA_DIR>
-          node state (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR]
+          node data directory (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR]
   -h, --help
           Print help
 ```
@@ -193,7 +193,7 @@ Options:
   but is not validated, and refunds leave out the L1 data fee. On Arbitrum
   the node stops at startup: contracts there measure clocks in the parent
   chain's block numbers, while logs and the node's heads use Arbitrum's own.
-- A fresh state directory replays every input since the application's
+- A fresh data directory replays every input since the application's
   deployment. To upgrade across a change that requires one, start the new
   node on a new directory with its own funded signer, let it catch up, then
   stop the old one; never wipe the only node's directory in place. The new
@@ -212,7 +212,7 @@ Options:
   epoch dropped at its tail surfaces later as an index or epoch error that
   does not heal. Either failure logs an error once it repeats on the next
   tick: point the node at a provider that serves complete logs, and if the
-  error persists, rebuild the state directory.
+  error persists, rebuild the data directory.
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
   canonical three-level table that allowance is about one week and 85 minutes

@@ -225,7 +225,7 @@ impl BlockchainReader {
                                 "blockchain read failed the same log completeness check on \
                                  consecutive ticks: {e:#}; point --blockchain-http-endpoint at a \
                                  provider that serves complete logs, and if this persists, \
-                                 rebuild the state directory"
+                                 rebuild the data directory"
                             );
                         } else {
                             log::warn!("blockchain read failed, retrying next tick: {e:#}");

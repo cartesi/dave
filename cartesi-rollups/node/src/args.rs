@@ -182,8 +182,8 @@ pub struct PRTArgs {
     )]
     pub snapshot_gap_inputs: u64,
 
-    /// node state (database, snapshots, dispute scratch); keep it across
-    /// restarts, on a filesystem with reflinks
+    /// node data directory (database, snapshots, dispute scratch); keep it
+    /// across restarts, on a filesystem with reflinks
     #[arg(long, env = "CARTESI_SLING_DATA_DIR")]
     pub data_dir: PathBuf,
 }
@@ -373,7 +373,7 @@ impl NodeConfig {
             chain_id as u64,
             &geometry,
         )
-        .context("could not open the state directory")?;
+        .context("could not open the data directory")?;
 
         Ok(Self {
             address_book,

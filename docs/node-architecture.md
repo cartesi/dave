@@ -39,7 +39,7 @@ paused at a manual accepted yield) and requires that hash to equal the
 consensus's initial hash. A matching template paused elsewhere is the deployed
 application's own and still refused: the engine starts every epoch from a
 state awaiting input, so the node could not defend any of its epochs. Only
-then does it take the state-directory lock and open the directory. A seeded
+then does it take the data-directory lock and open the directory. A seeded
 directory is compared with its `sling_config` pins (app, chain, consensus,
 template, emulator and table) before anything is written. A mismatch names the
 flag to fix (`--app-address`, `--blockchain-id`), calls the directory another
@@ -175,7 +175,7 @@ applies it to its completeness and continuity checks (`repeated_check`):
 failing the same one on consecutive ticks means the provider keeps omitting
 logs (point the node at a complete one), or a stored chunk lacks one. That
 is the one stall a retry never heals: a log missing from the tail of a
-catch-up chunk (rebuild the state directory). A tournament event that does
+catch-up chunk (rebuild the data directory). A tournament event that does
 not fold onto the reader's finalized prefix, or a phase read on the Hero's
 path that contradicts it, drops the prefix, and the next tick refolds from
 the root's creation block as a restart would; any other omitted log that
@@ -219,7 +219,7 @@ Immediate); writer roles live in per-role files - `ingest.rs`
 `completion.rs` (epoch-manager) - `snapshots.rs` is the boundary store (every
 machine store, load, and clean), and `queries.rs`
 is the role-free read surface. Every public operation is one
-transaction closure. One node process owns a state directory: startup takes
+transaction closure. One node process owns a data directory: startup takes
 an exclusive lock on its `node.lock` before the first write and refuses a
 directory another process holds, or one whose filesystem cannot lock; SQLite
 coordinates the worker threads. The lock does not cover the signer, which
@@ -270,7 +270,7 @@ no migrations or ordered schema versions. On an empty database, startup applies
 that file once and atomically records the node package version, the Keccak
 hash of the exact schema file, and the commitment semantics version. On later
 launches it executes no DDL: all three stored values must match the running
-binary, or startup refuses the state directory before applying schema changes.
+binary, or startup refuses the data directory before applying schema changes.
 The raw file fingerprint catches schema changes between builds that share a
 package version; the semantics version catches commitment changes that alter
 neither. It attests which schema created
@@ -279,7 +279,7 @@ continuously audited.
 
 The epoch-completion cursor is not bound to a signer: recovery pays the
 configured signer's bonds, and a previous signer's bonds stay recoverable by
-anyone. Incompatible schema or node versions require rebuilding a fresh state
+anyone. Incompatible schema or node versions require rebuilding a fresh data
 directory from the chain and template machine, as does a change of commitment
 semantics: a change to leaf values or transition shapes bumps
 `COMMITMENT_SEMANTICS` in `storage/sql/schema.rs`, because the frozen crate
@@ -409,7 +409,7 @@ anything is stored, and the next tick retries. Only `F`'s state is read, since
 an earlier block's would need an archive node, so a chunk that ends before `F`
 during catch-up is checked by contiguity alone: a log missing from its tail
 surfaces only later, at the next log of its kind or at `F`, and then stops
-ingestion until the state directory is rebuilt. Until `F` reaches the
+ingestion until the data directory is rebuilt. Until `F` reaches the
 consensus's deployment (an application deployed ahead of its consensus, or a
 node started before its deployment finalized), the totals cannot be read and
 the tick retries.
@@ -553,7 +553,7 @@ assembly ran machine work observes the chain again before planning, once,
 and that assembly reuses the build: the action, its head, the join's Solid
 and any cleanup come from a view newer than the build, so a child that
 finalized meanwhile is joined at once. A stop request cuts the work short
-(Process layout). Two cases do put a build on the Hero's clock: a fresh state
+(Process layout). Two cases do put a build on the Hero's clock: a fresh data
 directory while a dispute is engaged rebuilds every engaged level's
 commitment, so upgrade or rebuild between disputes; and a reorg that drops a
 seal mid-build leaves the node silent until the build ends. The tick's refund
