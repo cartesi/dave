@@ -206,19 +206,20 @@ machine.
 
 Nobody can build (or store) 2^92 leaves. The dispute is split into levels;
 `prt/contracts/src/arbitration-config/ArbitrationConstants.sol` holds the
-deployed table. The two tables in use are three levels and two:
+deployed table, two levels. The devnet that CI and local tests run serves a
+three-level test table instead:
 
 ```
-three levels
+two levels (canonical)
+level  log2step  height   leaf =                       tree covers
+0      38        54       one hash per 2^38 usteps     whole epoch (2^92)
+1      0         38       one hash per ustep           one level-0 stride
+
+three levels (devnet test table)
 level  log2step  height   leaf =                       tree covers
 0      44        48       one hash per 2^44 usteps     whole epoch (2^92)
 1      27        17       one hash per 2^27 usteps     one level-0 stride
 2      0         27       one hash per ustep           one level-1 stride
-
-two levels
-level  log2step  height   leaf =                       tree covers
-0      38        54       one hash per 2^38 usteps     whole epoch (2^92)
-1      0         38       one hash per ustep           one level-0 stride
 ```
 
 Invariants: `log2step[i] == log2step[i+1] + height[i+1]`, and
