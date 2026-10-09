@@ -25,12 +25,6 @@ use cartesi_sling_node::storage::{
     DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Storage, Template,
 };
 
-/// Five minutes of clock per tree height unit: the inclusion budget each
-/// response is discounted by (ClockBudgets; Deployment.s.sol
-/// `_getInclusionBudget`). Every replay a bisection move needs must fit well
-/// inside this.
-const PER_MOVE_BUDGET_SECS: u64 = 300;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum BaselineProfile {
     Echo,
@@ -78,8 +72,8 @@ struct Args {
     #[arg(long)]
     out: Option<PathBuf>,
 
-    /// Include the three-level table's level-1 root replay: a 2^44-ustep
-    /// span, potentially minutes of machine time.
+    /// Include the 2^44-ustep span replay at stride 2^27, potentially
+    /// minutes of machine time.
     #[arg(long)]
     full: bool,
 
@@ -159,8 +153,7 @@ fn main() -> Result<()> {
     bench_snapshot(&mut report, &image, &scratch_root)?;
     bench_clone_loop(&mut report, &image, &scratch_root)?;
     bench_atoms(&mut report, &image, &scratch_root)?;
-    let quartets = bench_quartets(&mut report, &image, &scratch_root, args.full)?;
-    budget(&mut report, &quartets)?;
+    bench_quartets(&mut report, &image, &scratch_root, args.full)?;
 
     let _ = fs::remove_dir_all(&scratch_root);
     emit(&report, args.out.as_deref())
@@ -198,7 +191,7 @@ fn preamble(report: &mut String, image: &Path, profile: BaselineProfile, full: b
         if full {
             ""
         } else {
-            "\nLevel-1 root replay skipped (run with --full)."
+            "\n2^44-ustep span replay skipped (run with --full)."
         }
     )?;
     writeln!(report)?;
@@ -207,10 +200,12 @@ fn preamble(report: &mut String, image: &Path, profile: BaselineProfile, full: b
 
 /// Worst-case folds: alternating distinct hashes, no adjacent-run
 /// merging, tail-padded to one 2^24-leaf tier - the shape of the
-/// frontier's top fold (window roots plus padding) and of the
-/// per-window fold the runner pays at each record. The 1M-run row is
-/// the OQ9 corner, now amortized one window per input instead of a
-/// whole-epoch fold at every Hero construction.
+/// frontier's top fold (window roots plus padding). The per-window
+/// fold the runner pays at each record has the same shape at height
+/// 68 minus the root stride, 24 only at a 2^44 root stride; folds are
+/// run-compressed, so the run count, more than the height, drives cost.
+/// The 1M-run row is the OQ9 corner, now amortized one window per
+/// input instead of a whole-epoch fold at every Hero construction.
 fn bench_level0_fold(report: &mut String) -> Result<()> {
     writeln!(
         report,
@@ -219,7 +214,7 @@ fn bench_level0_fold(report: &mut String) -> Result<()> {
     writeln!(report)?;
     writeln!(report, "| runs | fold time |")?;
     writeln!(report, "|---:|---:|")?;
-    const LOG2_LEAVES: u64 = 24; // window interior = top tree = 2^24
+    const LOG2_LEAVES: u64 = 24; // the top tree: 2^24 windows
     for &count in &[1_000u64, 10_000, 100_000, 1_000_000] {
         let total: u64 = 1 << LOG2_LEAVES;
         let runs = (0..count).map(move |i| {
@@ -344,9 +339,9 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     writeln!(report)?;
 
     // The hash-hot sampling loop under each mapping mode: does
-    // MAP_SHARED slow the ustep + root_hash pair the level-2 collect
-    // lives in? A fresh clone per mode (ALL locks and mutates its
-    // directory).
+    // MAP_SHARED slow the ustep + root_hash pair the leaf level's
+    // collect lives in? A fresh clone per mode (ALL locks and mutates
+    // its directory).
     writeln!(report, "| hash-hot pairs (uarch step + root_hash) | rate |")?;
     writeln!(report, "|---|---:|")?;
     for (tag, label, mode) in [
@@ -420,7 +415,7 @@ fn free_space_kb(path: &Path) -> Result<u64> {
 /// The primitive rates every extrapolation is built from, measured on
 /// the real machine: idle churn (the ustep/ureset cycle a yielded
 /// machine burns per big cycle), the input feed, active usteps, and
-/// the ustep+state_hash pair that level-2 sampling pays per leaf.
+/// the ustep+state_hash pair that leaf-level sampling pays per leaf.
 fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     let input = evm_advance_input(0, b"measure");
     let mut stf = MachineStf::load(image, scratch(scratch_root, "atoms")?, Hashing::PerStep)?
@@ -461,8 +456,8 @@ fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result
     }
     let active_elapsed = start.elapsed();
 
-    // The level-2 sampling workload: every ustep dirties state, every
-    // sample pays a root hash.
+    // The leaf level's sampling workload: every ustep dirties state,
+    // every sample pays a root hash.
     let pairs = 500u64;
     let start = Instant::now();
     for _ in 0..pairs {
@@ -502,22 +497,21 @@ fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result
 
 /// Real span replays through the facade's node(), each on a fresh
 /// storage and factory (guaranteed miss), then the same quartet
-/// again (hit). Returns (label, miss latency) rows for the budget
-/// table.
+/// again (hit).
 fn bench_quartets(
     report: &mut String,
     image: &Path,
     scratch_root: &Path,
     full: bool,
-) -> Result<Vec<(String, u64, u64, Duration)>> {
+) -> Result<()> {
     let mut spans: Vec<(&str, u64, u64)> = vec![
         ("uarch span", 0, LOG2_MAX_UARCH_CYCLES_PER_MCYCLE),
         ("mid stride", 27, 10),
         ("coarse", 44, 4),
-        ("level-2 root shape", 0, 27),
+        ("dense 2^27 usteps", 0, 27),
     ];
     if full {
-        spans.push(("level-1 root shape", 27, 17));
+        spans.push(("2^44 usteps at mid stride", 27, 17));
     }
 
     let workload = image
@@ -533,7 +527,6 @@ fn bench_quartets(
     writeln!(report, "| span | quartet | miss | cache hit |")?;
     writeln!(report, "|---|---|---:|---:|")?;
 
-    let mut results = Vec::new();
     for (index, (label, log2_stride, height)) in spans.into_iter().enumerate() {
         let mut source = two_input_epoch(image, scratch_root, &format!("quartet-{index}"))?;
         let quartet = Quartet::level_root(0, log2_stride, height);
@@ -546,10 +539,8 @@ fn bench_quartets(
             fmt_duration(miss),
             fmt_duration(hit),
         )?;
-        results.push((label.to_string(), log2_stride, height, miss));
     }
-    writeln!(report)?;
-    Ok(results)
+    Ok(())
 }
 
 /// A dispute source over a two-input epoch 0 of the workload.
@@ -601,48 +592,6 @@ fn peak_rss_bytes() -> u64 {
     } else {
         max * 1024
     }
-}
-
-fn budget(report: &mut String, quartets: &[(String, u64, u64, Duration)]) -> Result<()> {
-    writeln!(report, "## Clock budget")?;
-    writeln!(report)?;
-    writeln!(
-        report,
-        "responseBudget grants five minutes of clock per height unit\n\
-         (ClockBudgets), so a bisection move budgets ~{PER_MOVE_BUDGET_SECS} s.\n\
-         Total allowances, C + G + (L - 1)(T + 2G) at T = 30 min: devnet 85 min,\n\
-         testnet 9 h 25 min, mainnet 1 week + 85 min.\n\
-         Level 0 never replays (seed-served); levels 1 and 2 pay their\n\
-         root-shape replay on the first cold descent."
-    )?;
-    writeln!(report)?;
-    writeln!(
-        report,
-        "| level | root span | measured (this workload) | budget | margin |"
-    )?;
-    writeln!(report, "|---|---|---:|---:|---:|")?;
-    for (level, stride, height) in [(1u64, 27u64, 17u64), (2, 0, 27)] {
-        let row = quartets
-            .iter()
-            .find(|(_, s, h, _)| *s == stride && *h == height);
-        let (measured, margin) = match row {
-            Some((_, _, _, d)) => {
-                let secs = d.as_secs_f64();
-                (
-                    fmt_duration(*d),
-                    format!("{:.0}x", PER_MOVE_BUDGET_SECS as f64 / secs.max(1e-9)),
-                )
-            }
-            None => ("not measured".into(), "-".into()),
-        };
-        writeln!(
-            report,
-            "| {level} | 2^{} usteps | {measured} | {PER_MOVE_BUDGET_SECS} s | {margin} |",
-            stride + height,
-        )?;
-    }
-    writeln!(report)?;
-    Ok(())
 }
 
 /// The canonical input encoding (Inputs.sol EvmAdvance), mirroring the

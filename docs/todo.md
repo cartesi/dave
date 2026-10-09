@@ -113,9 +113,6 @@ carry no backlog (reviews/README.md).
 - The toolchain is off the bare PATH (forge, the CLI and the pinned emulator
   come from the nix devshell): recipes that enter it, or a doctor check that
   names the fix. (build-system.md)
-- Fix the measurement generator's wording for `G` and regenerate the
-  measurements, whose checked-in prose still names `matchEffort`.
-  (dimensioning.md)
 
 ## Decisions
 

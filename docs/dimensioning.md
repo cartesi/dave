@@ -381,12 +381,7 @@ measurement method across explicitly selected stress-ng workloads. Generator
 output is evidence for a parameter set, not a permanent constant: workloads,
 hardware assumptions, rounding, and the intended level count must travel with
 the generated table. These tools take `T` and root slowdown as inputs and
-derive strides and heights; they do not derive `G`. The same binary's
-baseline report (`src/bin/measure.rs`, its clock-budget section) still
-describes `G` as "five minutes of clock per height unit", and its checked-in
-outputs (measurements*.md) still name `matchEffort`, a symbol that no longer
-exists; `G` is the per-response inclusion budget above. Fix the wording and
-regenerate rather than hand-editing its output.
+derive strides and heights; they do not derive `G`.
 
 This timing and geometry process is separate from EVM refund calibration.
 [`prt-refund-gas-calibration.md`](runbooks/prt-refund-gas-calibration.md) owns
@@ -399,7 +394,7 @@ Because clocks price the average, the average must be measured, and
 measured validly:
 
 - Measure on real workloads and label the density. An idle machine
-  churns ~34 usteps per big cycle; typical executing code runs ~50;
+  churns ~43 usteps per big cycle; typical executing code runs ~50;
   the instruction-heavy stress workload measures ~566 (the density
   label in docs/measurements/constants.md, and the basis for the candidate
   tables derived there); the span allows 2^20. A throughput number
