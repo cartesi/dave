@@ -37,10 +37,10 @@ contract ClockBudgetsTest is Test {
     }
 
     function testEthereumTwoLevelBudgets() public pure {
-        ClockBudgets.Model memory model = _ethereum(1 weeks, 60 minutes);
-        assertEq(_unwrap(ClockBudgets.commitmentBudget(model)), 300);
-        assertEq(_unwrap(ClockBudgets.refill(model)), 350);
-        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 2)), 50_400 + 375);
+        ClockBudgets.Model memory model = _ethereum(1 weeks, 120 minutes);
+        assertEq(_unwrap(ClockBudgets.commitmentBudget(model)), 600);
+        assertEq(_unwrap(ClockBudgets.refill(model)), 650);
+        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 2)), 50_400 + 675);
     }
 
     function testSingleLevelAllowanceHasNoRefill() public pure {
