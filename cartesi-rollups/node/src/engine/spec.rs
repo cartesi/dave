@@ -1434,7 +1434,7 @@ fn eager_window_runs_its_cycles_once_and_hashes_once_per_sample() {
     // runs once on the big machine, nothing steps the uarch, and each
     // sample costs one hash, plus one for the idle tail.
     let structure = Structure::PRODUCTION;
-    let log2_stride = 37;
+    let log2_stride = 38;
     let spacing = 1usize << (log2_stride - structure.log2_uarch_span);
     for cycles in [1, 2 * spacing, 2 * spacing + 5] {
         let factory = MeteredFactory::new(structure, vec![dense(cycles, 2)]);
@@ -1457,7 +1457,7 @@ fn eager_window_runs_its_cycles_once_and_hashes_once_per_sample() {
 
 #[test]
 fn dense_leaf_hashes_each_distinct_leaf_once() {
-    // A two-level leaf (stride 0, 2^37 transitions) built from big-cycle
+    // A two-level leaf (stride 0, 2^38 transitions) built from big-cycle
     // roots. A big cycle with d active usteps has d + 2 distinct leaves
     // (each active post-state, the halted run, the closing reset), which
     // is all the hashing the commitment needs; the idle rest of the leaf
@@ -1466,7 +1466,7 @@ fn dense_leaf_hashes_each_distinct_leaf_once() {
     let usteps = [3u64, 1, 5, 2, 7];
     let factory = MeteredFactory::new(structure, vec![accept(&usteps)]);
     let mut ruler = super::ruler::Ruler::new(factory.stf(), structure, 1);
-    ruler.collect_big_cycle_roots(U256::from(1) << 37).unwrap();
+    ruler.collect_big_cycle_roots(U256::from(1) << 38).unwrap();
 
     let active: u64 = usteps.iter().sum();
     let cycles = usteps.len() as u64;
@@ -1554,19 +1554,19 @@ fn positioning_runs_the_prefix_once_and_hashes_nothing() {
 #[test]
 fn join_descent_replays_the_prefix_once_per_stratum() {
     // Pinned: a join builds the two-level leaf (one trip) and proves its
-    // last leaf, which descends four fanout strata (heights 29, 21, 13 and
-    // 5), each a trip that re-runs the input's prefix from the window
+    // last leaf, which descends four fanout strata (heights 30, 22, 14 and
+    // 6), each a trip that re-runs the input's prefix from the window
     // boundary. The prefix replay is native and unhashed, so even a leaf
     // deep inside a long input stays within the node's measured overhead
     // over the emulator (docs/measurements/node-vs-emulator.md).
     let structure = Structure::PRODUCTION;
-    let leaf_cycles = 1usize << (37 - structure.log2_uarch_span);
+    let leaf_cycles = 1usize << (38 - structure.log2_uarch_span);
     // The input runs through the first leaf and 50 cycles into the
     // second, which is the one disputed.
     let cycles = leaf_cycles + 50;
     let factory = MeteredFactory::new(structure, vec![dense(cycles, 2)]);
-    let mut source = DisputeSource::new(toy_storage(structure), factory, 0, 37).unwrap();
-    let level = LevelCoords::new(0, U256::from(1) << 37, 0, 37);
+    let mut source = DisputeSource::new(toy_storage(structure), factory, 0, 38).unwrap();
+    let level = LevelCoords::new(0, U256::from(1) << 38, 0, 38);
 
     source.node(&level.root()).unwrap();
     let build = source.factory().take();

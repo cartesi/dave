@@ -138,8 +138,8 @@ Rust node is invisible to these checks except where a dispute reaches the
 on-chain state transition. Below e2e, `runner_settles_the_reference_root`
 (`cartesi-rollups/node/tests/engine_machine.rs`) checks the production
 runner's settled root against checked-in answers of the release CLI under
-both tables (the root samples every 2^(stride - 20) big cycles; at 2^17 a
-sample falls inside echo's rejected input, so the revert shows), and
+both tables (the root samples every 2^(stride - 20) big cycles; at 2^18
+samples fall inside yield's rejected inputs, so the revert shows), and
 `leaf_commitments_match_the_reference_cli` checks stride-0 leaf commitments
 (dense spans, yields, reverts) against the CLI's uarch cycle computation
 hashes at periods 7 and 8. The node builds tall leaves (two-level only)

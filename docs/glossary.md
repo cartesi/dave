@@ -76,7 +76,7 @@ level. Terms marked (code) appear verbatim in identifiers.
   `cm_collect_uarch_cycle_root_hashes` and `cm_collect_mcycle_root_hashes`,
   which run a span and return its sampled roots in one call (wrapped in
   machine/rust-bindings `types/collect.rs`). The node builds tall leaves
-  (stride 0, height 28 or more: the two-level table's height-37 leaf) with
+  (stride 0, height 28 or more: the two-level table's height-38 leaf) with
   the uarch collector, bundled per big cycle; every other quartet, every
   three-level leaf included, is stepped. `Collector::Stepped` steps tall
   leaves too, as the collector's test reference. The release CLI is

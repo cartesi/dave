@@ -347,7 +347,7 @@ impl<F: RulerFactory> DisputeSource<F> {
     }
 
     /// Leaves of one window's level-0 subtree: log2_window_span less
-    /// the run stride (height 24 over stride 44, 31 over stride 37).
+    /// the run stride (height 24 over stride 44, 30 over stride 38).
     fn interior_height(&self) -> u64 {
         self.structure.log2_window_span() - self.log2_run_stride
     }

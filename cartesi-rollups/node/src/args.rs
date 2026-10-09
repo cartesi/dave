@@ -451,7 +451,7 @@ mod tests {
     fn accepts_any_valid_factory_table() {
         let three_level = tournament_geometry_from_rows(3, &[(3, 44, 48), (3, 27, 17), (3, 0, 27)]);
         assert_eq!(three_level.unwrap(), TournamentGeometry::three_level());
-        let two_level = tournament_geometry_from_rows(2, &[(2, 37, 55), (2, 0, 37)]);
+        let two_level = tournament_geometry_from_rows(2, &[(2, 38, 54), (2, 0, 38)]);
         assert_eq!(two_level.unwrap(), TournamentGeometry::two_level());
     }
 
