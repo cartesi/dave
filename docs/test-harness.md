@@ -216,11 +216,11 @@ the 2026-10-01 cut:
 
 - `simple`: the honest node settles a disputed epoch. Its one leaf match
   must end in a STEP proof (`Env.assert_leaf_match_proved`), so the per-PR
-  echo `simple` and the two-level smoke gate the on-chain state
-  transition. The gate's negative control (a timeout-resolved leaf refused)
-  left with the sealed-leaf scenarios; the per-PR STEP evidence no longer
-  rests on it alone: the node harness requires the node's `winLeafMatch` at
-  a closing slot to mine, and `NodeWitnessesTest` replays the node's bytes.
+  echo `simple` gates the on-chain state transition. The gate's negative
+  control (a timeout-resolved leaf refused) left with the sealed-leaf
+  scenarios; the per-PR STEP evidence no longer rests on it alone: the node
+  harness requires the node's `winLeafMatch` at a closing slot to mine, and
+  `NodeWitnessesTest` replays the node's bytes.
 - `stf_all`: drives disputes down to on-chain state-transition proofs,
   one transition shape per epoch (see the coverage matrix below).
 - `stf_revert`: the full revert restore, the one shape whose position
@@ -315,13 +315,21 @@ Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suit
 runs Rust fmt, Clippy, Lua lint and client unit tests, the Rust build and unit
 tests, and the explicit image-backed engine differentials; the e2e job runs
 `just e2e-smoke` (echo `simple`, chaos at seed 1, the batched catch-up kill,
-echo `stf_all` and yield `stf_revert`), then rebuilds the devnet with
-`DEVNET_GEOMETRY=two-level` and runs echo `simple` against it
-(`just test-rollups-two-level-smoke`). The node, the oracle, and the steering
-helper read the level table from chain. Unsteered scenarios patch at
-`1 << 44`, an idle leaf under either table. On the two-level devnet, honeypot
-`stf_all`, yield `stf_revert` and the batched catch-up kill have also passed
-(2026-09-30).
+echo `stf_all` and yield `stf_revert`).
+
+Every scenario, in CI and locally, runs on the devnet's three-level test
+table, whatever the canonical geometry is ([build-system.md](build-system.md),
+the devnet bundle). Dense two-level leaves do not fit the e2e clock: the
+harness keeps mining a block per poll while the node builds, and with no
+censorship slack on the devnet (`C = 0`) a dense two-level leaf outlasts the
+clock. The scenarios test the node and the transition shapes, not the level
+count; Foundry owns contract correctness, and the node's two-level paths (tall
+leaves, two-level roots) are tested in `engine_machine` and the engine spec.
+The two-level e2e passes recorded on 2026-09-30 were an artifact: the Lua
+sybil froze the harness clock while it built its leaves. The release devnet
+asset deploys the production contracts and geometry instead. The node, the
+oracle, and the steering helper read the level table from chain. Unsteered
+scenarios patch at `1 << 44`, an idle leaf.
 
 The smoke list lives in the `smoke` recipe of `test/e2e/rollups/justfile`, and
 CI and local runs share it. It runs serially and past failures, keeps each node
@@ -451,11 +459,12 @@ Node-side machine work and tick cadence are NOT drivers at current
 constants. Parallel `TEST_INSTANCE` lanes already remove serial
 fixed-port execution from the wall-time model.
 
-Levers: the fast-forward crank (ff=128), TEST_INSTANCE parallel
-isolation, and the loud scenario deadline are done and default. A
-test-shape constants profile (smaller clock allowances and shallower trees)
-would shrink protocol-time fast-forwarding at the source; it is a
-conditional item in [todo.md](todo.md), tied to the two-level switch.
+Levers: the fast-forward crank (ff=128), TEST_INSTANCE parallel isolation, and
+the loud scenario deadline are done and default. A smaller test table (smaller
+clock allowances and shallower trees) would shrink protocol-time
+fast-forwarding at the source; the devnet already deploys its own table
+(`prt/contracts/test/devnet/`), so that is a change of rows, not a new
+profile.
 
 Current tiering: every maintained scenario is on the smoke list, so per-PR CI
 gives each one complete integration path. Yield's unique value is the revert
@@ -498,7 +507,7 @@ Foundry. Only what needs the node as a process lands here:
    dispute must reach a specific transition, and with `run_epoch` or
    hand-rolled sybils when it does not matter where it lands. Take strides and
    heights from `env.reader:read_tournament_levels()`, never literals, so the
-   scenario runs on either table.
+   scenario runs on any table.
 3. Add `<program> <name>` to the `smoke` recipe's list in
    `test/e2e/rollups/justfile`; per-PR CI runs that list, and the smoke
    warns about any scenario file missing from it.

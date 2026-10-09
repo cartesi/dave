@@ -45,7 +45,7 @@ exclude the `*FfiTest` contracts deliberately.
 | `test/accounting/` | Reserve algebra, exact refund formula, and callback behavior |
 | `test/characterization/` | Frozen historical three-level behavior |
 | `test/config/` | Canonical and generic parameter-table validation |
-| `test/devnet/` | The devnet-only two-level deployment script (`DEVNET_GEOMETRY=two-level`) and its test |
+| `test/devnet/` | The devnet-only deployment of the three-level test table CI and local tests run (the default `DEVNET_GEOMETRY`) and its test |
 | `test/fixtures/` | Injected geometry, small trees, independent models, and test-only transitions |
 | `test/gas/` | Retained production refund witnesses |
 | `test/properties/` | Match parity, lifecycle, recursion, population, and delay properties |

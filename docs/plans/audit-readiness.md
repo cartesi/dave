@@ -77,11 +77,11 @@ before the freeze.
    A counterexample would be a bytecode change, so it must come before the
    freeze.
 2. Contract code shaped for tests. `_getClockModel(Seconds commitmentBudget)`
-   in `prt/contracts/script/Deployment.s.sol:226` takes a parameter only the
-   devnet script varies (`test/devnet/DevnetGeometryDeployment.s.sol:55`);
-   production passes `ArbitrationConstants.COMMITMENT_BUDGET` (:208-210).
-   Declare `test/devnet/` out of scope; collapse the parameter when
-   `DEVNET_GEOMETRY` retires, unless a test-shape profile keeps it.
+   in `prt/contracts/script/Deployment.s.sol:232` takes a parameter only the
+   devnet script varies (`test/devnet/DevnetGeometryDeployment.s.sol:63`);
+   production passes `ArbitrationConstants.COMMITMENT_BUDGET` (:214-216).
+   Declare `test/devnet/` out of scope. The parameter stays: the devnet's
+   three-level test table runs with its own commitment budget.
 3. Geometry validation is test-only. `MultiLevelTournamentFactory`'s
    constructor checks only that its dependencies have code
    (`src/tournament/factories/MultiLevelTournamentFactory.sol:36-46`); the
