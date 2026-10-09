@@ -62,14 +62,14 @@ impl StateDirLock {
         match file.try_lock() {
             Ok(()) => Ok(Self { _file: file }),
             Err(fs::TryLockError::WouldBlock) => Err(anyhow::anyhow!(
-                "state directory `{}` is in use by another node process",
+                "data directory `{}` is in use by another node process",
                 state_dir.display()
             )
             .into()),
             // Refuse rather than run unlocked: the lock is the only guard.
             Err(fs::TryLockError::Error(error)) => Err(anyhow::Error::from(error)
                 .context(format!(
-                    "cannot lock state directory `{}` (does its filesystem support file locks?)",
+                    "cannot lock data directory `{}` (does its filesystem support file locks?)",
                     state_dir.display()
                 ))
                 .into()),
@@ -380,21 +380,21 @@ fn check_pinned(
     let dir = state_dir.display();
     ensure!(
         pinned.app == given.app,
-        "state directory `{dir}` belongs to application {}, not --app-address {}: restart \
+        "data directory `{dir}` belongs to application {}, not --app-address {}: restart \
          with the right --app-address or use another --data-dir",
         alloy::hex::encode_prefixed(&pinned.app),
         alloy::hex::encode_prefixed(&given.app),
     );
     ensure!(
         pinned.chain_id == given.chain_id,
-        "state directory `{dir}` belongs to chain {}, not --blockchain-id {}: restart with \
+        "data directory `{dir}` belongs to chain {}, not --blockchain-id {}: restart with \
          the right --blockchain-id or use another --data-dir",
         pinned.chain_id,
         given.chain_id,
     );
     ensure!(
         pinned.template_hash == given.template_hash,
-        "state directory `{dir}` was seeded from template {}, but the given template is {}: \
+        "data directory `{dir}` was seeded from template {}, but the given template is {}: \
          the directory belongs to another deployment or is an old one; use another \
          --data-dir or wipe it",
         pinned.template_hash,
@@ -402,7 +402,7 @@ fn check_pinned(
     );
     ensure!(
         pinned == given,
-        "state directory `{dir}` was built for another consensus, emulator or tournament \
+        "data directory `{dir}` was built for another consensus, emulator or tournament \
          geometry: stored {pinned:?}, given {given:?}; {}",
         schema::WIPE_GUIDANCE
     );

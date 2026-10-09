@@ -316,7 +316,7 @@ fn row_to_settlement(row: &Row<'_>, epoch_number: u64) -> rusqlite::Result<Settl
     .unwrap_or_else(|error| {
         panic!(
             "settlement for epoch {epoch_number} has an invalid machine validity proof: \
-             {error:#} (corruption or incompatible state dir)"
+             {error:#} (corruption or incompatible data directory)"
         )
     });
     Ok(settlement)
@@ -333,7 +333,7 @@ fn settlement_blob(
         ValueRef::Blob(blob) => Ok(blob.to_vec()),
         _ => panic!(
             "settlement for epoch {epoch_number} has invalid {field}: expected BLOB, found {:?} \
-             (corruption or incompatible state dir)",
+             (corruption or incompatible data directory)",
             value.data_type()
         ),
     }
@@ -343,7 +343,7 @@ fn settlement_value<T>(epoch_number: u64, field: &str, value: Result<T>) -> T {
     value.unwrap_or_else(|error| {
         panic!(
             "settlement for epoch {epoch_number} has invalid {field}: {error} \
-             (corruption or incompatible state dir)"
+             (corruption or incompatible data directory)"
         )
     })
 }

@@ -16,7 +16,7 @@ const NODE_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// restore an old fingerprint, so only this stamp reliably refuses stores
 /// built under older rules.
 const COMMITMENT_SEMANTICS: u32 = 2;
-pub(crate) const WIPE_GUIDANCE: &str = "wipe the state dir and let the node rebuild";
+pub(crate) const WIPE_GUIDANCE: &str = "wipe the data directory and let the node rebuild";
 
 fn schema_fingerprint() -> B256 {
     keccak256(SCHEMA.as_bytes())

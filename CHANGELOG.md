@@ -46,7 +46,7 @@ needed.
 
 ### Node
 
-- Start from a fresh state directory: the schema changed (tournament events
+- Start from a fresh data directory: the schema changed (tournament events
   are no longer stored; the chain id is pinned), and the directory holds a
   `node.lock` that refuses a second process. A fresh directory replays every
   input since the application's deployment; see the README's operator notes
