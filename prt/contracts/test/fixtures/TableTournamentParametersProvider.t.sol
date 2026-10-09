@@ -32,7 +32,7 @@ contract TableTournamentParametersProviderTest is Test {
 
     function testServesTheTwoLevelTable() public {
         (uint64[] memory steps, uint64[] memory hs) =
-            _table([uint64(37), 0], [uint64(55), 37]);
+            _table([uint64(38), 0], [uint64(54), 38]);
         TableTournamentParametersProvider provider = new TableTournamentParametersProvider(
             steps,
             hs,
@@ -44,8 +44,8 @@ contract TableTournamentParametersProviderTest is Test {
 
         TournamentParameters memory root = provider.tournamentParameters(0);
         assertEq(root.levels, 2);
-        assertEq(root.log2step, 37);
-        assertEq(root.height, 55);
+        assertEq(root.log2step, 38);
+        assertEq(root.height, 54);
         assertEq(Time.Duration.unwrap(root.responseBudget), 25);
         assertEq(Time.Duration.unwrap(root.commitmentBudget), 150);
         assertEq(Time.Duration.unwrap(root.maxAllowance), 300);
@@ -53,7 +53,7 @@ contract TableTournamentParametersProviderTest is Test {
         TournamentParameters memory leaf = provider.tournamentParameters(1);
         assertEq(leaf.levels, 2);
         assertEq(leaf.log2step, 0);
-        assertEq(leaf.height, 37);
+        assertEq(leaf.height, 38);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -65,13 +65,13 @@ contract TableTournamentParametersProviderTest is Test {
 
     function testRejectsAnInvalidTable() public {
         (uint64[] memory steps, uint64[] memory hs) =
-            _table([uint64(37), 0], [uint64(55), 36]);
+            _table([uint64(38), 0], [uint64(54), 37]);
         vm.expectRevert(
             abi.encodeWithSelector(
                 TournamentParameterTableValidator.RowsDoNotTile.selector,
                 0,
-                37,
-                36
+                38,
+                37
             )
         );
         new TableTournamentParametersProvider(
