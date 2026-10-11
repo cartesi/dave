@@ -78,6 +78,11 @@ carry no backlog (reviews/README.md).
 - Write a deployment runbook: chains, parameters, broadcast, address
   verification against the release asset, post-deploy checks.
   (build-system.md, deployment generations)
+- If a table with three or more levels leaves test-only use, retain an
+  inner-elimination witness in a middle tournament: the non-root standing
+  branch there is estimated at about 153,000 units, reviewing above
+  `ELIMINATE_INNER_TOURNAMENT`.
+  (reviews/2026-10-11-prt-events-gas-calibration)
 
 ## Tests
 

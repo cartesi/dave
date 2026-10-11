@@ -224,11 +224,12 @@ Ethereum's values are permanent or that an L2 inherits them. A transaction can
 be insufficiently refundable yet executable, or fully subsidized yet too large
 for network admission; neither conclusion follows from the other.
 
-As of the 2026-10-02 calibration, Ethereum Mainnet's
+As of the 2026-10-11 calibration, Ethereum Mainnet's
 [EIP-7825](https://eips.ethereum.org/EIPS/eip-7825) transaction cap was
-16,777,216 units. The retained 5,079,603-unit maximum canonical-input
-diagnostic occupied 30.28% of it. Treat that as dated evidence, not a
-permanent constant.
+16,777,216 units and its observed block gas limit 60,000,000. The retained
+5,076,415-unit maximum canonical-input diagnostic occupied 30.26% of the cap
+and 8.46% of the block. Treat that as dated evidence, not a permanent
+constant.
 
 The node pads each estimate by half again, at least 150,000 units, and stops
 the limit at the cap (`gas_limit_for` in
