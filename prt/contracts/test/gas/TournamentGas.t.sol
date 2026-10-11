@@ -76,6 +76,7 @@ contract GasStateTransition is IStateTransition {
 }
 
 abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
+    using Machine for Machine.Hash;
     using Tree for Tree.Node;
 
     enum ShortSide {
@@ -693,6 +694,109 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
         assertEq(address(childTournament).balance, childFundedBalance);
     }
 
+    function _measureUnpairedTimeoutWinner(
+        string memory label,
+        CommitmentShape winner,
+        uint64 height,
+        uint256 expectedWinnerAllowance
+    ) internal returns (Measurement memory result) {
+        vm.roll(resolutionBlock);
+        result =
+            _measure(_timeoutWinCall(winner, height), Gas.WIN_MATCH_BY_TIMEOUT);
+        _logMeasurement(label, result);
+        _assertReviewedHeadroom(result, Gas.WIN_MATCH_BY_TIMEOUT);
+
+        Tree.Node winnerRoot = node(winner, height);
+        ITournament.TournamentStandingView memory standing =
+            _assertSurvivorDangling(winnerRoot);
+        _assertInnerWinnerStanding(standing, winnerRoot);
+        (Clock.State memory winnerClock,) = tournament.getCommitment(winnerRoot);
+        assertEq(
+            Time.Duration.unwrap(winnerClock.allowance), expectedWinnerAllowance
+        );
+    }
+
+    function _measureTimeoutEliminationLeavingDangling(
+        string memory label,
+        Tree.Node dangling
+    ) internal returns (Measurement memory result) {
+        vm.roll(resolutionBlock);
+        result =
+            _measure(_timeoutEliminationCall(), Gas.ELIMINATE_MATCH_BY_TIMEOUT);
+        _logMeasurement(label, result);
+        _assertReviewedHeadroom(result, Gas.ELIMINATE_MATCH_BY_TIMEOUT);
+
+        _assertInnerWinnerStanding(_assertSurvivorDangling(dangling), dangling);
+    }
+
+    function _measureUnpairedInnerWinner(
+        string memory label,
+        CommitmentShape parentWinner
+    ) internal returns (Measurement memory result) {
+        vm.roll(resolutionBlock);
+        result =
+            _measure(_innerWinnerCall(parentWinner), Gas.WIN_INNER_TOURNAMENT);
+        _logMeasurement(label, result);
+        _assertReviewedHeadroom(result, Gas.WIN_INNER_TOURNAMENT);
+
+        Tree.Node winnerRoot = node(parentWinner, ROOT_HEIGHT);
+        _assertSurvivorDangling(winnerRoot);
+        (Clock.State memory winnerClock,) = tournament.getCommitment(winnerRoot);
+        assertEq(
+            Time.Duration.unwrap(winnerClock.allowance),
+            expectedParentWinnerAllowance
+        );
+        assertEq(address(childTournament).balance, childFundedBalance);
+    }
+
+    /// @dev With no rival left to pair, the survivor stays dangling and no
+    /// match is live, so `StandingChanged` publishes the result fields; in a
+    /// non-root tournament it also reads the survivor's final state and clock.
+    function _assertSurvivorDangling(Tree.Node survivor)
+        internal
+        view
+        returns (ITournament.TournamentStandingView memory)
+    {
+        Match.Id memory oldId = matchId;
+        assertFalse(Match.exists(tournament.getMatch(Match.hashFromId(oldId))));
+        assertEq(tournament.getMatchCreatedCount(), 1);
+        assertEq(tournament.getMatchDeletedCount(), 1);
+
+        (Clock.State memory survivorClock,) = tournament.getCommitment(survivor);
+        assertFalse(Clock.isRunning(survivorClock));
+        ITournament.TournamentStandingView memory standing =
+            tournament.tournamentStanding();
+        assertTrue(standing.hasCandidate);
+        assertTrue(standing.candidate.eq(survivor));
+        return standing;
+    }
+
+    /// @dev The leaf tournament contests `sameNode` (final state A) against
+    /// `rightmostNode` (final state B) at the root height.
+    function _assertInnerWinnerStanding(
+        ITournament.TournamentStandingView memory standing,
+        Tree.Node survivor
+    ) internal view {
+        assertEq(
+            uint256(standing.standing),
+            uint256(ITournament.TournamentStanding.INNER_WINNER)
+        );
+        (Clock.State memory survivorClock, Machine.Hash survivorFinalState) =
+            tournament.getCommitment(survivor);
+        assertTrue(
+            standing.parentCommitment
+                .eq(
+                    survivorFinalState.eq(STATE_A)
+                        ? sameNode(ROOT_HEIGHT)
+                        : rightmostNode(ROOT_HEIGHT)
+                )
+        );
+        assertEq(
+            Time.Instant.unwrap(standing.winnerExpiresAt),
+            block.number + Time.Duration.unwrap(survivorClock.allowance)
+        );
+    }
+
     function _measure(bytes memory callData, uint256 configuredAllocation)
         internal
         returns (Measurement memory result)
@@ -1011,6 +1115,22 @@ contract SealedLeafTwoWinsTimeoutGasTest is TournamentGasTest {
     }
 }
 
+contract SealedLeafTwoWinsUnpairedTimeoutGasTest is TournamentGasTest {
+    function setUp() public {
+        _initializeSealedLeafTimeoutFixture(ShortSide.ONE, false);
+        resolutionBlock = _deadlinePlus(sameNode(LEAF_HEIGHT), TIMEOUT_OVERDUE);
+    }
+
+    function testMeasureChargedTwoWinsAndStaysDangling() public {
+        _measureUnpairedTimeoutWinner(
+            "sealed leaf two wins timeout unpaired",
+            CommitmentShape.SECOND_DIFFERENT,
+            LEAF_HEIGHT,
+            CLOCK_CHARGE - TIMEOUT_OVERDUE + RESPONSE_BUDGET
+        );
+    }
+}
+
 contract ActiveAdvancedEliminationGasTest is TournamentGasTest {
     function setUp() public {
         _initializeFixture();
@@ -1057,6 +1177,45 @@ contract SealedLeafEliminationGasTest is TournamentGasTest {
     }
 }
 
+contract ActiveLeafEliminationLeavesDanglingGasTest is TournamentGasTest {
+    function setUp() public {
+        _initializeFixture();
+        _leafMatchFixture(CommitmentShape.RIGHTMOST_DIFFERENT);
+        _advance(tournament, matchId, CommitmentShape.SAME, LEAF_HEIGHT);
+        _assertNonzeroMatchPosition();
+        _addDangling(CommitmentShape.FIRST_DIFFERENT, CLAIMER_C);
+        resolutionBlock = _activeDoubleEliminationBlock(
+            rightmostNode(LEAF_HEIGHT), sameNode(LEAF_HEIGHT)
+        );
+    }
+
+    function testMeasureEqualityEliminatesBothAndLeavesDangling() public {
+        _measureTimeoutEliminationLeavingDangling(
+            "active leaf timeout elimination leaves dangling",
+            firstDifferentNode(LEAF_HEIGHT)
+        );
+    }
+}
+
+// The dangling claim commits to the second contested final state, the longer
+// path through the parent-commitment lookup.
+contract SealedLeafEliminationLeavesDanglingGasTest is TournamentGasTest {
+    function setUp() public {
+        _initializeSealedLeafTimeoutFixture(ShortSide.TWO, false);
+        _addDangling(CommitmentShape.RIGHTMOST_DIFFERENT, CLAIMER_C);
+        resolutionBlock = _leafRaceDoubleEliminationBlock(
+            sameNode(LEAF_HEIGHT), secondDifferentNode(LEAF_HEIGHT)
+        );
+    }
+
+    function testMeasureLongDeadlineEliminatesBothAndLeavesDangling() public {
+        _measureTimeoutEliminationLeavingDangling(
+            "sealed leaf long deadline elimination leaves dangling",
+            rightmostNode(LEAF_HEIGHT)
+        );
+    }
+}
+
 contract InnerOneWinsGasTest is TournamentGasTest {
     function setUp() public {
         _initializeResolvedInnerWinnerFixture(
@@ -1083,6 +1242,22 @@ contract InnerTwoWinsGasTest is TournamentGasTest {
             "inner two wins", CommitmentShape.SECOND_DIFFERENT
         );
         _assertReviewedHeadroom(result, Gas.WIN_INNER_TOURNAMENT);
+    }
+}
+
+contract InnerTwoWinsUnpairedGasTest is TournamentGasTest {
+    function setUp() public {
+        _initializeResolvedInnerWinnerFixture(
+            CommitmentShape.RIGHTMOST_DIFFERENT,
+            CommitmentShape.SECOND_DIFFERENT,
+            false
+        );
+    }
+
+    function testMeasureTwoWinsAndStaysDangling() public {
+        _measureUnpairedInnerWinner(
+            "inner two wins unpaired", CommitmentShape.SECOND_DIFFERENT
+        );
     }
 }
 
