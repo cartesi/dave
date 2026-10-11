@@ -156,7 +156,7 @@ contract RefundReserveTest is Test {
             factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
         assertEq(nonLeafRoot.bondValue(), Bond.bondValue(27, false));
 
-        ITournament leafChild = factory.instantiateInner(
+        (ITournament leafChild,) = factory.instantiateInner(
             Machine.ZERO_STATE,
             Tree.ZERO_NODE,
             Machine.ZERO_STATE,

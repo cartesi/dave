@@ -139,39 +139,92 @@ local function same_head(left, right)
     return left.number == right.number and left.hash == right.hash
 end
 
-local EVENT_SIGNATURES = {
+-- Each layout names its indexed topics and its data words in ABI order, one
+-- name per word; a static tuple spans its components, named
+-- "<tuple>.<component>". The decoder reads fields only by these names.
+local EVENT_LAYOUTS = {
     {
-        signature = "CommitmentJoined(bytes32,bytes32,address)",
         kind = Fold.EventKind.COMMITMENT_JOINED,
+        signature = "CommitmentJoined(bytes32,bytes32,address)",
+        indexed = { "commitment", "submitter" },
+        data = { "finalStateHash" },
     },
     {
-        signature =
-            "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64)",
         kind = Fold.EventKind.MATCH_CREATED,
+        signature =
+            "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64,uint64)",
+        indexed = { "matchIdHash", "one", "two" },
+        data = { "leftOfTwo", "responderDeadline", "eliminableAt" },
     },
     {
-        signature = "MatchAdvanced(bytes32,bytes32,bytes32,uint256,uint64)",
         kind = Fold.EventKind.MATCH_ADVANCED,
+        signature = "MatchAdvanced(bytes32,bytes32,bytes32,bytes32,bytes32,"
+            .. "uint256,uint64,uint64,uint64)",
+        indexed = { "matchIdHash" },
+        data = {
+            "one",
+            "two",
+            "otherParent",
+            "leftNode",
+            "segmentStartPosition",
+            "currentHeight",
+            "responderDeadline",
+            "eliminableAt",
+        },
     },
     {
-        signature = "LeafMatchSealed(bytes32,uint64)",
         kind = Fold.EventKind.LEAF_MATCH_SEALED,
+        signature = "LeafMatchSealed(bytes32,bytes32,bytes32,bytes32,uint256,"
+            .. "bytes32,bytes32,uint64,uint64,uint64)",
+        indexed = { "matchIdHash" },
+        data = {
+            "one",
+            "two",
+            "agreeState",
+            "divergencePosition",
+            "finalStateOne",
+            "finalStateTwo",
+            "deadlineOne",
+            "deadlineTwo",
+            "eliminableAt",
+        },
     },
     {
-        signature = "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)",
         kind = Fold.EventKind.MATCH_DELETED,
+        signature = "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)",
+        indexed = { "matchIdHash", "one", "two" },
+        data = { "reason", "winnerCommitment" },
     },
     {
-        signature = "NewInnerTournament(bytes32,address)",
         kind = Fold.EventKind.NEW_INNER_TOURNAMENT,
+        signature = "NewInnerTournament(bytes32,address,bytes32,bytes32,"
+            .. "bytes32,bytes32,(bytes32,uint256,uint64,uint64,uint64,uint8,"
+            .. "uint64,uint64),uint256)",
+        indexed = { "matchIdHash", "childTournament" },
+        data = {
+            "one",
+            "two",
+            "contestedFinalStateOne",
+            "contestedFinalStateTwo",
+            "descriptor.initialHash",
+            "descriptor.baseCycle",
+            "descriptor.log2Stride",
+            "descriptor.height",
+            "descriptor.level",
+            "descriptor.kind",
+            "descriptor.startInstant",
+            "descriptor.allowance",
+            "bondValue",
+        },
     },
 }
 
-local EVENT_TOPICS = {}
+local EVENT_LAYOUT_BY_TOPIC = {}
 local EVENT_TOPIC_LIST = {}
-for _, event in ipairs(EVENT_SIGNATURES) do
-    local topic = Hash:from_data(event.signature):hex_string():lower()
-    EVENT_TOPICS[topic] = event.kind
+for _, layout in ipairs(EVENT_LAYOUTS) do
+    layout.name = assert(layout.signature:match("^(%w+)%("))
+    local topic = Hash:from_data(layout.signature):hex_string():lower()
+    EVENT_LAYOUT_BY_TOPIC[topic] = layout
     table.insert(EVENT_TOPIC_LIST, topic)
 end
 
@@ -215,6 +268,10 @@ local function topic_address(topic, name)
     return normalize_address("0x" .. normalized:sub(27), name)
 end
 
+local function word_hash(word)
+    return Hash:from_digest_hex("0x" .. word)
+end
+
 local function word_tag(word, name)
     assert(word:sub(1, 62):match("^0*$"), name .. " exceeds uint8")
     return tonumber(word:sub(63), 16)
@@ -235,9 +292,30 @@ local function require_topic_count(log, count, event)
         ))
 end
 
+-- Names the log's topics and data words after its layout, once their counts
+-- match it exactly.
+local function layout_fields(log, layout)
+    require_topic_count(log, #layout.indexed + 1, layout.name)
+    local topics = {}
+    for index, field in ipairs(layout.indexed) do
+        topics[field] = log.topics[index + 1]
+    end
+    local values = data_words(log.data, #layout.data, layout.name)
+    local words = {}
+    for index, field in ipairs(layout.data) do
+        words[field] = values[index]
+    end
+    return topics, words
+end
+
+local function require_match_pair(id_hash, one, two, event)
+    assert(one:join(two) == id_hash,
+        event .. " match id disagrees with ordered commitments")
+end
+
 -- Decode exactly one of the six structural events. The caller intentionally
 -- fails on an unknown topic because the RPC request filters this allowlist.
-function SemanticReader.decode_event_log(log, topic_map)
+function SemanticReader.decode_event_log(log)
     assert(type(log) == "table", "structural log must be a table")
     local tournament = normalize_address(
         log.address,
@@ -253,66 +331,80 @@ function SemanticReader.decode_event_log(log, topic_map)
         log.topics[1],
         "structural event topic zero"
     )
-    local kind = (topic_map or EVENT_TOPICS)[topic_zero]
-    assert(kind, "unknown structural event topic " .. topic_zero)
+    local layout = EVENT_LAYOUT_BY_TOPIC[topic_zero]
+    assert(layout, "unknown structural event topic " .. topic_zero)
+    local topics, words = layout_fields(log, layout)
 
+    local kind = layout.kind
     local event
     if kind == Fold.EventKind.COMMITMENT_JOINED then
-        require_topic_count(log, 3, "CommitmentJoined")
-        local root = topic_hash(log.topics[2], "CommitmentJoined.commitment")
-        topic_address(log.topics[3], "CommitmentJoined.submitter")
-        local words = data_words(log.data, 1, "CommitmentJoined")
+        local root = topic_hash(topics.commitment, "CommitmentJoined.commitment")
+        topic_address(topics.submitter, "CommitmentJoined.submitter")
         event = Fold.Event.commitment_joined(
             root,
-            Hash:from_digest_hex("0x" .. words[1])
+            word_hash(words.finalStateHash)
         )
     elseif kind == Fold.EventKind.MATCH_CREATED then
-        require_topic_count(log, 4, "MatchCreated")
         local emitted = topic_hash(
-            log.topics[2],
+            topics.matchIdHash,
             "MatchCreated.matchIdHash"
         )
-        local one = topic_hash(log.topics[3], "MatchCreated.one")
-        local two = topic_hash(log.topics[4], "MatchCreated.two")
-        local words = data_words(log.data, 2, "MatchCreated")
+        local one = topic_hash(topics.one, "MatchCreated.one")
+        local two = topic_hash(topics.two, "MatchCreated.two")
         event = Fold.Event.match_created(
             one,
             two,
-            Hash:from_digest_hex("0x" .. words[1]),
+            word_hash(words.leftOfTwo),
             emitted,
-            word_uint64(words[2], "MatchCreated.eliminableAt")
+            word_uint64(words.eliminableAt, "MatchCreated.eliminableAt")
         )
     elseif kind == Fold.EventKind.MATCH_ADVANCED then
-        require_topic_count(log, 2, "MatchAdvanced")
-        local words = data_words(log.data, 4, "MatchAdvanced")
+        local id_hash = topic_hash(
+            topics.matchIdHash,
+            "MatchAdvanced.matchIdHash"
+        )
+        require_match_pair(
+            id_hash,
+            word_hash(words.one),
+            word_hash(words.two),
+            "MatchAdvanced"
+        )
         event = Fold.Event.match_advanced(
-            topic_hash(log.topics[2], "MatchAdvanced.matchIdHash"),
-            Hash:from_digest_hex("0x" .. words[1]),
-            Hash:from_digest_hex("0x" .. words[2]),
-            bint("0x" .. words[3]),
-            word_uint64(words[4], "MatchAdvanced.eliminableAt")
+            id_hash,
+            word_hash(words.otherParent),
+            word_hash(words.leftNode),
+            bint("0x" .. words.segmentStartPosition),
+            word_uint64(words.eliminableAt, "MatchAdvanced.eliminableAt")
         )
     elseif kind == Fold.EventKind.LEAF_MATCH_SEALED then
-        require_topic_count(log, 2, "LeafMatchSealed")
-        local words = data_words(log.data, 1, "LeafMatchSealed")
+        local id_hash = topic_hash(
+            topics.matchIdHash,
+            "LeafMatchSealed.matchIdHash"
+        )
+        require_match_pair(
+            id_hash,
+            word_hash(words.one),
+            word_hash(words.two),
+            "LeafMatchSealed"
+        )
         event = Fold.Event.leaf_match_sealed(
-            topic_hash(log.topics[2], "LeafMatchSealed.matchIdHash"),
-            word_uint64(words[1], "LeafMatchSealed.eliminableAt")
+            id_hash,
+            word_uint64(words.eliminableAt, "LeafMatchSealed.eliminableAt")
         )
     elseif kind == Fold.EventKind.MATCH_DELETED then
-        require_topic_count(log, 4, "MatchDeleted")
         local id_hash = topic_hash(
-            log.topics[2],
+            topics.matchIdHash,
             "MatchDeleted.matchIdHash"
         )
-        local one = topic_hash(log.topics[3], "MatchDeleted.one")
-        local two = topic_hash(log.topics[4], "MatchDeleted.two")
-        assert(one:join(two) == id_hash,
-            "MatchDeleted match id disagrees with ordered commitments")
-        local words = data_words(log.data, 2, "MatchDeleted")
-        local reason_tag = word_tag(words[1], "MatchDeleted.reason")
+        require_match_pair(
+            id_hash,
+            topic_hash(topics.one, "MatchDeleted.one"),
+            topic_hash(topics.two, "MatchDeleted.two"),
+            "MatchDeleted"
+        )
+        local reason_tag = word_tag(words.reason, "MatchDeleted.reason")
         local winner_tag = word_tag(
-            words[2],
+            words.winnerCommitment,
             "MatchDeleted.winnerCommitment"
         )
         local reasons = {
@@ -335,21 +427,23 @@ function SemanticReader.decode_event_log(log, topic_map)
             winners[winner_tag]
         )
     elseif kind == Fold.EventKind.NEW_INNER_TOURNAMENT then
-        require_topic_count(log, 3, "NewInnerTournament")
+        local id_hash = topic_hash(
+            topics.matchIdHash,
+            "NewInnerTournament.matchIdHash"
+        )
+        require_match_pair(
+            id_hash,
+            word_hash(words.one),
+            word_hash(words.two),
+            "NewInnerTournament"
+        )
         local child = topic_address(
-            log.topics[3],
+            topics.childTournament,
             "NewInnerTournament.childTournament"
         )
         assert(child ~= Adapter.ZERO_ADDRESS,
             "NewInnerTournament child address must be nonzero")
-        data_words(log.data, 0, "NewInnerTournament")
-        event = Fold.Event.new_inner_tournament(
-            topic_hash(
-                log.topics[2],
-                "NewInnerTournament.matchIdHash"
-            ),
-            child
-        )
+        event = Fold.Event.new_inner_tournament(id_hash, child)
     else
         error("unknown structural event kind", 2)
     end

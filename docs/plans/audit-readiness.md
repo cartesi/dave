@@ -197,9 +197,11 @@ addresses (build-system.md).
 10. Tag the audited release, naming the generation, addresses, geometry and
     bonds in the release notes.
 
-The tournament events ABI stays as cartesi/dave#287 left it. A later field
-addition is a wire break: it lands before the freeze or waits for the next
-generation (upstream PR #390 already forces one).
+The tournament events gained the fields consumers asked for (match
+schedules, sealed divergences, descriptors, bonds and `StandingChanged`) in
+cartesi/dave#287's generation (cartesi/dave#297). A later field addition is
+a wire break: it lands before the freeze or waits for the next generation
+(upstream PR #390 already forces one).
 
 ## Open questions
 

@@ -231,6 +231,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         Vm.Log[] memory logs = vm.getRecordedLogs();
 
         uint256 numOfCommitmentJoinedEvents;
+        uint256 numOfStandingChangedEvents;
 
         for (uint256 i; i < logs.length; ++i) {
             Vm.Log memory log = logs[i];
@@ -241,6 +242,19 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
                     assertEq(log.topics[2], bytes32(uint256(uint160(submitter))));
                     bytes32 finalStateHash = abi.decode(log.data, (bytes32));
                     assertEq(finalStateHash, machineMerkleRoot);
+                } else if (log.topics[0] == ITournament.StandingChanged.selector) {
+                    ++numOfStandingChangedEvents;
+                    (uint256 matches, bytes32 dangling, bytes32 parent, uint64 resultAt, uint64 expiresAt) =
+                        abi.decode(log.data, (uint256, bytes32, bytes32, uint64, uint64));
+                    ITournament.TournamentDescriptor memory descriptor = tournament.tournamentDescriptor();
+                    assertEq(matches, 0);
+                    assertEq(dangling, commitment);
+                    assertEq(parent, bytes32(0));
+                    assertEq(
+                        resultAt,
+                        Time.Instant.unwrap(descriptor.startInstant) + Time.Duration.unwrap(descriptor.allowance)
+                    );
+                    assertEq(expiresAt, 0);
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }
@@ -250,6 +264,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         }
 
         assertEq(numOfCommitmentJoinedEvents, 1);
+        assertEq(numOfStandingChangedEvents, 1);
 
         assertFalse(tournament.isFinished());
         assertFalse(tournament.isClosed());
@@ -690,15 +705,20 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
             if (log.emitter == address(_tournamentFactory)) {
                 if (log.topics[0] == ITournamentFactory.TournamentCreated.selector) {
                     ++numOfTournamentCreatedEvents;
+                    // A reader learns the descriptor before the EpochSealed that names the tournament.
+                    assertEq(numOfEpochSealedEvents, 0);
                     address arg1;
-                    arg1 = abi.decode(log.data, (address));
+                    ITournament.TournamentDescriptor memory arg2;
+                    (arg1, arg2,) = abi.decode(log.data, (address, ITournament.TournamentDescriptor, uint256));
                     assertEq(arg1, address(nextTournament));
+                    assertEq(Machine.Hash.unwrap(arg2.initialHash), machineMerkleRoot);
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }
             } else if (log.emitter == address(daveConsensus)) {
                 if (log.topics[0] == IDaveConsensus.EpochSealed.selector) {
                     ++numOfEpochSealedEvents;
+                    assertEq(numOfTournamentCreatedEvents, 1);
 
                     assertEq(log.topics[1], bytes32(uint256(1))); // epochNumber
 
@@ -1282,6 +1302,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
                     assertEq(arg3, address(_tournamentFactory));
                 } else if (log.topics[0] == IDaveConsensus.EpochSealed.selector) {
                     ++numOfEpochSealedEvents;
+                    assertEq(numOfTournamentCreatedEvents, 1);
 
                     assertEq(log.topics[1], bytes32(0)); // epochNumber
 
@@ -1315,9 +1336,13 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
             } else if (log.emitter == address(_tournamentFactory)) {
                 if (log.topics[0] == ITournamentFactory.TournamentCreated.selector) {
                     ++numOfTournamentCreatedEvents;
+                    // A reader learns the descriptor before the EpochSealed that names the tournament.
+                    assertEq(numOfEpochSealedEvents, 0);
                     address arg1;
-                    arg1 = abi.decode(log.data, (address));
+                    ITournament.TournamentDescriptor memory arg2;
+                    (arg1, arg2,) = abi.decode(log.data, (address, ITournament.TournamentDescriptor, uint256));
                     assertEq(arg1, address(tournament));
+                    assertEq(Machine.Hash.unwrap(arg2.initialHash), templateHash);
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }

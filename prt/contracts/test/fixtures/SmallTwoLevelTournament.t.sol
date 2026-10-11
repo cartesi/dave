@@ -71,7 +71,7 @@ contract SmallTwoLevelTournamentTest is Test {
         Machine.Hash finalTwo = Machine.Hash.wrap(bytes32(uint256(0x2002)));
         uint64 delegatedAllowance = 150;
         uint256 startCycle = 12;
-        ITournament leaf = factory.instantiateInner(
+        (ITournament leaf,) = factory.instantiateInner(
             INITIAL_STATE,
             contestedOne,
             finalOne,
@@ -145,7 +145,7 @@ contract SmallTwoLevelTournamentTest is Test {
             new bytes32[](0)
         );
 
-        ITournament leaf = factory.instantiateInner(
+        (ITournament leaf,) = factory.instantiateInner(
             INITIAL_STATE,
             Tree.Node.wrap(bytes32(uint256(1))),
             Machine.Hash.wrap(bytes32(uint256(2))),
@@ -171,7 +171,7 @@ contract SmallTwoLevelTournamentTest is Test {
     function testRejectsRemainingWrongRoleOperations() public {
         ITournament root =
             factory.instantiate(INITIAL_STATE, IDataProvider(address(0)));
-        ITournament leaf = factory.instantiateInner(
+        (ITournament leaf,) = factory.instantiateInner(
             INITIAL_STATE,
             Tree.Node.wrap(bytes32(uint256(1))),
             Machine.Hash.wrap(bytes32(uint256(2))),

@@ -48,7 +48,7 @@ exclude the `*FfiTest` contracts deliberately.
 | `test/devnet/` | The devnet-only deployment of the three-level test table CI and local tests run (the default `DEVNET_GEOMETRY`) and its test |
 | `test/fixtures/` | Injected geometry, small trees, independent models, and test-only transitions |
 | `test/gas/` | Retained production refund witnesses |
-| `test/properties/` | Match parity, lifecycle, recursion, population, and delay properties |
+| `test/properties/` | Match parity, lifecycle, recursion, population, delay, and event-view agreement properties |
 | `test/step/` and FFI suites | Solidity-step and external state-transition oracles |
 
 The full-stack leaf-proof gas fixture lives under
@@ -132,6 +132,7 @@ The living clock evidence map is:
 | Reachable lower bounds and exhaustive small one-level schedules | `test/properties/LeafPopulationDelay.t.sol` and `test/properties/BoundedOneLevelDelay.t.sol` |
 | Shared child envelopes, propagation, concurrent children, and generic depth | `test/properties/RecursiveTournamentLifecycle.t.sol`, `ConcurrentRecursivePopulation.t.sol`, and `FourLevelRecursiveLifecycle.t.sol` |
 | Ethereum and local-devnet block conversion for response and allowance budgets | `test/Deployment.t.sol` |
+| Published schedules and standing against the views, the classifier, and the mutators | `test/properties/EventViewAgreement.t.sol`, `StandingExactness.t.sol`, `RecursiveTournamentLifecycle.t.sol` (parent verbs at the child's published standing), the schedule tests in `test/MatchClocks.t.sol`, and the deadline tests in `test/Clock.t.sol` |
 
 Within `RecursiveTournamentLifecycle.t.sol`,
 `testChildWinnerSelectsParentSideByFinalStateNotByRoot` pins final-state
@@ -146,6 +147,20 @@ clock theorem: sealed inner parents pause both clocks and delegate the
 obligation to a linked child. No current model combines an identified correct
 commitment, an eager correct strategy, an adversarial scheduler, and one shared
 censorship ledger `C`; that general recursive result remains open.
+
+Events and views take each published instant, descriptor, and bond from the
+same helpers, so a check that an event equals its view cannot see a wrong
+helper. The tests that derive those values independently are the oracle and
+must survive any refactor of the helpers or the events: the timeout
+classifier at every schedule boundary, `remainingAt` against
+`Clock.deadline`, `StandingExactness`'s absolute instants, the observer's
+descriptor fields and bond, and the mutator drives at the published instants.
+In `EventViewAgreement.t.sol`, `_assertMoveOnlyBeforeDeadline` makes each
+advance, leaf seal, and leaf proof land one block before its published
+deadline and fail at it. In `RecursiveTournamentLifecycle.t.sol`,
+`_assertParentVerbsAtChildStanding` drives the parent's `winInnerTournament`
+and `eliminateInnerTournament` around the child's published `resultAt` and
+`winnerExpiresAt`.
 
 ## Match ownership
 

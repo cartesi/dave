@@ -15,6 +15,7 @@ import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {ITournamentParametersProvider} from "prt-contracts/arbitration-config/ITournamentParametersProvider.sol";
 import {Tournament} from "prt-contracts/tournament/Tournament.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Descriptor} from "prt-contracts/tournament/libs/Descriptor.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
@@ -80,8 +81,13 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
         override
         returns (ITournament)
     {
-        ITournament _tournament = instantiateTop(_initialHash, _provider);
-        emit TournamentCreated(_tournament);
+        (
+            ITournament _tournament,
+            ITournament.TournamentDescriptor memory descriptor
+        ) = instantiateTop(_initialHash, _provider);
+        emit TournamentCreated(
+            _tournament, descriptor, Descriptor.bondValue(descriptor)
+        );
         return _tournament;
     }
 
@@ -95,7 +101,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
     /// - For non-leaf roots: factory is used to create inner tournaments.
     function instantiateTop(Machine.Hash _initialHash, IDataProvider _provider)
         private
-        returns (ITournament)
+        returns (ITournament, ITournament.TournamentDescriptor memory)
     {
         TournamentParameters memory params = tournamentParameters(0);
 
@@ -125,7 +131,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
             });
 
         address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
-        return ITournament(clone);
+        return (ITournament(clone), Descriptor.fromArguments(args));
     }
 
     /// @notice Instantiate an inner tournament (middle or bottom level).
@@ -146,7 +152,11 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external override returns (ITournament) {
+    )
+        external
+        override
+        returns (ITournament, ITournament.TournamentDescriptor memory)
+    {
         TournamentParameters memory params = tournamentParameters(_level);
 
         ITournament.TournamentArguments memory args =
@@ -175,7 +185,7 @@ contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
             });
 
         address clone = address(IMPL).cloneWithImmutableArgs(abi.encode(args));
-        return ITournament(clone);
+        return (ITournament(clone), Descriptor.fromArguments(args));
     }
 
     function _kindFor(uint64 _level, uint64 _levels)

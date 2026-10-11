@@ -239,6 +239,7 @@ contract Tournament is ITournament, ERC165 {
             args, _commitmentRoot, _clock, _leftNode, _rightNode, current
         );
         claimers[_commitmentRoot] = msg.sender;
+        _emitStandingChanged(args);
     }
 
     /// @inheritdoc ITournament
@@ -266,14 +267,18 @@ contract Tournament is ITournament, ERC165 {
         MatchClocks.switchTurnAt(
             clockOne, clockTwo, args.responseBudget, current
         );
-        (, Time.Instant eliminableAt) =
+        (Time.Instant responderDeadline, Time.Instant eliminableAt) =
             MatchClocks.bisectionSchedule(clockOne, clockTwo);
 
         _emitMatchAdvanced(
             matchIdHash,
+            _matchId.commitmentOne,
+            _matchId.commitmentTwo,
             _matchState.otherParent,
             _matchState.leftNode,
             _matchState.runningLeafPosition,
+            _matchState.currentHeight,
+            responderDeadline,
             eliminableAt
         );
     }
@@ -327,7 +332,10 @@ contract Tournament is ITournament, ERC165 {
             );
 
             deleteMatch(
-                _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.ONE
+                args,
+                _matchId,
+                MatchDeletionReason.TIMEOUT,
+                WinnerCommitment.ONE
             );
         } else if (timeout.outcome == MatchClocks.TimeoutOutcome.TWO_WINS) {
             require(
@@ -348,7 +356,10 @@ contract Tournament is ITournament, ERC165 {
             );
 
             deleteMatch(
-                _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.TWO
+                args,
+                _matchId,
+                MatchDeletionReason.TIMEOUT,
+                WinnerCommitment.TWO
             );
         } else {
             revert MatchCannotBeWonByTimeout();
@@ -375,7 +386,10 @@ contract Tournament is ITournament, ERC165 {
 
         if (timeout.outcome == MatchClocks.TimeoutOutcome.ELIMINATE_BOTH) {
             deleteMatch(
-                _matchId, MatchDeletionReason.TIMEOUT, WinnerCommitment.NONE
+                args,
+                _matchId,
+                MatchDeletionReason.TIMEOUT,
+                WinnerCommitment.NONE
             );
         } else {
             revert MatchCannotBeEliminatedByTimeout();
@@ -526,6 +540,8 @@ contract Tournament is ITournament, ERC165 {
         Match.State storage _matchState = matches[matchIdHash];
         _matchState.requireCanBeSealed();
 
+        Time.Instant deadlineOne;
+        Time.Instant deadlineTwo;
         Time.Instant eliminableAt;
         {
             Clock.State storage _clock1 = clocks[_matchId.commitmentOne];
@@ -533,10 +549,11 @@ contract Tournament is ITournament, ERC165 {
             MatchClocks.startLeafRaceAt(
                 _clock1, _clock2, args.responseBudget, Time.currentTime()
             );
-            (,, eliminableAt) = MatchClocks.leafRaceSchedule(_clock1, _clock2);
+            (deadlineOne, deadlineTwo, eliminableAt) =
+                MatchClocks.leafRaceSchedule(_clock1, _clock2);
         }
 
-        _matchState.sealDivergence(
+        Match.SealedView memory divergence = _matchState.sealDivergence(
             args.commitmentArgs,
             _matchId,
             _leftLeaf,
@@ -544,7 +561,14 @@ contract Tournament is ITournament, ERC165 {
             _agreeHash,
             _agreeHashProof
         );
-        _emitLeafMatchSealed(matchIdHash, eliminableAt);
+        _emitLeafMatchSealed(
+            matchIdHash,
+            _matchId,
+            divergence,
+            deadlineOne,
+            deadlineTwo,
+            eliminableAt
+        );
     }
 
     /// @inheritdoc ITournament
@@ -608,7 +632,7 @@ contract Tournament is ITournament, ERC165 {
             );
 
             deleteMatch(
-                _matchId, MatchDeletionReason.STEP, WinnerCommitment.ONE
+                args, _matchId, MatchDeletionReason.STEP, WinnerCommitment.ONE
             );
         } else if (_leftNode.join(_rightNode).eq(_matchId.commitmentTwo)) {
             require(
@@ -629,7 +653,7 @@ contract Tournament is ITournament, ERC165 {
             );
 
             deleteMatch(
-                _matchId, MatchDeletionReason.STEP, WinnerCommitment.TWO
+                args, _matchId, MatchDeletionReason.STEP, WinnerCommitment.TWO
             );
         } else {
             revert WrongNodesForStep();
@@ -663,7 +687,8 @@ contract Tournament is ITournament, ERC165 {
             revert RequireNonLeafTournament();
         }
 
-        Match.State storage _matchState = matches[_matchId.hashFromId()];
+        Match.IdHash matchIdHash = _matchId.hashFromId();
+        Match.State storage _matchState = matches[matchIdHash];
         _matchState.requireCanBeSealed();
 
         Time.Duration _maxDuration;
@@ -684,7 +709,7 @@ contract Tournament is ITournament, ERC165 {
             _agreeHashProof
         );
 
-        ITournament _inner = instantiateInner(
+        (ITournament _inner, TournamentDescriptor memory childDescriptor) = instantiateInner(
             args,
             _agreeHash,
             _matchId.commitmentOne,
@@ -697,7 +722,9 @@ contract Tournament is ITournament, ERC165 {
         );
         matchIdFromInnerTournaments[_inner] = _matchId;
 
-        _emitNewInnerTournament(_matchId.hashFromId(), _inner);
+        _emitNewInnerTournament(
+            matchIdHash, _inner, _matchId, divergence, childDescriptor
+        );
     }
 
     /// @inheritdoc ITournament
@@ -767,7 +794,10 @@ contract Tournament is ITournament, ERC165 {
         );
 
         deleteMatch(
-            _matchId, MatchDeletionReason.CHILD_TOURNAMENT, _winnerCommitment
+            args,
+            _matchId,
+            MatchDeletionReason.CHILD_TOURNAMENT,
+            _winnerCommitment
         );
         delete matchIdFromInnerTournaments[_childTournament];
     }
@@ -797,6 +827,7 @@ contract Tournament is ITournament, ERC165 {
         );
 
         deleteMatch(
+            args,
             _matchId,
             MatchDeletionReason.CHILD_TOURNAMENT,
             WinnerCommitment.NONE
@@ -818,7 +849,7 @@ contract Tournament is ITournament, ERC165 {
         Time.Duration _allowance,
         uint256 _startCycle,
         uint64 _level
-    ) private returns (ITournament) {
+    ) private returns (ITournament, TournamentDescriptor memory) {
         IMultiLevelTournamentFactory tournamentFactory =
             IMultiLevelTournamentFactory(args.tournamentFactory);
         return tournamentFactory.instantiateInner(
@@ -1050,6 +1081,7 @@ contract Tournament is ITournament, ERC165 {
 
     /// @notice The instant a tournament with no live matches is safe to
     /// decide: the later of the closure deadline and the last match deletion.
+    /// @dev Ungated, so `StandingChanged` can publish it before closure.
     function _resultAt(TournamentArguments memory args)
         internal
         view
@@ -1075,7 +1107,9 @@ contract Tournament is ITournament, ERC165 {
     /// @dev The winner is the dangling commitment, whose clock is always
     /// paused: every path that makes a commitment dangling leaves its clock
     /// paused, and only pairing, which ends the dangling state, starts it.
-    /// `_winnerExpired` asserts that for the views.
+    /// `_winnerExpired` asserts that for the views; `StandingChanged` skips
+    /// the assert so that emitting adds no reachable assert to a progress
+    /// path.
     function _winnerExpiresAt(
         Time.Instant resultAt,
         Clock.State memory winnerClock
@@ -1166,7 +1200,7 @@ contract Tournament is ITournament, ERC165 {
 
             Clock.State storage _firstClock = clocks[_danglingCommitment];
             MatchClocks.startBisectionAt(_firstClock, _newClock, current);
-            (, Time.Instant eliminableAt) =
+            (Time.Instant responderDeadline, Time.Instant eliminableAt) =
                 MatchClocks.bisectionSchedule(_firstClock, _newClock);
 
             clearDanglingCommitment();
@@ -1177,6 +1211,7 @@ contract Tournament is ITournament, ERC165 {
                 _danglingCommitment,
                 _rootHash,
                 _leftNode,
+                responderDeadline,
                 eliminableAt
             );
         } else {
@@ -1185,6 +1220,7 @@ contract Tournament is ITournament, ERC165 {
     }
 
     function deleteMatch(
+        TournamentArguments memory args,
         Match.Id memory _matchId,
         MatchDeletionReason _reason,
         WinnerCommitment _winnerCommitment
@@ -1203,6 +1239,7 @@ contract Tournament is ITournament, ERC165 {
         Match.IdHash _matchIdHash = _matchId.hashFromId();
         delete matches[_matchIdHash];
         _emitMatchDeleted(_matchIdHash, _matchId, _reason, _winnerCommitment);
+        _emitStandingChanged(args);
     }
 
     function deleteClaimer(Tree.Node commitment) internal {
@@ -1402,24 +1439,35 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node one,
         Tree.Node two,
         Tree.Node leftOfTwo,
+        Time.Instant responderDeadline,
         Time.Instant eliminableAt
     ) private {
-        emit MatchCreated(matchIdHash, one, two, leftOfTwo, eliminableAt);
+        emit MatchCreated(
+            matchIdHash, one, two, leftOfTwo, responderDeadline, eliminableAt
+        );
         ++matchCreatedCount;
     }
 
     function _emitMatchAdvanced(
         Match.IdHash matchIdHash,
+        Tree.Node one,
+        Tree.Node two,
         Tree.Node otherParent,
         Tree.Node leftNode,
         uint256 segmentStartPosition,
+        uint64 currentHeight,
+        Time.Instant responderDeadline,
         Time.Instant eliminableAt
     ) private {
         emit MatchAdvanced(
             matchIdHash,
+            one,
+            two,
             otherParent,
             leftNode,
             segmentStartPosition,
+            currentHeight,
+            responderDeadline,
             eliminableAt
         );
         ++matchAdvancedCount;
@@ -1427,9 +1475,24 @@ contract Tournament is ITournament, ERC165 {
 
     function _emitLeafMatchSealed(
         Match.IdHash matchIdHash,
+        Match.Id calldata matchId,
+        Match.SealedView memory divergence,
+        Time.Instant deadlineOne,
+        Time.Instant deadlineTwo,
         Time.Instant eliminableAt
     ) private {
-        emit LeafMatchSealed(matchIdHash, eliminableAt);
+        emit LeafMatchSealed(
+            matchIdHash,
+            matchId.commitmentOne,
+            matchId.commitmentTwo,
+            divergence.agreeState,
+            divergence.divergencePosition,
+            divergence.finalStateOne,
+            divergence.finalStateTwo,
+            deadlineOne,
+            deadlineTwo,
+            eliminableAt
+        );
         ++leafMatchSealedCount;
     }
 
@@ -1451,9 +1514,50 @@ contract Tournament is ITournament, ERC165 {
 
     function _emitNewInnerTournament(
         Match.IdHash matchIdHash,
-        ITournament childTournament
+        ITournament childTournament,
+        Match.Id calldata matchId,
+        Match.SealedView memory divergence,
+        TournamentDescriptor memory descriptor
     ) private {
-        emit NewInnerTournament(matchIdHash, childTournament);
+        emit NewInnerTournament(
+            matchIdHash,
+            childTournament,
+            matchId.commitmentOne,
+            matchId.commitmentTwo,
+            divergence.finalStateOne,
+            divergence.finalStateTwo,
+            descriptor,
+            Descriptor.bondValue(descriptor)
+        );
         ++newInnerTournamentCount;
+    }
+
+    /// @dev Runs last in `joinTournament` and `deleteMatch`. Every mutator
+    /// that writes `matchCount`, `danglingCommitment`, `lastMatchDeleted`, or
+    /// the dangling clock is a join or calls `deleteMatch` after its last
+    /// such write, so each such call emits once, after its last standing
+    /// effect. The fields come from the helpers behind `tournamentStanding`,
+    /// without its gate on the current block. `_parentCommitment` cannot
+    /// assert here: a join stores only a contested final state.
+    function _emitStandingChanged(TournamentArguments memory args) private {
+        uint256 liveMatches = matchCount;
+        (bool hasDangling, Tree.Node dangling) = hasDanglingCommitment();
+        Tree.Node parentCommitment;
+        Time.Instant resultAt;
+        Time.Instant winnerExpiresAt;
+        // Like the views, the result fields describe only a tournament with
+        // no live matches.
+        if (liveMatches == 0) {
+            resultAt = _resultAt(args);
+            if (hasDangling && !_isRootTournament(args)) {
+                parentCommitment = _parentCommitment(
+                    args.nestedDispute, finalStates[dangling]
+                );
+                winnerExpiresAt = _winnerExpiresAt(resultAt, clocks[dangling]);
+            }
+        }
+        emit StandingChanged(
+            liveMatches, dangling, parentCommitment, resultAt, winnerExpiresAt
+        );
     }
 }

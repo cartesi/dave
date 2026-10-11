@@ -103,8 +103,11 @@ carry no backlog (reviews/README.md).
 
 ## Decisions
 
-- The tournament events ABI stays as cartesi/dave#287 left it; a follow-up
-  may add fields if consumers request them.
+- The tournament events carry the match schedules, sealed divergences,
+  descriptors, bonds and `StandingChanged` that consumers asked for, in
+  cartesi/dave#287's generation (cartesi/dave#297). A later field is a wire
+  break: it lands before the audit freeze or waits for the next generation.
+  (dispute-game.md)
 - The safety-gate branch stays tabled: the delay lives in DaveConsensus
   staging and sentries, and the branch is kept for its `ITask` genericity.
 - Open: the external audit's scope, firm and date, and whether R19 gates it

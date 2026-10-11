@@ -197,6 +197,49 @@ contract SmallSingleLevelTournamentTest is Test {
         );
     }
 
+    function testStandingEventsDescribeJoinPairingAndLastDeletion() public {
+        InspectableTournament tournament = InspectableTournament(
+            address(
+                FACTORY.instantiate(INITIAL_STATE, IDataProvider(address(0)))
+            )
+        );
+        SmallFullTree.Data memory one =
+            SmallFullTree.build(bytes32(uint256(1)), HEIGHT);
+        SmallFullTree.Data memory two =
+            SmallFullTree.build(bytes32(uint256(2)), HEIGHT);
+        uint256 bond = tournament.bondValue();
+        Time.Instant close = Time.Instant.wrap(START_BLOCK + MAX_ALLOWANCE);
+        vm.expectEmit(false, false, false, true, address(tournament));
+        emit ITournament.StandingChanged(
+            0, one.root(), Tree.ZERO_NODE, close, Time.ZERO_INSTANT
+        );
+        _join(tournament, one, CLAIMER_ONE, bond);
+
+        vm.expectEmit(false, false, false, true, address(tournament));
+        emit ITournament.StandingChanged(
+            1,
+            Tree.ZERO_NODE,
+            Tree.ZERO_NODE,
+            Time.ZERO_INSTANT,
+            Time.ZERO_INSTANT
+        );
+        _join(tournament, two, CLAIMER_TWO, bond);
+
+        // Equality at the pair's elimination boundary produces no winner.
+        // The last deletion occurs after closing and becomes resultAt.
+        vm.roll(START_BLOCK + 2 * MAX_ALLOWANCE);
+        vm.expectEmit(false, false, false, true, address(tournament));
+        emit ITournament.StandingChanged(
+            0,
+            Tree.ZERO_NODE,
+            Tree.ZERO_NODE,
+            Time.currentTime(),
+            Time.ZERO_INSTANT
+        );
+        tournament.eliminateMatchByTimeout(Match.Id(one.root(), two.root()));
+        assertTrue(tournament.isFinished());
+    }
+
     function testMatchAdvancedEventSupersedesCreationScheduleOnBothBranches()
         public
     {
@@ -242,9 +285,13 @@ contract SmallSingleLevelTournamentTest is Test {
         vm.expectEmit(true, false, false, true, address(tournament));
         emit ITournament.MatchAdvanced(
             id.hashFromId(),
+            one.root(),
+            two.root(),
             expectedOtherParent,
             newLeft,
             expectedPosition,
+            HEIGHT - 1,
+            Time.currentTime().add(Time.Duration.wrap(MAX_ALLOWANCE)),
             advancedEliminableAt
         );
         tournament.advanceMatch(id, oneLeft, oneRight, newLeft, newRight);
@@ -294,7 +341,18 @@ contract SmallSingleLevelTournamentTest is Test {
             .add(Time.Duration.wrap(MAX_ALLOWANCE));
         (Tree.Node leftLeaf, Tree.Node rightLeaf) = one.children(HEIGHT - 2, 0);
         vm.expectEmit(true, false, false, true, address(tournament));
-        emit ITournament.LeafMatchSealed(id.hashFromId(), expectedEliminableAt);
+        emit ITournament.LeafMatchSealed(
+            id.hashFromId(),
+            one.root(),
+            two.root(),
+            INITIAL_STATE,
+            0,
+            one.leaf(0).toMachineHash(),
+            two.leaf(0).toMachineHash(),
+            Time.currentTime().add(Time.Duration.wrap(MAX_ALLOWANCE - 2)),
+            expectedEliminableAt,
+            expectedEliminableAt
+        );
         tournament.sealLeafMatch(
             id, leftLeaf, rightLeaf, INITIAL_STATE, new bytes32[](0)
         );

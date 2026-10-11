@@ -45,6 +45,8 @@ local function event_commitment_joined(commitment, final_state, submitter)
     }
 end
 
+-- The schedule fields the reader skips sit one below the deadline it reads,
+-- so a decoder that read the wrong word would see a different value.
 local function event_match_created(one, two, left, eliminable_at)
     return {
         topics = {
@@ -55,13 +57,15 @@ local function event_match_created(one, two, left, eliminable_at)
         },
         data = data {
             word_hash(left),
+            word_uint(eliminable_at - 1),
             word_uint(eliminable_at),
         },
     }
 end
 
 local function event_match_advanced(
-    id_hash,
+    one,
+    two,
     other_parent,
     left,
     segment_start_position,
@@ -70,24 +74,38 @@ local function event_match_advanced(
     return {
         topics = {
             topics[3],
-            id_hash:hex_string(),
+            one:join(two):hex_string(),
         },
         data = data {
+            word_hash(one),
+            word_hash(two),
             word_hash(other_parent),
             word_hash(left),
             word_uint(segment_start_position),
+            word_uint(2),
+            word_uint(eliminable_at - 1),
             word_uint(eliminable_at),
         },
     }
 end
 
-local function event_leaf_match_sealed(id_hash, eliminable_at)
+local function event_leaf_match_sealed(one, two, eliminable_at)
     return {
         topics = {
             topics[4],
-            id_hash:hex_string(),
+            one:join(two):hex_string(),
         },
-        data = data { word_uint(eliminable_at) },
+        data = data {
+            word_hash(one),
+            word_hash(two),
+            word_hash(digest(40)),
+            word_uint(3),
+            word_hash(digest(41)),
+            word_hash(digest(42)),
+            word_uint(eliminable_at - 1),
+            word_uint(eliminable_at - 1),
+            word_uint(eliminable_at),
+        },
     }
 end
 
@@ -106,14 +124,29 @@ local function event_match_deleted(id_hash, one, two, reason, winner)
     }
 end
 
-local function event_new_inner(id_hash, child)
+local function event_new_inner(one, two, child)
     return {
         topics = {
             topics[6],
-            id_hash:hex_string(),
+            one:join(two):hex_string(),
             address_topic(child),
         },
-        data = "0x",
+        data = data {
+            word_hash(one),
+            word_hash(two),
+            word_hash(digest(41)),
+            word_hash(digest(42)),
+            -- The inline child descriptor, then the bond value.
+            word_hash(digest(40)),
+            word_uint(3),
+            word_uint(0),
+            word_uint(2),
+            word_uint(1),
+            word_uint(0),
+            word_uint(12),
+            word_uint(1000),
+            word_uint(1),
+        },
     }
 end
 
@@ -191,7 +224,6 @@ local function semantic_fixture()
     local final_two = digest(21)
     local child_final = digest(22)
     local left = digest(30)
-    local id_hash = one:join(two)
     local agree_state = digest(40)
 
     local block9 = chain_head(9, 209)
@@ -235,7 +267,7 @@ local function semantic_fixture()
                 transaction_index = 0,
                 log_index = 3,
                 event = event_match_advanced(
-                    id_hash, digest(31), digest(32), 0, 21
+                    one, two, digest(31), digest(32), 0, 21
                 ),
             },
             raw_log {
@@ -245,7 +277,7 @@ local function semantic_fixture()
                 transaction_index = 0,
                 log_index = 4,
                 event = event_match_advanced(
-                    id_hash, digest(33), digest(34), 0, 22
+                    one, two, digest(33), digest(34), 0, 22
                 ),
             },
             raw_log {
@@ -255,7 +287,7 @@ local function semantic_fixture()
                 transaction_index = 0,
                 log_index = 5,
                 event = event_match_advanced(
-                    id_hash, digest(35), digest(36), 0, 23
+                    one, two, digest(35), digest(36), 0, 23
                 ),
             },
             raw_log {
@@ -265,7 +297,7 @@ local function semantic_fixture()
                 transaction_hash = transaction12,
                 transaction_index = 0,
                 log_index = 3,
-                event = event_new_inner(id_hash, child),
+                event = event_new_inner(one, two, child),
             },
         },
         child = {
@@ -382,11 +414,15 @@ return {
     Test.case("event topics match the structural ABI", function()
         local signatures = {
             "CommitmentJoined(bytes32,bytes32,address)",
-            "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64)",
-            "MatchAdvanced(bytes32,bytes32,bytes32,uint256,uint64)",
-            "LeafMatchSealed(bytes32,uint64)",
+            "MatchCreated(bytes32,bytes32,bytes32,bytes32,uint64,uint64)",
+            "MatchAdvanced(bytes32,bytes32,bytes32,bytes32,bytes32,uint256,"
+                .. "uint64,uint64,uint64)",
+            "LeafMatchSealed(bytes32,bytes32,bytes32,bytes32,uint256,bytes32,"
+                .. "bytes32,uint64,uint64,uint64)",
             "MatchDeleted(bytes32,bytes32,bytes32,uint8,uint8)",
-            "NewInnerTournament(bytes32,address)",
+            "NewInnerTournament(bytes32,address,bytes32,bytes32,bytes32,"
+                .. "bytes32,(bytes32,uint256,uint64,uint64,uint64,uint8,uint64,"
+                .. "uint64),uint256)",
         }
         Test.equal(#topics, #signatures)
         for index, signature in ipairs(signatures) do
@@ -419,13 +455,13 @@ return {
                 tag = Fold.EventKind.MATCH_ADVANCED,
                 event =
                     event_match_advanced(
-                        id_hash, digest(6), digest(7), 0, 21
+                        one, two, digest(6), digest(7), 8, 21
                     ),
                 eliminable_at = 21,
             },
             {
                 tag = Fold.EventKind.LEAF_MATCH_SEALED,
-                event = event_leaf_match_sealed(id_hash, 22),
+                event = event_leaf_match_sealed(one, two, 22),
                 eliminable_at = 22,
             },
             {
@@ -435,7 +471,7 @@ return {
             },
             {
                 tag = Fold.EventKind.NEW_INNER_TOURNAMENT,
-                event = event_new_inner(id_hash, child),
+                event = event_new_inner(one, two, child),
             },
         }
         for index, row in ipairs(rows) do
@@ -450,8 +486,20 @@ return {
             if row.tag == Fold.EventKind.COMMITMENT_JOINED then
                 Test.truthy(Hash:is_of_type_hash(decoded.kind.root))
             elseif row.tag == Fold.EventKind.NEW_INNER_TOURNAMENT then
+                Test.equal(decoded.kind.match_id_hash, id_hash)
                 Test.equal(decoded.kind.child, child)
-            elseif row.tag == Fold.EventKind.MATCH_CREATED
+            end
+            if row.tag == Fold.EventKind.MATCH_CREATED then
+                Test.equal(decoded.kind.left_of_two, digest(5))
+            elseif row.tag == Fold.EventKind.MATCH_ADVANCED then
+                Test.equal(decoded.kind.other_parent, digest(6))
+                Test.equal(decoded.kind.left_node, digest(7))
+                Test.equal(
+                    tostring(decoded.kind.segment_start_position),
+                    "8"
+                )
+            end
+            if row.tag == Fold.EventKind.MATCH_CREATED
                 or row.tag == Fold.EventKind.MATCH_ADVANCED
                 or row.tag == Fold.EventKind.LEAF_MATCH_SEALED
             then
@@ -486,10 +534,10 @@ return {
             }
         end)
 
-        local sealed = event_leaf_match_sealed(one:join(two), 1)
-        sealed.data = data {
-            string.rep("0", 48) .. string.rep("f", 16),
-        }
+        -- eliminableAt is the last LeafMatchSealed data word.
+        local sealed = event_leaf_match_sealed(one, two, 1)
+        sealed.data = sealed.data:sub(1, -65)
+            .. string.rep("0", 48) .. string.rep("f", 16)
         local maximum = SemanticReader.decode_event_log {
             address = address(1),
             block_number = 1,
@@ -501,7 +549,7 @@ return {
             "18446744073709551615"
         )
 
-        sealed.data = data { "1" .. string.rep("0", 63) }
+        sealed.data = sealed.data:sub(1, -65) .. "1" .. string.rep("0", 63)
         Test.error_like("exceeds uint64", function()
             SemanticReader.decode_event_log {
                 address = address(1),
@@ -511,7 +559,7 @@ return {
             }
         end)
 
-        local child_event = event_new_inner(one:join(two), address(3))
+        local child_event = event_new_inner(one, two, address(3))
         child_event.topics[3] =
             "0x01" .. child_event.topics[3]:sub(5)
         Test.error_like("canonical indexed address", function()
@@ -522,6 +570,27 @@ return {
                 data = child_event.data,
             }
         end)
+    end),
+
+    Test.case("raw decoder rejects a carried pair that is not the match", function()
+        local one = digest(1)
+        local two = digest(2)
+        local events = {
+            event_match_advanced(one, two, digest(6), digest(7), 0, 21),
+            event_leaf_match_sealed(one, two, 22),
+            event_new_inner(one, two, address(3)),
+        }
+        for _, event in ipairs(events) do
+            event.topics[2] = two:join(one):hex_string()
+            Test.error_like("match id disagrees", function()
+                SemanticReader.decode_event_log {
+                    address = address(1),
+                    block_number = 1,
+                    topics = event.topics,
+                    data = event.data,
+                }
+            end)
+        end
     end),
 
     Test.case("reader closes dynamic discovery over one globally ordered replay", function()

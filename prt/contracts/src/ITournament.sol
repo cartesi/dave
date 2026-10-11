@@ -236,22 +236,36 @@ interface ITournament {
     /// @param one The match commitment #1
     /// @param two The match commitment #2
     /// @param leftOfTwo The left child of #2
+    /// @param responderDeadline The first inclusive instant at which #1, the
+    /// first responder, has timed out
     /// @param eliminableAt The first inclusive instant at which both
     /// commitments can be eliminated if the match does not advance
+    /// @dev Only #1's clock runs, so `eliminableAt - responderDeadline` is
+    /// #2's paused allowance. The dangling commitment is #1 and the arriving
+    /// one #2: a survivor paired within its winning call is #2, and the gap
+    /// is its post-win allowance, while a survivor left dangling becomes #1
+    /// of its next match. The match's next `MatchAdvanced` or
+    /// `LeafMatchSealed` supersedes this schedule.
     event MatchCreated(
         Match.IdHash indexed matchIdHash,
         Tree.Node indexed one,
         Tree.Node indexed two,
         Tree.Node leftOfTwo,
+        Time.Instant responderDeadline,
         Time.Instant eliminableAt
     );
 
     /// @notice A match has advanced.
     /// @param matchIdHash The match ID hash
+    /// @param one The match commitment #1
+    /// @param two The match commitment #2
     /// @param otherParent The parent the next responder must reveal
     /// @param leftNode The waiting side's left child after the advance
     /// @param segmentStartPosition The post-advance start position of the
     /// disputed segment, as also reported by `BisectingMatchView`
+    /// @param currentHeight The post-advance height of the disputed segment
+    /// @param responderDeadline The first inclusive instant at which the next
+    /// responder has timed out
     /// @param eliminableAt The first inclusive instant at which both
     /// commitments can be eliminated if the match does not advance again
     /// @dev Each advance selects the left half when the two left children differ,
@@ -259,23 +273,60 @@ interface ITournament {
     /// event exposes the post-advance revealing parent, waiting left child,
     /// and segment start position; a right descent raises the position by two
     /// to the pre-advance height minus one, a left descent keeps it, so the
-    /// position also encodes the selected branch. The full live state remains
-    /// available through the phase projections (`bisectingMatch` and its
-    /// siblings).
+    /// position also encodes the selected branch. The position alone does not
+    /// determine the height: position zero is aligned to every height. With
+    /// the tournament height `H`, #1 responds next when `H - currentHeight`
+    /// is even and #2 otherwise; at `currentHeight` one, the next response is
+    /// the seal. Only the responder's clock runs, so
+    /// `eliminableAt - responderDeadline` is the other side's paused
+    /// allowance. The schedule supersedes the match's previous one. The full
+    /// live state remains available through the phase projections
+    /// (`bisectingMatch` and its siblings).
     event MatchAdvanced(
         Match.IdHash indexed matchIdHash,
+        Tree.Node one,
+        Tree.Node two,
         Tree.Node otherParent,
         Tree.Node leftNode,
         uint256 segmentStartPosition,
+        uint64 currentHeight,
+        Time.Instant responderDeadline,
         Time.Instant eliminableAt
     );
 
     /// @notice A leaf match was sealed and entered its two-clock race.
     /// @param matchIdHash The match ID hash
+    /// @param one The match commitment #1
+    /// @param two The match commitment #2
+    /// @param agreeState The state both commitments agree on before the
+    /// divergent leaf
+    /// @param divergencePosition The position of the first divergent leaf;
+    /// the transition to prove starts at cycle
+    /// `baseCycle + (divergencePosition << log2Stride)` of this tournament
+    /// @param finalStateOne The state #1 claims at the divergent leaf
+    /// @param finalStateTwo The state #2 claims at the divergent leaf
+    /// @param deadlineOne The first inclusive instant at which #1 has timed out
+    /// @param deadlineTwo The first inclusive instant at which #2 has timed out
     /// @param eliminableAt The first inclusive instant at which both
     /// commitments can be eliminated if the match remains unresolved
+    /// @dev Both clocks run from the seal, and `eliminableAt` is the later of
+    /// the two deadlines. A leaf proof is accepted strictly before the earlier
+    /// deadline. From then until `eliminableAt`, the side with the later
+    /// deadline may win by timeout; equal deadlines leave no such window. The
+    /// schedule supersedes the match's bisection schedule. The match storage
+    /// that `sealedMatch` projects is zeroed when the match is deleted, so
+    /// this event is the durable record of the divergence.
     event LeafMatchSealed(
-        Match.IdHash indexed matchIdHash, Time.Instant eliminableAt
+        Match.IdHash indexed matchIdHash,
+        Tree.Node one,
+        Tree.Node two,
+        Machine.Hash agreeState,
+        uint256 divergencePosition,
+        Machine.Hash finalStateOne,
+        Machine.Hash finalStateTwo,
+        Time.Instant deadlineOne,
+        Time.Instant deadlineTwo,
+        Time.Instant eliminableAt
     );
 
     /// @notice A match was deleted.
@@ -332,8 +383,59 @@ interface ITournament {
     /// @notice An inner tournament was created.
     /// @param matchIdHash The match ID hash
     /// @param childTournament The inner/child tournament
+    /// @param one The sealed match's commitment #1
+    /// @param two The sealed match's commitment #2
+    /// @param contestedFinalStateOne The final state a child commitment
+    /// claims to defend #1
+    /// @param contestedFinalStateTwo The final state a child commitment
+    /// claims to defend #2
+    /// @param descriptor The child's `tournamentDescriptor()`
+    /// @param bondValue The child's `bondValue()`, the value a join must send
+    /// @dev The four contested fields are the child's `NestedDispute`, which
+    /// no view exposes. The descriptor's `startInstant + allowance` is the
+    /// child's joining deadline; a child nobody joins can be eliminated from
+    /// that instant on. The sealed match's clocks pause while the child runs,
+    /// so this event cancels the match's local schedule.
     event NewInnerTournament(
-        Match.IdHash indexed matchIdHash, ITournament indexed childTournament
+        Match.IdHash indexed matchIdHash,
+        ITournament indexed childTournament,
+        Tree.Node one,
+        Tree.Node two,
+        Machine.Hash contestedFinalStateOne,
+        Machine.Hash contestedFinalStateTwo,
+        TournamentDescriptor descriptor,
+        uint256 bondValue
+    );
+
+    /// @notice The tournament's standing after a join or a match deletion.
+    /// @param matchCount The number of live matches
+    /// @param dangling The unpaired commitment, or zero when there is none
+    /// @param parentCommitment With no live matches, for an inner tournament
+    /// with a dangling commitment, the contested parent commitment it
+    /// defends; zero otherwise
+    /// @param resultAt With no live matches, the first inclusive instant at
+    /// which the tournament is finished; zero otherwise
+    /// @param winnerExpiresAt With no live matches, for an inner tournament
+    /// with a dangling commitment, the first inclusive instant at which that
+    /// winner becomes eliminable; zero otherwise
+    /// @dev Emitted once at the end of `joinTournament` and once by every
+    /// call that deletes a match, after every effect on these fields: nothing
+    /// later in the call, such as the refund payment and its event, changes
+    /// them. Advances and seals leave them unchanged. The instants are
+    /// prospective and match `tournamentStanding` and `innerResult`: with no
+    /// live matches the dangling clock is paused, and only a join before the
+    /// joining deadline can change the standing, emitting again. Clients take
+    /// the latest event per tournament in log order. The number of these
+    /// events is `getCommitmentJoinedCount() + getMatchDeletedCount()`.
+    /// Anyone can instantiate a tournament through the factory, so a client
+    /// trusts this event only from tournaments it reached through the
+    /// consensus's `EpochSealed` and the parents' `NewInnerTournament`.
+    event StandingChanged(
+        uint256 matchCount,
+        Tree.Node dangling,
+        Tree.Node parentCommitment,
+        Time.Instant resultAt,
+        Time.Instant winnerExpiresAt
     );
 
     //
@@ -840,6 +942,8 @@ interface ITournament {
     // structural events exist, so the eth_getLogs round trip can be skipped;
     // and a fetched range whose event count disagrees with the counter delta
     // reveals a silently truncated or lossy provider response.
+    // `StandingChanged` needs no counter of its own: one is emitted per join
+    // and per match deletion, so its count is the sum of those two counters.
     //
 
     /// @notice Get the number of `CommitmentJoined` events

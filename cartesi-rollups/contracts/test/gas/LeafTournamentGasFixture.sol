@@ -180,7 +180,7 @@ abstract contract LeafTournamentGasFixture is Test {
         Machine.Hash finalOne = winner == WinnerSide.ONE ? vector.nextState : Machine.Hash.wrap(WRONG_STATE);
         Machine.Hash finalTwo = winner == WinnerSide.ONE ? Machine.Hash.wrap(WRONG_STATE) : vector.nextState;
 
-        tournament = FACTORY.instantiateInner(
+        (tournament,) = FACTORY.instantiateInner(
             vector.tournamentInitialState,
             one,
             finalOne,
