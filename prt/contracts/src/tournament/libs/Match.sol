@@ -124,6 +124,9 @@ library Match {
         state.currentHeight--;
     }
 
+    /// @return divergence The sealed divergence just stored, equal to what
+    /// `sealedView` projects from the sealed state, so callers need not
+    /// re-read the phase-overloaded fields
     function sealDivergence(
         State storage state,
         Commitment.Arguments memory args,
@@ -132,10 +135,7 @@ library Match {
         Tree.Node revealingRight,
         Machine.Hash agreeState,
         bytes32[] calldata agreeStateProof
-    )
-        internal
-        returns (Machine.Hash finalStateOne, Machine.Hash finalStateTwo)
-    {
+    ) internal returns (SealedView memory divergence) {
         assert(state.currentHeight == 1);
         state.otherParent.requireChildren(revealingLeft, revealingRight);
 
@@ -187,8 +187,12 @@ library Match {
         state.runningLeafPosition = divergencePosition;
         state.currentHeight = 0;
 
-        finalStateOne = finalStateOneNode.toMachineHash();
-        finalStateTwo = finalStateTwoNode.toMachineHash();
+        divergence = SealedView({
+            agreeState: agreeState,
+            divergencePosition: divergencePosition,
+            finalStateOne: finalStateOneNode.toMachineHash(),
+            finalStateTwo: finalStateTwoNode.toMachineHash()
+        });
     }
 
     //

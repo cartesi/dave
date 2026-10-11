@@ -27,35 +27,55 @@ library MatchClocks {
         Time.Duration deferredCharge;
     }
 
-    /// @notice Return the first inclusive instant at which the current match
-    /// schedule classifies as `ELIMINATE_BOTH` if no transition intervenes.
-    /// @dev Supports the two timeout-bearing clock shapes: exactly one running
-    /// clock during bisection, or two clocks running from the same instant in a
-    /// sealed leaf race. A sealed inner match has no local timeout schedule.
-    function eliminableAt(Clock.State memory one, Clock.State memory two)
+    /// @notice The active-bisection timeout schedule if no transition
+    /// intervenes.
+    /// @dev Requires the bisection shape: exactly one running clock.
+    /// @return responderDeadline The running responder's deadline, from which
+    /// the paused side may win by timeout
+    /// @return eliminableAt The first inclusive instant that classifies as
+    /// `ELIMINATE_BOTH`: the responder's deadline plus the paused allowance,
+    /// when the responder's overdue reaches the paused remainder
+    function bisectionSchedule(Clock.State memory one, Clock.State memory two)
         internal
         pure
-        returns (Time.Instant)
+        returns (Time.Instant responderDeadline, Time.Instant eliminableAt)
     {
-        one.assertInitialized();
-        two.assertInitialized();
-
-        bool oneRunning = one.isRunning();
-        bool twoRunning = two.isRunning();
-        if (oneRunning && twoRunning) {
-            assert(
-                Time.Instant.unwrap(one.startInstant)
-                    == Time.Instant.unwrap(two.startInstant)
-            );
-            return one.startInstant.add(one.allowance.max(two.allowance));
-        }
-
-        assert(oneRunning != twoRunning);
-        if (oneRunning) {
-            return one.startInstant.add(one.allowance).add(two.allowance);
+        assertBisection(one, two);
+        if (one.isRunning()) {
+            responderDeadline = one.deadline();
+            eliminableAt = responderDeadline.add(two.allowance);
         } else {
-            return two.startInstant.add(two.allowance).add(one.allowance);
+            responderDeadline = two.deadline();
+            eliminableAt = responderDeadline.add(one.allowance);
         }
+    }
+
+    /// @notice The sealed-leaf race schedule if no transition intervenes.
+    /// @dev Requires the leaf-race shape: both clocks running from the same
+    /// instant. The classification is then `NONE` before the earlier
+    /// deadline, a win for the longer clock from there, and `ELIMINATE_BOTH`
+    /// from the later one; equal deadlines skip the win. A sealed inner match
+    /// has no local timeout schedule.
+    /// @return deadlineOne Commitment one's deadline
+    /// @return deadlineTwo Commitment two's deadline
+    /// @return eliminableAt The later deadline, the first inclusive instant
+    /// that classifies as `ELIMINATE_BOTH`
+    function leafRaceSchedule(Clock.State memory one, Clock.State memory two)
+        internal
+        pure
+        returns (
+            Time.Instant deadlineOne,
+            Time.Instant deadlineTwo,
+            Time.Instant eliminableAt
+        )
+    {
+        assert(
+            Time.Instant.unwrap(one.startInstant)
+                == Time.Instant.unwrap(two.startInstant)
+        );
+        deadlineOne = one.deadline();
+        deadlineTwo = two.deadline();
+        eliminableAt = deadlineOne.max(deadlineTwo);
     }
 
     /// @notice Classify timeout resolution for a match at one instant.

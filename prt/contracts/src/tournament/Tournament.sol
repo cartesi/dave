@@ -13,6 +13,7 @@ import {IMultiLevelTournamentFactory} from "prt-contracts/tournament/factories/I
 import {Bond} from "prt-contracts/tournament/libs/Bond.sol";
 import {Clock} from "prt-contracts/tournament/libs/Clock.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
+import {Descriptor} from "prt-contracts/tournament/libs/Descriptor.sol";
 import {Gas} from "prt-contracts/tournament/libs/Gas.sol";
 import {Match} from "prt-contracts/tournament/libs/Match.sol";
 import {MatchClocks} from "prt-contracts/tournament/libs/MatchClocks.sol";
@@ -265,13 +266,15 @@ contract Tournament is ITournament, ERC165 {
         MatchClocks.switchTurnAt(
             clockOne, clockTwo, args.responseBudget, current
         );
+        (, Time.Instant eliminableAt) =
+            MatchClocks.bisectionSchedule(clockOne, clockTwo);
 
         _emitMatchAdvanced(
             matchIdHash,
             _matchState.otherParent,
             _matchState.leftNode,
             _matchState.runningLeafPosition,
-            MatchClocks.eliminableAt(clockOne, clockTwo)
+            eliminableAt
         );
     }
 
@@ -530,7 +533,7 @@ contract Tournament is ITournament, ERC165 {
             MatchClocks.startLeafRaceAt(
                 _clock1, _clock2, args.responseBudget, Time.currentTime()
             );
-            eliminableAt = MatchClocks.eliminableAt(_clock1, _clock2);
+            (,, eliminableAt) = MatchClocks.leafRaceSchedule(_clock1, _clock2);
         }
 
         _matchState.sealDivergence(
@@ -672,7 +675,7 @@ contract Tournament is ITournament, ERC165 {
             );
         }
 
-        (Machine.Hash _finalStateOne, Machine.Hash _finalStateTwo) = _matchState.sealDivergence(
+        Match.SealedView memory divergence = _matchState.sealDivergence(
             args.commitmentArgs,
             _matchId,
             _leftLeaf,
@@ -685,11 +688,11 @@ contract Tournament is ITournament, ERC165 {
             args,
             _agreeHash,
             _matchId.commitmentOne,
-            _finalStateOne,
+            divergence.finalStateOne,
             _matchId.commitmentTwo,
-            _finalStateTwo,
+            divergence.finalStateTwo,
             _maxDuration,
-            args.commitmentArgs.toCycle(_matchState.runningLeafPosition),
+            args.commitmentArgs.toCycle(divergence.divergencePosition),
             args.level + 1
         );
         matchIdFromInnerTournaments[_inner] = _matchId;
@@ -942,18 +945,7 @@ contract Tournament is ITournament, ERC165 {
         override
         returns (TournamentDescriptor memory descriptor)
     {
-        TournamentArguments memory args = _tournamentArgs();
-        Commitment.Arguments memory commitmentArgs = args.commitmentArgs;
-        descriptor = TournamentDescriptor({
-            initialHash: commitmentArgs.initialHash,
-            baseCycle: commitmentArgs.startCycle,
-            log2Stride: commitmentArgs.log2step,
-            height: commitmentArgs.height,
-            level: args.level,
-            kind: args.kind,
-            startInstant: args.startInstant,
-            allowance: args.allowance
-        });
+        descriptor = Descriptor.fromArguments(_tournamentArgs());
     }
 
     function tournamentStanding()
@@ -994,7 +986,7 @@ contract Tournament is ITournament, ERC165 {
             standing.parentCommitment =
                 _parentCommitment(args.nestedDispute, finalState);
             standing.winnerExpiresAt =
-                resultAt.add(clocks[candidate].pausedAllowance());
+                _winnerExpiresAt(resultAt, clocks[candidate]);
         }
     }
 
@@ -1014,7 +1006,7 @@ contract Tournament is ITournament, ERC165 {
         standing.clockAllowance = clock.allowance;
         if (clock.isRunning()) {
             standing.clockRunning = true;
-            standing.clockDeadline = clock.startInstant.add(clock.allowance);
+            standing.clockDeadline = clock.deadline();
         }
     }
 
@@ -1041,9 +1033,9 @@ contract Tournament is ITournament, ERC165 {
         return _isClosed(args) && matchCount == 0;
     }
 
-    /// @notice The instant this tournament became "safe to decide": the later
-    /// of the closure deadline and the last match deletion. This is the one
-    /// authority behind `tournamentStanding` and `innerResult`.
+    /// @notice Whether the tournament is finished and, if so, the instant it
+    /// became "safe to decide". This is the one authority behind
+    /// `tournamentStanding` and `innerResult`.
     function _timeFinished(TournamentArguments memory args)
         internal
         view
@@ -1053,10 +1045,18 @@ contract Tournament is ITournament, ERC165 {
             return (false, Time.ZERO_INSTANT);
         }
 
-        Time.Instant tournamentClosed = args.startInstant.add(args.allowance);
-        Time.Instant winnerCouldWin = tournamentClosed.max(lastMatchDeleted);
+        return (true, _resultAt(args));
+    }
 
-        return (true, winnerCouldWin);
+    /// @notice The instant a tournament with no live matches is safe to
+    /// decide: the later of the closure deadline and the last match deletion.
+    function _resultAt(TournamentArguments memory args)
+        internal
+        view
+        returns (Time.Instant)
+    {
+        Time.Instant tournamentClosed = args.startInstant.add(args.allowance);
+        return tournamentClosed.max(lastMatchDeleted);
     }
 
     /// @notice Whether an inner winner's carryover window has expired at now.
@@ -1066,7 +1066,21 @@ contract Tournament is ITournament, ERC165 {
         Time.Instant resultAt,
         Clock.State memory winnerClock
     ) private view returns (bool) {
-        return resultAt.timeoutElapsed(winnerClock.pausedAllowance());
+        winnerClock.assertPaused();
+        return !_winnerExpiresAt(resultAt, winnerClock).gt(Time.currentTime());
+    }
+
+    /// @notice The first inclusive instant at which an inner winner's
+    /// carryover window has expired: `resultAt` plus its paused allowance.
+    /// @dev The winner is the dangling commitment, whose clock is always
+    /// paused: every path that makes a commitment dangling leaves its clock
+    /// paused, and only pairing, which ends the dangling state, starts it.
+    /// `_winnerExpired` asserts that for the views.
+    function _winnerExpiresAt(
+        Time.Instant resultAt,
+        Clock.State memory winnerClock
+    ) private pure returns (Time.Instant) {
+        return resultAt.add(winnerClock.allowance);
     }
 
     //
@@ -1152,8 +1166,8 @@ contract Tournament is ITournament, ERC165 {
 
             Clock.State storage _firstClock = clocks[_danglingCommitment];
             MatchClocks.startBisectionAt(_firstClock, _newClock, current);
-            Time.Instant eliminableAt =
-                MatchClocks.eliminableAt(_firstClock, _newClock);
+            (, Time.Instant eliminableAt) =
+                MatchClocks.bisectionSchedule(_firstClock, _newClock);
 
             clearDanglingCommitment();
             matchCount++;

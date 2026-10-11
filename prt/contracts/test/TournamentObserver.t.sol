@@ -10,8 +10,10 @@ import {IDataProvider} from "src/IDataProvider.sol";
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
+import {Bond} from "src/tournament/libs/Bond.sol";
 import {Clock} from "src/tournament/libs/Clock.sol";
 import {Commitment} from "src/tournament/libs/Commitment.sol";
+import {Descriptor} from "src/tournament/libs/Descriptor.sol";
 import {Match} from "src/tournament/libs/Match.sol";
 import {Time} from "src/tournament/libs/Time.sol";
 import {Machine} from "src/types/Machine.sol";
@@ -895,6 +897,12 @@ contract TournamentObserverTest is Test {
         assertEq(uint8(descriptor.kind), uint8(kind));
         assertEq(Time.Instant.unwrap(descriptor.startInstant), 100);
         assertEq(Time.Duration.unwrap(descriptor.allowance), 20);
+        // Descriptor.bondValue equals the clone's bondValue().
+        assertEq(
+            tournament.bondValue(),
+            Bond.bondValue(height, kind == ITournament.TournamentKind.LEAF)
+        );
+        assertEq(Descriptor.bondValue(descriptor), tournament.bondValue());
     }
 
     function testCommitmentStandingProjectsJoinRecordAndClock() public {
