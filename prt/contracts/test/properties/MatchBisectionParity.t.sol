@@ -32,10 +32,7 @@ library MatchBisectionMutation {
         Tree.Node rightLeaf,
         Machine.Hash agreeState,
         bytes32[] calldata agreeStateProof
-    )
-        external
-        returns (Machine.Hash divergentStateOne, Machine.Hash divergentStateTwo)
-    {
+    ) external returns (Match.SealedView memory) {
         return Match.sealDivergence(
             state, args, id, leftLeaf, rightLeaf, agreeState, agreeStateProof
         );
@@ -184,7 +181,7 @@ contract MatchBisectionParityTest is Test {
 
         bytes32[] memory agreeProof = new bytes32[](1);
         agreeProof[0] = Tree.Node.unwrap(zero);
-        (Machine.Hash finalStateOne, Machine.Hash finalStateTwo) = MatchBisectionMutation.seal(
+        Match.SealedView memory returned = MatchBisectionMutation.seal(
             _state,
             args,
             id,
@@ -197,10 +194,9 @@ contract MatchBisectionParityTest is Test {
         Match.SealedView memory view_ = _state.sealedView();
         _assertHash(view_.agreeState, Machine.Hash.wrap(bytes32(0)));
         assertEq(view_.divergencePosition, 1);
-        _assertHash(finalStateOne, Machine.Hash.wrap(bytes32(0)));
-        _assertHash(finalStateTwo, other.toMachineHash());
-        _assertHash(view_.finalStateOne, finalStateOne);
-        _assertHash(view_.finalStateTwo, finalStateTwo);
+        _assertHash(returned.finalStateOne, Machine.Hash.wrap(bytes32(0)));
+        _assertHash(returned.finalStateTwo, other.toMachineHash());
+        _assertReturnedView(returned, view_);
     }
 
     function testFuzzParityAcrossReviewedGeometry(
@@ -279,7 +275,7 @@ contract MatchBisectionParityTest is Test {
         _state = initialState;
         _assertInitialState(trace, idHash, twoLeft, twoRight);
 
-        (Machine.Hash sealedOne, Machine.Hash sealedTwo) = MatchBisectionMutation.seal(
+        Match.SealedView memory returned = MatchBisectionMutation.seal(
             _state,
             trace.args,
             trace.id,
@@ -288,7 +284,7 @@ contract MatchBisectionParityTest is Test {
             INITIAL_STATE,
             new bytes32[](0)
         );
-        _assertSealedState(trace, INITIAL_STATE, sealedOne, sealedTwo);
+        _assertSealedState(trace, INITIAL_STATE, returned);
     }
 
     function _initializeMultipleDifferenceTrace(bool commitmentOneDiffers)
@@ -375,7 +371,7 @@ contract MatchBisectionParityTest is Test {
                     : trace.laterSubtree
             );
 
-        (Machine.Hash sealedOne, Machine.Hash sealedTwo) = MatchBisectionMutation.seal(
+        Match.SealedView memory returned = MatchBisectionMutation.seal(
             _state,
             trace.args,
             trace.id,
@@ -389,7 +385,7 @@ contract MatchBisectionParityTest is Test {
         expected.position = 1;
         expected.commitmentOneDiffers = trace.commitmentOneDiffers;
         expected.args = trace.args;
-        _assertSealedState(expected, COMMON_STATE, sealedOne, sealedTwo);
+        _assertSealedState(expected, COMMON_STATE, returned);
     }
 
     function _initializeTrace(
@@ -535,7 +531,7 @@ contract MatchBisectionParityTest is Test {
             );
         }
 
-        (Machine.Hash sealedOne, Machine.Hash sealedTwo) = MatchBisectionMutation.seal(
+        Match.SealedView memory returned = MatchBisectionMutation.seal(
             _state,
             trace.args,
             trace.id,
@@ -544,7 +540,7 @@ contract MatchBisectionParityTest is Test {
             input.agreeState,
             input.agreeProof
         );
-        _assertSealedState(trace, input.agreeState, sealedOne, sealedTwo);
+        _assertSealedState(trace, input.agreeState, returned);
     }
 
     function _assertOtherProofRejected(
@@ -576,18 +572,29 @@ contract MatchBisectionParityTest is Test {
     function _assertSealedState(
         Trace memory trace,
         Machine.Hash agreeState,
-        Machine.Hash sealedOne,
-        Machine.Hash sealedTwo
+        Match.SealedView memory returned
     ) internal view {
         Machine.Hash expectedOne = trace.commitmentOneDiffers
             ? DIVERGENT_STATE
             : COMMON_STATE;
         Machine.Hash expectedTwo =
             trace.commitmentOneDiffers ? COMMON_STATE : DIVERGENT_STATE;
-        _assertHash(sealedOne, expectedOne);
-        _assertHash(sealedTwo, expectedTwo);
+        _assertHash(returned.finalStateOne, expectedOne);
+        _assertHash(returned.finalStateTwo, expectedTwo);
         _assertRawSealedState(trace, agreeState, expectedOne, expectedTwo);
         _assertSealedView(trace, agreeState, expectedOne, expectedTwo);
+        _assertReturnedView(returned, _state.sealedView());
+    }
+
+    /// @dev The writer's returned view is the reader's projection.
+    function _assertReturnedView(
+        Match.SealedView memory returned,
+        Match.SealedView memory projected
+    ) internal pure {
+        _assertHash(returned.agreeState, projected.agreeState);
+        assertEq(returned.divergencePosition, projected.divergencePosition);
+        _assertHash(returned.finalStateOne, projected.finalStateOne);
+        _assertHash(returned.finalStateTwo, projected.finalStateTwo);
     }
 
     function _assertRawSealedState(

@@ -61,6 +61,10 @@ contract ClockHarness {
         return clock.overdueByAt(current);
     }
 
+    function deadline() external view returns (Time.Instant) {
+        return clock.deadline();
+    }
+
     function startAt(Time.Instant current) external {
         clock.startAt(current);
     }
@@ -197,8 +201,11 @@ contract ClockTest is Test {
 
         vm.expectRevert(stdError.assertionError);
         harness.overdueByAt(_instant(100));
+        vm.expectRevert(stdError.assertionError);
+        harness.deadline();
 
         harness.startAt(_instant(11));
+        assertEq(Time.Instant.unwrap(harness.deadline()), 31);
         assertEq(_unwrap(harness.remainingAt(_instant(31))), 0);
         assertEq(_unwrap(harness.overdueByAt(_instant(31))), 0);
         assertEq(_unwrap(harness.overdueByAt(_instant(32))), 1);
@@ -209,6 +216,27 @@ contract ClockTest is Test {
         ClockHarness empty = new ClockHarness();
         vm.expectRevert(stdError.assertionError);
         empty.remainingAt(_instant(10));
+        vm.expectRevert(stdError.assertionError);
+        empty.deadline();
+    }
+
+    function testFuzzDeadlineIsWhereRemainingReachesZero(
+        uint64 rawAllowance,
+        uint64 rawStart
+    ) public pure {
+        uint64 allowance = _boundPure(rawAllowance, 1, MAX_FUZZ_DURATION);
+        uint64 start = _boundPure(rawStart, 1, type(uint64).max - allowance);
+        Clock.State memory running = Clock.State({
+            allowance: _duration(allowance), startInstant: _instant(start)
+        });
+
+        Time.Instant deadline = running.deadline();
+        assertEq(Time.Instant.unwrap(deadline), start + allowance);
+        assertEq(
+            _unwrap(running.remainingAt(_instant(start + allowance - 1))), 1
+        );
+        assertEq(_unwrap(running.remainingAt(deadline)), 0);
+        assertEq(_unwrap(running.overdueByAt(deadline)), 0);
     }
 
     function testFuzzResponseBudgetDiscountsElapsedWithoutMinting(

@@ -90,6 +90,15 @@ library Clock {
         return state.allowance;
     }
 
+    /// @return The first inclusive instant at which a running clock has timed
+    /// out, where `remainingAt` first reaches zero.
+    /// @dev Requires an initialized running clock. The instant is fixed
+    /// between clock writes, since only pausing changes a running clock.
+    function deadline(State memory state) internal pure returns (Time.Instant) {
+        state.assertRunning();
+        return state.startInstant.add(state.allowance);
+    }
+
     /// @return Time elapsed strictly beyond the deadline, saturated at zero.
     /// @dev Requires an initialized running clock. A running clock is already
     /// expired at its deadline, although its overdue duration is zero.

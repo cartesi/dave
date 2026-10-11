@@ -86,6 +86,22 @@ contract MatchClocksHarness {
     ) external view returns (Time.Duration) {
         return MatchClocks.childReturnAllowance(one, two, carried, joinBudget);
     }
+
+    function bisectionSchedule()
+        external
+        view
+        returns (Time.Instant, Time.Instant)
+    {
+        return MatchClocks.bisectionSchedule(one, two);
+    }
+
+    function leafRaceSchedule()
+        external
+        view
+        returns (Time.Instant, Time.Instant, Time.Instant)
+    {
+        return MatchClocks.leafRaceSchedule(one, two);
+    }
 }
 
 contract MatchClocksTest is Test {
@@ -194,6 +210,17 @@ contract MatchClocksTest is Test {
             ? MatchClocks.TimeoutOutcome.TWO_WINS
             : MatchClocks.TimeoutOutcome.ONE_WINS;
 
+        (Time.Instant responderDeadline, Time.Instant eliminableAt) = oneRuns
+            ? MatchClocks.bisectionSchedule(running, paused)
+            : MatchClocks.bisectionSchedule(paused, running);
+        assertEq(
+            Time.Instant.unwrap(responderDeadline), start + runningAllowance
+        );
+        assertEq(
+            Time.Instant.unwrap(eliminableAt),
+            start + runningAllowance + pausedAllowance
+        );
+
         _assertTimeout(
             oneRuns,
             running,
@@ -243,6 +270,23 @@ contract MatchClocksTest is Test {
         MatchClocks.TimeoutOutcome winner = commitmentOneIsShorter
             ? MatchClocks.TimeoutOutcome.TWO_WINS
             : MatchClocks.TimeoutOutcome.ONE_WINS;
+
+        (
+            Time.Instant deadlineOne,
+            Time.Instant deadlineTwo,
+            Time.Instant eliminableAt
+        ) = commitmentOneIsShorter
+            ? MatchClocks.leafRaceSchedule(shortClock, longClock)
+            : MatchClocks.leafRaceSchedule(longClock, shortClock);
+        assertEq(
+            Time.Instant.unwrap(deadlineOne),
+            start + (commitmentOneIsShorter ? shortAllowance : longAllowance)
+        );
+        assertEq(
+            Time.Instant.unwrap(deadlineTwo),
+            start + (commitmentOneIsShorter ? longAllowance : shortAllowance)
+        );
+        assertEq(Time.Instant.unwrap(eliminableAt), start + longAllowance);
 
         _assertTimeout(
             commitmentOneIsShorter,
@@ -312,6 +356,7 @@ contract MatchClocksTest is Test {
             Clock.State({allowance: _duration(10), startInstant: _instant(5)});
         Clock.State memory two = one;
 
+        _assertEliminableBoundary(one, two, 15);
         _assertTimeout(true, one, two, 14, MatchClocks.TimeoutOutcome.NONE, 0);
         _assertTimeout(
             true, one, two, 15, MatchClocks.TimeoutOutcome.ELIMINATE_BOTH, 0
@@ -335,16 +380,19 @@ contract MatchClocksTest is Test {
         _initializeBoth(allowanceOne, allowanceTwo);
 
         harness.startBisectionAt(_instant(11));
+        _assertHarnessSchedule();
         uint64 leafStart = 11 + elapsedOne;
         uint64 expectedOne =
             allowanceOne - _saturatingSub(elapsedOne, responseBudget);
         uint64 expectedTwo = allowanceTwo;
         if (switchBeforeLeaf) {
             harness.switchTurnAt(_duration(responseBudget), _instant(leafStart));
+            _assertHarnessSchedule();
             leafStart += elapsedTwo;
             expectedTwo -= _saturatingSub(elapsedTwo, responseBudget);
         }
         harness.startLeafRace(_duration(responseBudget), _instant(leafStart));
+        _assertHarnessSchedule();
 
         Clock.State memory one = harness.oneState();
         Clock.State memory two = harness.twoState();
@@ -373,8 +421,10 @@ contract MatchClocksTest is Test {
         harness.switchTurnAt(
             _duration(responseBudget), _instant(11 + elapsedOne)
         );
+        _assertHarnessSchedule();
         uint64 secondSwitch = 11 + elapsedOne + elapsedTwo;
         harness.switchTurnAt(_duration(responseBudget), _instant(secondSwitch));
+        _assertHarnessSchedule();
 
         Clock.State memory one = harness.oneState();
         Clock.State memory two = harness.twoState();
@@ -631,6 +681,41 @@ contract MatchClocksTest is Test {
         harness.pauseForInner(_duration(0), _instant(11));
     }
 
+    function testSchedulesRejectTheOtherShapes() public {
+        MatchClocksHarness oneMissing = new MatchClocksHarness();
+        oneMissing.initializeTwo(_instant(10), _duration(30), _instant(10));
+        oneMissing.startTwoAt(_instant(11));
+        vm.expectRevert(stdError.assertionError);
+        oneMissing.bisectionSchedule();
+        vm.expectRevert(stdError.assertionError);
+        oneMissing.leafRaceSchedule();
+
+        MatchClocksHarness bothPaused = _newInitializedPair(20, 30);
+        vm.expectRevert(stdError.assertionError);
+        bothPaused.bisectionSchedule();
+        vm.expectRevert(stdError.assertionError);
+        bothPaused.leafRaceSchedule();
+
+        MatchClocksHarness oneRunning = _newInitializedPair(20, 30);
+        oneRunning.startOneAt(_instant(11));
+        oneRunning.bisectionSchedule();
+        vm.expectRevert(stdError.assertionError);
+        oneRunning.leafRaceSchedule();
+
+        MatchClocksHarness bothRunning = _newInitializedPair(20, 30);
+        bothRunning.startOneAt(_instant(11));
+        bothRunning.startTwoAt(_instant(11));
+        bothRunning.leafRaceSchedule();
+        vm.expectRevert(stdError.assertionError);
+        bothRunning.bisectionSchedule();
+
+        MatchClocksHarness staggered = _newInitializedPair(20, 30);
+        staggered.startOneAt(_instant(11));
+        staggered.startTwoAt(_instant(12));
+        vm.expectRevert(stdError.assertionError);
+        staggered.leafRaceSchedule();
+    }
+
     function _initializeBoth(uint64 allowanceOne, uint64 allowanceTwo) private {
         harness.initializeOne(
             _instant(10), _duration(allowanceOne), _instant(10)
@@ -732,23 +817,81 @@ contract MatchClocksTest is Test {
         Clock.State memory two,
         uint64 expectedEliminableAt
     ) private pure {
-        Time.Instant eliminableAt = MatchClocks.eliminableAt(one, two);
-        assertEq(Time.Instant.unwrap(eliminableAt), expectedEliminableAt);
+        assertEq(_assertScheduleBoundaries(one, two), expectedEliminableAt);
+    }
 
-        MatchClocks.TimeoutStatus memory beforeBoundary =
-            MatchClocks.classifyTimeoutAt(
-                one, two, _instant(expectedEliminableAt - 1)
+    /// @dev Pins every instant of the shape's schedule to the shared
+    /// classifier, which derives timeouts without the schedule arithmetic.
+    /// @return eliminable The schedule's `eliminableAt`
+    function _assertScheduleBoundaries(
+        Clock.State memory one,
+        Clock.State memory two
+    ) private pure returns (uint64 eliminable) {
+        if (one.isRunning() && two.isRunning()) {
+            (
+                Time.Instant deadlineOne,
+                Time.Instant deadlineTwo,
+                Time.Instant eliminableAt
+            ) = MatchClocks.leafRaceSchedule(one, two);
+            uint64 first = _min(_at(deadlineOne), _at(deadlineTwo));
+            uint64 last = _max(_at(deadlineOne), _at(deadlineTwo));
+            eliminable = _at(eliminableAt);
+            assertEq(eliminable, last);
+            _assertOutcomeAt(
+                one, two, first - 1, MatchClocks.TimeoutOutcome.NONE
             );
-        assertTrue(
-            beforeBoundary.outcome != MatchClocks.TimeoutOutcome.ELIMINATE_BOTH
-        );
+            if (first != last) {
+                MatchClocks.TimeoutOutcome laterWins = _at(deadlineOne)
+                    > _at(deadlineTwo)
+                    ? MatchClocks.TimeoutOutcome.ONE_WINS
+                    : MatchClocks.TimeoutOutcome.TWO_WINS;
+                _assertOutcomeAt(one, two, first, laterWins);
+                _assertOutcomeAt(one, two, last - 1, laterWins);
+            }
+            _assertOutcomeAt(
+                one, two, last, MatchClocks.TimeoutOutcome.ELIMINATE_BOTH
+            );
+        } else {
+            (Time.Instant responderDeadline, Time.Instant eliminableAt) =
+                MatchClocks.bisectionSchedule(one, two);
+            uint64 deadline = _at(responderDeadline);
+            eliminable = _at(eliminableAt);
+            MatchClocks.TimeoutOutcome waitingWins = one.isRunning()
+                ? MatchClocks.TimeoutOutcome.TWO_WINS
+                : MatchClocks.TimeoutOutcome.ONE_WINS;
+            _assertOutcomeAt(
+                one, two, deadline - 1, MatchClocks.TimeoutOutcome.NONE
+            );
+            _assertOutcomeAt(one, two, deadline, waitingWins);
+            _assertOutcomeAt(one, two, eliminable - 1, waitingWins);
+            _assertOutcomeAt(
+                one, two, eliminable, MatchClocks.TimeoutOutcome.ELIMINATE_BOTH
+            );
+        }
+    }
 
-        MatchClocks.TimeoutStatus memory atBoundary =
-            MatchClocks.classifyTimeoutAt(one, two, eliminableAt);
+    /// @dev The schedule of the clocks a harness transition just wrote.
+    function _assertHarnessSchedule() private view {
+        _assertScheduleBoundaries(harness.oneState(), harness.twoState());
+    }
+
+    function _assertOutcomeAt(
+        Clock.State memory one,
+        Clock.State memory two,
+        uint64 current,
+        MatchClocks.TimeoutOutcome expected
+    ) private pure {
         assertEq(
-            uint8(atBoundary.outcome),
-            uint8(MatchClocks.TimeoutOutcome.ELIMINATE_BOTH)
+            uint8(
+                MatchClocks.classifyTimeoutAt(one, two, _instant(current))
+                .outcome
+            ),
+            uint8(expected)
         );
+    }
+
+    function _at(Time.Instant value) private pure returns (uint64) {
+        return Time.Instant.unwrap(value);
     }
 
     function _boundU64(uint64 value, uint64 minimum, uint64 maximum)
