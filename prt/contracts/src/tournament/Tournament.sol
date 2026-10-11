@@ -99,16 +99,6 @@ contract Tournament is ITournament, ERC165 {
     // Modifiers
     //
 
-    modifier tournamentNotFinished() {
-        _ensureTournamentIsNotFinished();
-        _;
-    }
-
-    modifier tournamentOpen() {
-        _ensureTournamentIsOpen();
-        _;
-    }
-
     /// @notice Acquires this tournament clone's lock for the modified call.
     /// @dev Blocks nested state-changing calls to this instance. Other
     /// tournament clones have independent transient locks.
@@ -142,7 +132,9 @@ contract Tournament is ITournament, ERC165 {
     //
 
     /// @notice Get tournament arguments for this tournament instance
-    /// @dev Decodes immutable arguments passed during clone creation
+    /// @dev Decodes immutable arguments passed during clone creation. The
+    /// decode has a fixed cost, so each mutator decodes once, runs its gate
+    /// checks inline rather than in modifiers, and passes the result down.
     function _tournamentArgs()
         internal
         view
@@ -170,13 +162,10 @@ contract Tournament is ITournament, ERC165 {
     }
 
     /// @notice Check if a final state is allowed to join the tournament.
-    function validContestedFinalState(Machine.Hash _finalState)
-        internal
-        view
-        returns (bool, Machine.Hash, Machine.Hash)
-    {
-        TournamentArguments memory args = _tournamentArgs();
-
+    function validContestedFinalState(
+        TournamentArguments memory args,
+        Machine.Hash _finalState
+    ) internal pure returns (bool, Machine.Hash, Machine.Hash) {
         // ROOT CASE: level == 0
         // - Root tournaments are open to all participants, so any final state is valid.
         // - There is no concept of "contested final states" at level 0.
@@ -201,7 +190,14 @@ contract Tournament is ITournament, ERC165 {
     //
 
     function bondValue() public view override returns (uint256) {
-        TournamentArguments memory args = _tournamentArgs();
+        return _bondValue(_tournamentArgs());
+    }
+
+    function _bondValue(TournamentArguments memory args)
+        internal
+        pure
+        returns (uint256)
+    {
         return
             Bond.bondValue(args.commitmentArgs.height, _isLeafTournament(args));
     }
@@ -219,18 +215,18 @@ contract Tournament is ITournament, ERC165 {
         bytes32[] calldata _proof,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    ) external payable override withLock tournamentOpen {
-        require(msg.value >= bondValue(), InsufficientBond());
+    ) external payable override withLock {
+        TournamentArguments memory args = _tournamentArgs();
+        require(!_isClosed(args), TournamentIsClosed());
+        require(msg.value >= _bondValue(args), InsufficientBond());
 
         Tree.Node _commitmentRoot = _leftNode.join(_rightNode);
-
-        TournamentArguments memory args = _tournamentArgs();
 
         _commitmentRoot.requireFinalState(
             args.commitmentArgs.height, _finalState, _proof
         );
 
-        requireValidContestedFinalState(_finalState);
+        requireValidContestedFinalState(args, _finalState);
         finalStates[_commitmentRoot] = _finalState;
 
         Clock.State storage _clock = clocks[_commitmentRoot];
@@ -238,7 +234,9 @@ contract Tournament is ITournament, ERC165 {
         _clock.initializePausedAt(args.startInstant, args.allowance, current);
 
         _emitCommitmentJoined(_commitmentRoot, _finalState, msg.sender);
-        pairCommitment(_commitmentRoot, _clock, _leftNode, _rightNode, current);
+        pairCommitment(
+            args, _commitmentRoot, _clock, _leftNode, _rightNode, current
+        );
         claimers[_commitmentRoot] = msg.sender;
     }
 
@@ -249,7 +247,10 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node _rightNode,
         Tree.Node _newLeftNode,
         Tree.Node _newRightNode
-    ) external override refundable(Gas.ADVANCE_MATCH, 0) tournamentNotFinished {
+    ) external override refundable(Gas.ADVANCE_MATCH, 0) {
+        TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
+
         Match.IdHash matchIdHash = _matchId.hashFromId();
         Match.State storage _matchState = matches[matchIdHash];
         _matchState.requireCanBeAdvanced();
@@ -258,11 +259,12 @@ contract Tournament is ITournament, ERC165 {
             _leftNode, _rightNode, _newLeftNode, _newRightNode
         );
 
-        Time.Duration responseBudget = _tournamentArgs().responseBudget;
         Clock.State storage clockOne = clocks[_matchId.commitmentOne];
         Clock.State storage clockTwo = clocks[_matchId.commitmentTwo];
         Time.Instant current = Time.currentTime();
-        MatchClocks.switchTurnAt(clockOne, clockTwo, responseBudget, current);
+        MatchClocks.switchTurnAt(
+            clockOne, clockTwo, args.responseBudget, current
+        );
 
         _emitMatchAdvanced(
             matchIdHash,
@@ -290,8 +292,6 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node _leftNode,
         Tree.Node _rightNode
     ) external override refundable(Gas.WIN_MATCH_BY_TIMEOUT, 0) {
-        // The not-finished check inline: the winner's budget needs the same
-        // arguments, and decoding them once keeps the refunded path cheap.
         TournamentArguments memory args = _tournamentArgs();
         require(!_isFinished(args), TournamentIsFinished());
 
@@ -315,6 +315,7 @@ contract Tournament is ITournament, ERC165 {
                 timeout.deferredCharge, args.responseBudget, current
             );
             pairCommitment(
+                args,
                 _matchId.commitmentOne,
                 _clockOne,
                 _leftNode,
@@ -335,6 +336,7 @@ contract Tournament is ITournament, ERC165 {
                 timeout.deferredCharge, args.responseBudget, current
             );
             pairCommitment(
+                args,
                 _matchId.commitmentTwo,
                 _clockTwo,
                 _leftNode,
@@ -354,8 +356,10 @@ contract Tournament is ITournament, ERC165 {
         external
         override
         refundable(Gas.ELIMINATE_MATCH_BY_TIMEOUT, 0)
-        tournamentNotFinished
     {
+        TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
+
         // The legal clock configuration encodes the match phase, so an
         // existing match needs no separate structural decode here.
         matches[_matchId.hashFromId()].requireExists();
@@ -480,7 +484,7 @@ contract Tournament is ITournament, ERC165 {
 
         uint256 balance = address(this).balance;
         winnerPayment = balance;
-        uint256 bond = bondValue();
+        uint256 bond = _bondValue(args);
         if (balance > bond) {
             winnerPayment = bond + (balance - bond) / 10;
         }
@@ -508,13 +512,9 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node _rightLeaf,
         Machine.Hash _agreeHash,
         bytes32[] calldata _agreeHashProof
-    )
-        external
-        override
-        refundable(Gas.SEAL_LEAF_MATCH, 0)
-        tournamentNotFinished
-    {
+    ) external override refundable(Gas.SEAL_LEAF_MATCH, 0) {
         TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
         if (!_isLeafTournament(args)) {
             revert RequireLeafTournament();
         }
@@ -550,13 +550,9 @@ contract Tournament is ITournament, ERC165 {
         Tree.Node _leftNode,
         Tree.Node _rightNode,
         bytes calldata proofs
-    )
-        external
-        override
-        refundable(Gas.WIN_LEAF_MATCH, proofs.length)
-        tournamentNotFinished
-    {
+    ) external override refundable(Gas.WIN_LEAF_MATCH, proofs.length) {
         TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
         if (!_isLeafTournament(args)) {
             revert RequireLeafTournament();
         }
@@ -600,6 +596,7 @@ contract Tournament is ITournament, ERC165 {
                 Time.ZERO_DURATION, args.responseBudget, current
             );
             pairCommitment(
+                args,
                 _matchId.commitmentOne,
                 _clockOne,
                 _leftNode,
@@ -620,6 +617,7 @@ contract Tournament is ITournament, ERC165 {
                 Time.ZERO_DURATION, args.responseBudget, current
             );
             pairCommitment(
+                args,
                 _matchId.commitmentTwo,
                 _clockTwo,
                 _leftNode,
@@ -655,9 +653,9 @@ contract Tournament is ITournament, ERC165 {
         external
         override
         refundable(Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT, 0)
-        tournamentNotFinished
     {
         TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
         if (_isLeafTournament(args)) {
             revert RequireNonLeafTournament();
         }
@@ -684,6 +682,7 @@ contract Tournament is ITournament, ERC165 {
         );
 
         ITournament _inner = instantiateInner(
+            args,
             _agreeHash,
             _matchId.commitmentOne,
             _finalStateOne,
@@ -703,13 +702,9 @@ contract Tournament is ITournament, ERC165 {
         ITournament _childTournament,
         Tree.Node _leftNode,
         Tree.Node _rightNode
-    )
-        external
-        override
-        refundable(Gas.WIN_INNER_TOURNAMENT, 0)
-        tournamentNotFinished
-    {
+    ) external override refundable(Gas.WIN_INNER_TOURNAMENT, 0) {
         TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
         if (_isLeafTournament(args)) {
             revert RequireNonLeafTournament();
         }
@@ -760,7 +755,12 @@ contract Tournament is ITournament, ERC165 {
         );
 
         pairCommitment(
-            _commitmentRoot, _clock, _leftNode, _rightNode, Time.currentTime()
+            args,
+            _commitmentRoot,
+            _clock,
+            _leftNode,
+            _rightNode,
+            Time.currentTime()
         );
 
         deleteMatch(
@@ -774,9 +774,9 @@ contract Tournament is ITournament, ERC165 {
         external
         override
         refundable(Gas.ELIMINATE_INNER_TOURNAMENT, 0)
-        tournamentNotFinished
     {
         TournamentArguments memory args = _tournamentArgs();
+        require(!_isFinished(args), TournamentIsFinished());
         if (_isLeafTournament(args)) {
             revert RequireNonLeafTournament();
         }
@@ -806,6 +806,7 @@ contract Tournament is ITournament, ERC165 {
     /// - Called only on NON-LEAF tournaments.
     /// - The factory determines leaf vs non-leaf configuration based on `_level`.
     function instantiateInner(
+        TournamentArguments memory args,
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
         Machine.Hash _contestedFinalStateOne,
@@ -815,8 +816,6 @@ contract Tournament is ITournament, ERC165 {
         uint256 _startCycle,
         uint64 _level
     ) private returns (ITournament) {
-        TournamentArguments memory args = _tournamentArgs();
-
         IMultiLevelTournamentFactory tournamentFactory =
             IMultiLevelTournamentFactory(args.tournamentFactory);
         return tournamentFactory.instantiateInner(
@@ -1129,6 +1128,7 @@ contract Tournament is ITournament, ERC165 {
     /// new commitment and starts only the older dangling clock. Pairing changes
     /// neither balance. Otherwise, stores the new commitment as dangling.
     function pairCommitment(
+        TournamentArguments memory args,
         Tree.Node _rootHash,
         Clock.State storage _newClock,
         Tree.Node _leftNode,
@@ -1140,7 +1140,6 @@ contract Tournament is ITournament, ERC165 {
             hasDanglingCommitment();
 
         if (_hasDanglingCommitment) {
-            TournamentArguments memory args = _tournamentArgs();
             (Match.IdHash _matchId, Match.State memory _matchState) = Match.create(
                 args.commitmentArgs.height,
                 _danglingCommitment,
@@ -1196,15 +1195,15 @@ contract Tournament is ITournament, ERC165 {
         delete claimers[commitment];
     }
 
-    function requireValidContestedFinalState(Machine.Hash _finalState)
-        internal
-        view
-    {
+    function requireValidContestedFinalState(
+        TournamentArguments memory args,
+        Machine.Hash _finalState
+    ) internal pure {
         (
             bool valid,
             Machine.Hash contestedFinalStateOne,
             Machine.Hash contestedFinalStateTwo
-        ) = validContestedFinalState(_finalState);
+        ) = validContestedFinalState(args, _finalState);
         require(
             valid,
             InvalidContestedFinalState(
@@ -1373,16 +1372,6 @@ contract Tournament is ITournament, ERC165 {
     {
         return interfaceId == type(ITournament).interfaceId
             || super.supportsInterface(interfaceId);
-    }
-
-    function _ensureTournamentIsNotFinished() private view {
-        TournamentArguments memory args = _tournamentArgs();
-        require(!_isFinished(args), TournamentIsFinished());
-    }
-
-    function _ensureTournamentIsOpen() private view {
-        TournamentArguments memory args = _tournamentArgs();
-        require(!_isClosed(args), TournamentIsClosed());
     }
 
     function _emitCommitmentJoined(
