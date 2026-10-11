@@ -157,9 +157,13 @@ test-build-tooling:
     ./script/tests/machine-image-fingerprint.sh
     ./script/tests/soldeer-prune.sh
 
-# fast, provider-free semantic tests for the Lua PRT client
+# A stale event layout would otherwise surface only as logs the client's
+# filter silently drops; the ABI step needs forge and the contract deps.
+# fast, provider-free Lua client tests, and its event layouts against the ABI
 test-lua-client:
     lua5.4 prt/client-lua/tests/run.lua
+    forge inspect --root prt/contracts ITournament abi --json | \
+      lua5.4 prt/client-lua/tests/event_abi_check.lua
 
 clippy-rust-workspace: bind
     cargo clippy --workspace --all-targets -- -D warnings

@@ -135,3 +135,6 @@ needed.
   build its commitment. A dense two-level leaf takes tens of minutes to
   build, so on a devnet that mines faster an honest node can run out of
   clock.
+- `just test-lua-client` also checks the Lua client's event layouts against
+  the compiled `ITournament` ABI, so it now needs `forge`, `jq` and the PRT
+  contract dependencies (`just prt-contracts::install-deps`).

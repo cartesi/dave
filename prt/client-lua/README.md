@@ -24,6 +24,8 @@ Layout:
 - `player/semantic_reader.lua` - one latest-head observation: structural logs
   through the sampled head, EIP-1898 point calls pinned to it, and a final
   canonicality check. It proves no ancestry; the e2e anvil does not reorg.
+  `just test-lua-client` checks its event layouts against the compiled
+  `ITournament` ABI.
 - `player/context.lua`, `planner.lua`, `fulfiller.lua`, and `dispatcher.lua` -
   actor-relative projection, pure policy, local material construction, and
   the single transaction dispatch seam.
@@ -35,4 +37,7 @@ Layout:
 
 Requires Lua 5.4, a local Cartesi Machine installation, and `cast`
 (foundry) on the PATH. It is exercised through the test suites (see
-`docs/test-harness.md`), not as a standalone daemon.
+`docs/test-harness.md`), not as a standalone daemon. `just test-lua-client`
+also needs `forge` and `jq` on the PATH and the PRT contract dependencies
+(`just prt-contracts::install-deps`, part of `just setup`) for its ABI
+check; the unit suites alone need only Lua.
