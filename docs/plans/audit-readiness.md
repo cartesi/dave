@@ -118,14 +118,14 @@ before the freeze.
    so it rides the next deployment bundle (normally the next generation);
    list it as a known item.
 6. The leaf-proof gas witnesses in CI: done. `Gas.WIN_LEAF_MATCH =
-   5,543,000` (`prt/contracts/src/tournament/libs/Gas.sol:35`), the largest
+   5,536,000` (`prt/contracts/src/tournament/libs/Gas.sol:35`), the largest
    allocation, is witnessed only by the 13 full-stack FFI tests in
    `cartesi-rollups/contracts/test/gas/PrtLeafProofGasFfi.t.sol` (the
-   maximum input measured 5,040,748), which `rollups-contracts::test`
-   excludes. The calldata refund calibration (cartesi/dave#287) accepted
-   them by a manual run; the `prt-contracts` CI job now runs
-   `just test-prt-gas`, so a change that pushes a leaf proof past its
-   allocation fails CI.
+   maximum input measured 5,034,108), which `rollups-contracts::test`
+   excludes. The calldata refund calibration (cartesi/dave#287) and the
+   events calibration (cartesi/dave#297) accepted them by manual runs; the
+   `prt-contracts` CI job now runs `just test-prt-gas`, so a change that
+   pushes a leaf proof past its allocation fails CI.
 
 The refill review's release-evidence item ("Remaining assurance work", 3) is
 covered elsewhere: the gas calibration by the calldata refund calibration
@@ -170,10 +170,11 @@ addresses (build-system.md).
    calldata refund change set the allocations, and their calibration was
    accepted under release Forge; the contracts' later code changes, the
    child-return clamp on the `winInnerTournament` path and the narrowing of
-   the calldata meter to the leaf proof, stay within them (the gas witnesses
-   pass). The deployment script registers the
-   Arbitrum entries at the parent chain's 12 s, so their addresses now equal
-   Ethereum's and Sepolia's.
+   the calldata meter to the leaf proof, stayed within them. The event
+   extension (cartesi/dave#297) moved every allocation to its measured
+   maximum; the gas witnesses pass. The deployment script registers the
+   Arbitrum entries at the parent chain's 12 s, so their addresses now
+   equal Ethereum's and Sepolia's.
 2. The canonical two-level switch: done, `[38, 0]` / `[54, 38]` at
    `T = 120`, ahead of the release candidate, which is therefore two-level.
    It changed only the provider: the `Tournament` and factory fingerprints

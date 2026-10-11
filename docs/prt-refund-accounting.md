@@ -48,8 +48,8 @@ and sealed-inner paths are legal only in non-leaf tournaments:
 | Inner elimination | Non-leaf | `Gas.SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT + Gas.ELIMINATE_INNER_TOURNAMENT` |
 
 `Bond.terminalAllocation(isLeafTournament)` factors these paths into direct
-timeout and the selected sealed family. The current maxima are 5,695,000 gas
-units for leaf tournaments and 690,000 for non-leaf tournaments. The
+timeout and the selected sealed family. The current maxima are 5,665,000 gas
+units for leaf tournaments and 651,000 for non-leaf tournaments. The
 independent accounting tests enumerate every legal path for each role. A new
 successful terminal path must be added to both production and that role's
 model. Changing an existing allocation flows automatically through `E_r`,
