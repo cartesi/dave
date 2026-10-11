@@ -3,7 +3,6 @@
 
 pragma solidity ^0.8.17;
 
-import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
@@ -21,6 +20,7 @@ import {
     SmallFourLevelTournamentFactory
 } from "../fixtures/SmallFourLevelTournament.sol";
 import {SmallFullTree} from "../fixtures/SmallFullTree.sol";
+import {StandingProbe} from "../fixtures/StandingProbe.sol";
 
 import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
 
@@ -30,7 +30,7 @@ using TournamentInspector for InspectableTournament;
 /// @dev A strict production-path recursion trace over four injected levels.
 /// The fine state tables are commitment-plumbing witnesses, not an execution
 /// oracle; ProofSelectedStateTransition selects the final divergent state.
-contract FourLevelRecursiveLifecycleTest is Test {
+contract FourLevelRecursiveLifecycleTest is StandingProbe {
     using Clock for Clock.State;
     using Match for Match.Id;
     using Match for Match.State;
@@ -449,7 +449,15 @@ contract FourLevelRecursiveLifecycleTest is Test {
         );
         (Tree.Node left, Tree.Node right) =
             winner.children(SmallFourLevelGeometry.HEIGHT, 0);
+        vm.recordLogs();
         parent.winInnerTournament(child, left, right);
+        {
+            // A refilled middle-level survivor's carryover window.
+            (uint256 count, Standing memory standing) =
+                _standings(vm.getRecordedLogs(), address(parent));
+            assertEq(count, 1, "one standing per propagation");
+            _probe(parent, standing);
+        }
 
         assertFalse(parent.getMatch(parentMatchHash).exists());
         Match.Id memory cleared = parent.observedOriginatingMatch(child);
@@ -580,10 +588,48 @@ contract FourLevelRecursiveLifecycleTest is Test {
 
             ++count;
             assertEq(entry.topics[1], Match.IdHash.unwrap(origin.hashFromId()));
-            assertEq(entry.data.length, 0);
             recorded = InspectableTournament(
                 address(uint160(uint256(entry.topics[2])))
             );
+            (
+                Tree.Node one,
+                Tree.Node two,
+                Machine.Hash finalOne,
+                Machine.Hash finalTwo,
+                ITournament.TournamentDescriptor memory descriptor,
+                uint256 bond
+            ) = abi.decode(
+                entry.data,
+                (
+                    Tree.Node,
+                    Tree.Node,
+                    Machine.Hash,
+                    Machine.Hash,
+                    ITournament.TournamentDescriptor,
+                    uint256
+                )
+            );
+            assertEq(
+                Tree.Node.unwrap(one), Tree.Node.unwrap(origin.commitmentOne)
+            );
+            assertEq(
+                Tree.Node.unwrap(two), Tree.Node.unwrap(origin.commitmentTwo)
+            );
+            ITournament.TournamentArguments memory args =
+                recorded.tournamentArguments();
+            assertEq(
+                Machine.Hash.unwrap(finalOne),
+                Machine.Hash.unwrap(args.nestedDispute.contestedFinalStateOne)
+            );
+            assertEq(
+                Machine.Hash.unwrap(finalTwo),
+                Machine.Hash.unwrap(args.nestedDispute.contestedFinalStateTwo)
+            );
+            assertEq(
+                abi.encode(descriptor),
+                abi.encode(recorded.tournamentDescriptor())
+            );
+            assertEq(bond, recorded.bondValue());
         }
         assertEq(count, 1);
         assertNotEq(address(recorded), address(0));

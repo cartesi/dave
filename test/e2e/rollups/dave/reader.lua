@@ -204,7 +204,10 @@ end
 -- LeafMatchSealed block because resolving the match deletes it.
 function Reader:read_sealed_leaf_matches(tournament)
     local logs = self:_read_logs(
-        tournament, "LeafMatchSealed(bytes32,uint64)", { false, false, false }, "(uint64)"
+        tournament,
+        "LeafMatchSealed(bytes32,bytes32,bytes32,bytes32,uint256,bytes32,bytes32,uint64,uint64,uint64)",
+        { false, false, false },
+        "(bytes32,bytes32,bytes32,uint256,bytes32,bytes32,uint64,uint64,uint64)"
     )
     local matches = {}
     for _, log in ipairs(logs) do

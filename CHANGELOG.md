@@ -24,8 +24,24 @@ needed.
   takes `(blockMilliseconds, censorshipSeconds, inclusionSeconds)`, derives
   the budgets (`ClockBudgets`) and can revert with `BlockTimeCannotBeZero`;
   `CartesiStateTransition` gains one error and the
-  `UARCH_PRISTINE_STATE_HASH()` getter. Tournament's function and event ABI
-  is unchanged.
+  `UARCH_PRISTINE_STATE_HASH()` getter. Tournament's function ABI is
+  unchanged; its events change as below.
+- Tournament and factory events gain fields, so every changed event has a
+  new topic0. `MatchCreated` and `MatchAdvanced` add the responder's
+  deadline, and `MatchAdvanced` the pair and the post-advance height;
+  `LeafMatchSealed` adds the pair, the sealed divergence and both deadlines;
+  `NewInnerTournament` adds the pair, the contested final states, and the
+  child's descriptor and bond; `TournamentCreated` adds the descriptor and
+  bond. The new `StandingChanged` follows every join and match deletion
+  with the live match count, the dangling commitment and, once no match is
+  live, the finish instant and an inner winner's parent commitment and
+  expiry.
+- `IMultiLevelTournamentFactory.instantiateInner` also returns the child's
+  descriptor, which the parent publishes; existing selectors and ERC-165
+  ids are unchanged. The rollups contracts import these interfaces, so their
+  bytecode metadata changes too, and every CREATE2 address built from these
+  sources moves: `CartesiStateTransition`, `Tournament`, the factory,
+  `DaveAppFactory`, and the applications and consensuses it creates.
 - The canonical table is two levels: `log2step = [38, 0]`,
   `height = [54, 38]`, with a 120-minute commitment budget. Existing
   applications keep the table of the factory that deployed them:

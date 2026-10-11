@@ -20,7 +20,11 @@ construction is specified in [`computation-hash.md`](computation-hash.md).
 The `EpochSealed` event is the pivot. It carries the epoch number, the
 input index lower and upper bounds (exclusive upper, global indexing),
 the initial machine state hash, the settled previous epoch's outputs
-Merkle root (zero at genesis), and the root tournament address.
+Merkle root (zero at genesis), and the root tournament address. In the
+transaction that seals an epoch, the tournament factory's
+`TournamentCreated` for that root, with its descriptor and bond, is logged
+before `EpochSealed` (pinned by `DaveAppFactory.t.sol`), so a log reader
+holds it until the `EpochSealed` that names the tournament.
 
 ## Epoch states, from the node's perspective
 

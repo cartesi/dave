@@ -81,6 +81,7 @@ contract TournamentTest is Util {
             playerNodes[0][HistoricalGeometry.height(0)],
             playerNodes[1][HistoricalGeometry.height(0)],
             playerNodes[1][HistoricalGeometry.height(0) - 1],
+            Time.currentTime().add(MAX_ALLOWANCE),
             Time.currentTime().add(MAX_ALLOWANCE).add(MAX_ALLOWANCE)
         );
 
@@ -313,7 +314,7 @@ contract TournamentTest is Util {
         ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
         ITournament.TournamentArguments memory args =
             tournament.tournamentArguments();
-        ITournament unlinked = FACTORY.instantiateInner(
+        (ITournament unlinked,) = FACTORY.instantiateInner(
             ONE_STATE,
             ONE_NODE,
             ONE_STATE,
@@ -335,7 +336,7 @@ contract TournamentTest is Util {
         ITournament tournament = Util.initializePlayer0Tournament(FACTORY);
         ITournament.TournamentArguments memory args =
             tournament.tournamentArguments();
-        ITournament inner = FACTORY.instantiateInner(
+        (ITournament inner,) = FACTORY.instantiateInner(
             ONE_STATE,
             ONE_NODE,
             ONE_STATE,

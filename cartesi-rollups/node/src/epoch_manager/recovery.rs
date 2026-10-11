@@ -256,6 +256,21 @@ mod tests {
         let event = tournament::Tournament::NewInnerTournament {
             matchIdHash: B256::repeat_byte(0x44),
             childTournament: child,
+            one: B256::repeat_byte(0x45),
+            two: B256::repeat_byte(0x46),
+            contestedFinalStateOne: B256::repeat_byte(0x47),
+            contestedFinalStateTwo: B256::repeat_byte(0x48),
+            descriptor: tournament::ITournament::TournamentDescriptor {
+                initialHash: B256::repeat_byte(0x49),
+                baseCycle: U256::ZERO,
+                log2Stride: 0,
+                height: 1,
+                level: 1,
+                kind: 0,
+                startInstant: 0,
+                allowance: 1,
+            },
+            bondValue: U256::ZERO,
         };
         Log {
             inner: PrimitiveLog {

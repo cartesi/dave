@@ -330,7 +330,9 @@ fn sort_logs(logs: &mut [Log]) {
     });
 }
 
-/// Decodes one structural event; accounting events decode to `None`.
+/// Decodes one structural event. Accounting events and `StandingChanged`,
+/// whose standing the observer reads from `tournamentStanding`, decode to
+/// `None`.
 async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Option<EventKind>> {
     let tournament = log.address();
     let topic = log
@@ -401,6 +403,10 @@ async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Option<
             reason,
             winner,
         }
+    } else if topic == bindings::Tournament::StandingChanged::SIGNATURE_HASH {
+        bindings::Tournament::StandingChanged::decode_log(&log.inner)
+            .context("malformed StandingChanged event")?;
+        return Ok(None);
     } else if topic == bindings::Tournament::PartialBondRefund::SIGNATURE_HASH {
         bindings::Tournament::PartialBondRefund::decode_log(&log.inner)
             .context("malformed PartialBondRefund event")?;
@@ -533,6 +539,7 @@ mod tests {
                 one: id.commitment_one.into(),
                 two: id.commitment_two.into(),
                 leftOfTwo: digest(90).into(),
+                responderDeadline: eliminable_at,
                 eliminableAt: eliminable_at,
             },
         )
@@ -551,9 +558,13 @@ mod tests {
             index,
             bindings::Tournament::MatchAdvanced {
                 matchIdHash: id.hash().into(),
+                one: id.commitment_one.into(),
+                two: id.commitment_two.into(),
                 otherParent: digest(91).into(),
                 leftNode: digest(92).into(),
                 segmentStartPosition: U256::ZERO,
+                currentHeight: 1,
+                responderDeadline: eliminable_at,
                 eliminableAt: eliminable_at,
             },
         )
@@ -563,7 +574,7 @@ mod tests {
         emitter: Address,
         at: ChainHead,
         index: u64,
-        match_id_hash: Digest,
+        id: MatchID,
         child: Address,
     ) -> Log {
         event_log_at(
@@ -571,8 +582,14 @@ mod tests {
             at,
             index,
             bindings::Tournament::NewInnerTournament {
-                matchIdHash: match_id_hash.into(),
+                matchIdHash: id.hash().into(),
                 childTournament: child,
+                one: id.commitment_one.into(),
+                two: id.commitment_two.into(),
+                contestedFinalStateOne: digest(93).into(),
+                contestedFinalStateTwo: digest(94).into(),
+                descriptor: descriptor_response(1, TournamentKind::Leaf),
+                bondValue: U256::ZERO,
             },
         )
     }
@@ -744,6 +761,29 @@ mod tests {
             },
         );
         assert_eq!(decode_log(&chain, &refund, at).await.unwrap(), None);
+
+        let standing = event_log_at(
+            root,
+            at,
+            4,
+            bindings::Tournament::StandingChanged {
+                matchCount: U256::ZERO,
+                dangling: digest(10).into(),
+                parentCommitment: B256::ZERO,
+                resultAt: 30,
+                winnerExpiresAt: 0,
+            },
+        );
+        assert_eq!(decode_log(&chain, &standing, at).await.unwrap(), None);
+
+        let mut truncated = log_at(root, at, 5);
+        truncated.inner = PrimitiveLog::new_unchecked(
+            root,
+            vec![bindings::Tournament::StandingChanged::SIGNATURE_HASH],
+            Bytes::new(),
+        );
+        let error = decode_log(&chain, &truncated, at).await.unwrap_err();
+        assert!(error.to_string().contains("malformed StandingChanged"));
         assert!(asserter.read_q().is_empty());
     }
 
@@ -782,7 +822,7 @@ mod tests {
             join_log(root, head(10, 0x10), 0, one),
             join_log(root, head(10, 0x10), 1, two),
             match_created_log(root, head(10, 0x10), 2, id, 30),
-            new_inner_log(root, discovery_block, 3, id.hash(), child),
+            new_inner_log(root, discovery_block, 3, id, child),
         ]);
         push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
             &asserter,
@@ -1057,7 +1097,7 @@ mod tests {
             join_log(root, first_finalized, 1, id.commitment_two),
             match_created_log(root, first_finalized, 2, id, 60),
         ];
-        let second_root_logs = vec![new_inner_log(root, discovered, 0, id.hash(), child)];
+        let second_root_logs = vec![new_inner_log(root, discovered, 0, id, child)];
         let child_logs = vec![join_log(child, second_finalized, 0, digest(30))];
         let log_ranges = |requests: &Requests| {
             requests

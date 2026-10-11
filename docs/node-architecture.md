@@ -487,9 +487,9 @@ ingestion.
 
 Events own tournament structure, commitment placement, match lifecycle, and
 the inclusive block at which a clock-bearing match can be eliminated. Point
-reads add only facts events do not carry: one immutable descriptor when a
-tournament is discovered, one current standing per reachable tournament, and
-the phase payload for each engaged match on the Hero's one recursive path.
+reads add one immutable descriptor when a tournament is discovered, one
+current standing per reachable tournament, and the phase payload for each
+engaged match on the Hero's one recursive path.
 A match resolution drops its child subtree, so the reader stops fetching the
 child's stream, even for the range in which the parent resolved: nothing reads
 a resolved child, and bond recovery walks the tournaments through its own

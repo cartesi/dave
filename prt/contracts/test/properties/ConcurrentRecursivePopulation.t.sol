@@ -445,10 +445,47 @@ contract ConcurrentRecursivePopulationTest is Test {
 
             ++count;
             assertEq(entry.topics[1], Match.IdHash.unwrap(origin.hashFromId()));
-            assertEq(entry.data.length, 0);
             child = InspectableTournament(
                 address(uint160(uint256(entry.topics[2])))
             );
+            (
+                Tree.Node one,
+                Tree.Node two,
+                Machine.Hash finalOne,
+                Machine.Hash finalTwo,
+                ITournament.TournamentDescriptor memory descriptor,
+                uint256 bond
+            ) = abi.decode(
+                entry.data,
+                (
+                    Tree.Node,
+                    Tree.Node,
+                    Machine.Hash,
+                    Machine.Hash,
+                    ITournament.TournamentDescriptor,
+                    uint256
+                )
+            );
+            assertEq(
+                Tree.Node.unwrap(one), Tree.Node.unwrap(origin.commitmentOne)
+            );
+            assertEq(
+                Tree.Node.unwrap(two), Tree.Node.unwrap(origin.commitmentTwo)
+            );
+            ITournament.TournamentArguments memory args =
+                child.tournamentArguments();
+            assertEq(
+                Machine.Hash.unwrap(finalOne),
+                Machine.Hash.unwrap(args.nestedDispute.contestedFinalStateOne)
+            );
+            assertEq(
+                Machine.Hash.unwrap(finalTwo),
+                Machine.Hash.unwrap(args.nestedDispute.contestedFinalStateTwo)
+            );
+            assertEq(
+                abi.encode(descriptor), abi.encode(child.tournamentDescriptor())
+            );
+            assertEq(bond, child.bondValue());
         }
         assertEq(count, 1);
         assertNotEq(address(child), address(0));

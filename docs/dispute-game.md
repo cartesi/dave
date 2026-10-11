@@ -118,7 +118,12 @@ into the new clone.
 This factory-wide introspection is for consumers that need prospective
 geometry. The acting clients do not copy the total count into every recursive
 tournament. They discover children from events and use each child's immutable
-descriptor when that child exists.
+descriptor when that child exists. The creation events carry that descriptor
+and the join bond derived from it. The factory projects the descriptor from
+the clone arguments it encodes and publishes a root's in `TournamentCreated`;
+`instantiateInner` returns a child's, which the parent publishes in
+`NewInnerTournament`. Both events therefore equal the clone's
+`tournamentDescriptor()` and `bondValue()` without a call into the clone.
 
 The canonical provider configures the table in `ArbitrationConstants`: the
 two-level `log2step = [38, 0]`, `height = [54, 38]`. The devnet that CI and
@@ -203,8 +208,11 @@ first-divergence frontier one tree level, then switches the turn. A height-`H`
 match has exactly `H` eligible responses: `H - 1` advances and one final leaf or
 inner seal. If both child subtrees differ, bisection selects the left child,
 preserving the first-divergence rule. Each `MatchAdvanced` event publishes the
-post-advance segment start position, so a finished match's bisection
-trajectory survives match deletion in the event history.
+post-advance segment start position and height, so a finished match's
+bisection trajectory survives match deletion in the event history.
+`LeafMatchSealed` likewise records the agree state, the divergent position,
+and both claimed final states, which `sealedMatch` stops reporting once the
+match is deleted.
 
 The stored reveal is deliberately staggered. At the start of a turn, the
 waiting commitment's children are already cached. The current revealer opens
@@ -460,20 +468,28 @@ or deleted match as absent with outcome `NONE`. It does not validate the
 Merkle children needed to settle a winner.
 
 The contract also publishes the first inclusive block at which an unchanged
-match reaches the `ELIMINATE_BOTH` arm. `MatchCreated` and every
-`MatchAdvanced` carry the current `eliminableAt`; `LeafMatchSealed` replaces
-the bisection schedule with the sealed-leaf schedule. Delegation to an inner
+match reaches the `ELIMINATE_BOTH` arm, and the deadlines that open the
+timeout windows before it. `MatchCreated` and every `MatchAdvanced` carry the
+current `eliminableAt` and the running responder's deadline;
+`LeafMatchSealed` replaces the bisection schedule with the sealed-leaf
+schedule, both deadlines and `eliminableAt`. Delegation to an inner
 tournament and match deletion cancel the local schedule. For one running and
-one paused clock, the boundary is the running start plus both allowances. For
-a sealed leaf, it is the common start plus the greater allowance. The same
-`MatchClocks` arithmetic that classifies timeouts computes these values, and a
-later transition always supersedes the earlier event value. Clients must fold
-to the current match state before comparing the schedule with a block number;
+one paused clock, the boundary is the responder's deadline plus the paused
+allowance. For a sealed leaf, it is the later of the two deadlines. A clock's
+deadline is the first instant at which its live remainder is zero, the value
+`commitmentStanding` reports. Every published instant is a block at which
+the timeout classification of the unchanged match changes arm. A later
+transition always supersedes the earlier event value. Clients must fold to
+the current match state before comparing the schedule with a block number;
 filtering historical schedule events directly is incorrect.
 
 The survivor re-enters the same dangling/pairing mechanism. This repeated
 pairing is why total delay and total refunds are global properties rather than
-properties of one match.
+properties of one match. Pairing makes the waiting commitment `commitmentOne`,
+so only a survivor paired within its own winning call is `commitmentTwo`, and
+the gap `eliminableAt - responderDeadline` in that `MatchCreated` is its
+post-win allowance. A survivor left dangling becomes `commitmentOne` of its
+next match, where the gap is the newcomer's allowance.
 
 ## Tournament completion and result
 
@@ -511,6 +527,24 @@ tournament became safe to decide: the later of its closure deadline and its
 last match deletion. It is canonically zero for `MATCHES_ACTIVE` and
 `AWAITING_CLOSURE`, and remains fixed at the exact finish instant for every
 terminal standing.
+
+Every join and every match deletion emits `StandingChanged` after its last
+effect on these fields: the live match count, the dangling commitment, and,
+with no live matches, the finish instant and, for an inner tournament with a
+winner, the mapped parent commitment and the instant the winner becomes
+eliminable. The instants are prospective: unless a join intervenes, the
+views report the tournament finished from `resultAt` and the winner
+eliminable from `winnerExpiresAt`. With no live matches only a join can
+change any of these fields, and a join emits again, so the latest event per
+tournament is the standing a client can schedule against. The number of
+these events is the sum of the join and deletion counters. Because anyone
+can create a tournament through the factory, a client trusts this event only
+from tournaments it reached through the consensus and the parents'
+`NewInnerTournament`. A tournament nobody joined emits no `StandingChanged`.
+Its standing follows from the descriptor that `TournamentCreated` or
+`NewInnerTournament` carries: from the closure instant
+`startInstant + allowance`, such a root is finished without a winner and such
+a child can be eliminated by its parent.
 
 If no commitment remains, the tournament has finished without a winner. A
 root in that state reports `ROOT_FAILED`; what follows is its consumer's

@@ -4,12 +4,14 @@
 pragma solidity ^0.8.17;
 
 import {Test} from "forge-std-1.9.6/src/Test.sol";
+import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
 import {Errors} from "@openzeppelin-contracts-5.5.0/utils/Errors.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
 import {IStateTransition} from "src/IStateTransition.sol";
 import {ITournament} from "src/ITournament.sol";
+import {ITournamentFactory} from "src/ITournamentFactory.sol";
 import {ITournamentParametersProvider} from "src/arbitration-config/ITournamentParametersProvider.sol";
 import {Tournament} from "src/tournament/Tournament.sol";
 import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
@@ -188,7 +190,7 @@ contract MultiLevelTournamentFactoryDependenciesTest is Test {
         assertFalse(root.isClosed());
         assertGt(root.bondValue(), 0);
 
-        ITournament inner = factory.instantiateInner(
+        (ITournament inner,) = factory.instantiateInner(
             Machine.ZERO_STATE,
             Tree.ZERO_NODE,
             Machine.ZERO_STATE,
@@ -215,5 +217,59 @@ contract MultiLevelTournamentFactoryDependenciesTest is Test {
         assertEq(Time.Duration.unwrap(args.allowance), 80);
         assertEq(args.tournamentFactory, address(factory));
         assertEq(address(args.stateTransition), address(stateTransition));
+    }
+
+    /// @dev The factory publishes the root's descriptor from the arguments it
+    /// encodes, through the projection the clone's own view uses.
+    function testTournamentCreatedMatchesTheCloneViews() public {
+        vm.roll(100);
+        MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
+            implementation, parametersProvider, stateTransition
+        );
+
+        vm.recordLogs();
+        ITournament root =
+            factory.instantiate(Machine.ZERO_STATE, IDataProvider(address(0)));
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs.length, 1);
+        assertEq(logs[0].emitter, address(factory));
+        assertEq(
+            logs[0].topics[0], ITournamentFactory.TournamentCreated.selector
+        );
+        (
+            ITournament created,
+            ITournament.TournamentDescriptor memory descriptor,
+            uint256 bond
+        ) = abi.decode(
+            logs[0].data,
+            (ITournament, ITournament.TournamentDescriptor, uint256)
+        );
+        assertEq(address(created), address(root));
+        assertEq(
+            abi.encode(descriptor), abi.encode(root.tournamentDescriptor())
+        );
+        assertEq(bond, root.bondValue());
+    }
+
+    /// @dev A parent publishes the returned descriptor as the child's, so it
+    /// must equal the clone's own view.
+    function testInstantiateInnerReturnsTheCloneDescriptor() public {
+        vm.roll(100);
+        MultiLevelTournamentFactory factory = new MultiLevelTournamentFactory(
+            implementation, parametersProvider, stateTransition
+        );
+
+        (ITournament inner, ITournament.TournamentDescriptor memory returned) = factory.instantiateInner(
+            Machine.Hash.wrap(bytes32(uint256(1))),
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Time.Duration.wrap(80),
+            4,
+            1,
+            IDataProvider(address(0))
+        );
+        assertEq(abi.encode(returned), abi.encode(inner.tournamentDescriptor()));
     }
 }

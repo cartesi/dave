@@ -3,7 +3,6 @@
 
 pragma solidity ^0.8.17;
 
-import {Test} from "forge-std-1.9.6/src/Test.sol";
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
 import {IDataProvider} from "src/IDataProvider.sol";
@@ -21,6 +20,7 @@ import {
     SmallTwoLevelGeometry,
     SmallTwoLevelTournamentFactory
 } from "../fixtures/SmallTwoLevelTournament.sol";
+import {StandingProbe} from "../fixtures/StandingProbe.sol";
 
 import {TournamentInspector} from "test/fixtures/TournamentInspector.sol";
 
@@ -30,7 +30,7 @@ using TournamentInspector for InspectableTournament;
 /// @dev Deterministic traces across the parent-child seam. The state-transition
 /// stub selects a supplied child leaf; these tests cover tournament plumbing,
 /// not the objective correctness of that transition.
-contract RecursiveTournamentLifecycleTest is Test {
+contract RecursiveTournamentLifecycleTest is StandingProbe {
     using Clock for Clock.State;
     using Match for Match.Id;
     using Match for Match.State;
@@ -118,6 +118,86 @@ contract RecursiveTournamentLifecycleTest is Test {
         Match.Id memory finalMatch =
             _propagateChildWinner(SmallTwoLevelClaims.CLAIM_ONE, MAX_ALLOWANCE);
         _resolveFinalRootTimeout(SmallTwoLevelClaims.CLAIM_ONE, finalMatch);
+    }
+
+    function testSingleChildStandingReportsParentAndExactCarryoverWindow()
+        public
+    {
+        _sealParent();
+        SmallFullTree.Data memory tree =
+            _childTree(SmallTwoLevelClaims.CLAIM_ONE);
+        ITournament.TournamentArguments memory args =
+            child.tournamentArguments();
+        Time.Instant resultAt = args.startInstant.add(args.allowance);
+        vm.expectEmit(false, false, false, true, address(child));
+        emit ITournament.StandingChanged(
+            0, tree.root(), parentOne, resultAt, resultAt.add(args.allowance)
+        );
+        _join(child, tree, CLAIMER_ONE);
+        _assertParentVerbsAtChildStanding(
+            SmallTwoLevelClaims.CLAIM_ONE,
+            Time.Instant.unwrap(resultAt),
+            Time.Instant.unwrap(resultAt.add(args.allowance))
+        );
+        vm.roll(Time.Instant.unwrap(resultAt) - 1);
+        assertFalse(child.isFinished());
+        vm.roll(Time.Instant.unwrap(resultAt));
+        assertTrue(child.isFinished());
+        assertFalse(child.canBeEliminated());
+        vm.roll(Time.Instant.unwrap(resultAt.add(args.allowance)) - 1);
+        assertFalse(child.canBeEliminated());
+        vm.roll(Time.Instant.unwrap(resultAt.add(args.allowance)));
+        assertTrue(child.canBeEliminated());
+    }
+
+    function testContestedChildStandingMatchesViews() public {
+        _sealParent();
+        vm.recordLogs();
+        Tree.Node winningChild = _resolveChild(SmallTwoLevelClaims.CLAIM_TWO);
+        (uint256 count, Standing memory standing) =
+            _standings(vm.getRecordedLogs(), address(child));
+        assertEq(count, 3, "two joins and one deletion");
+        assertEq(standing.matchCount, 0);
+        _assertNodeEq(standing.dangling, winningChild);
+        _assertNodeEq(standing.parentCommitment, parentTwo);
+        _probe(child, standing);
+        _assertParentVerbsAtChildStanding(
+            SmallTwoLevelClaims.CLAIM_TWO,
+            standing.resultAt,
+            standing.winnerExpiresAt
+        );
+    }
+
+    function testParentStandingAfterChildEliminationKeepsTheWaitingCommitment()
+        public
+    {
+        _sealParent();
+        _sealChild();
+        ITournament.TournamentArguments memory childArgs =
+            child.tournamentArguments();
+        vm.roll(_deadline(childArgs.startInstant, childArgs.allowance));
+        vm.recordLogs();
+        child.eliminateMatchByTimeout(childMatch);
+        {
+            // An inner tournament left without a winner.
+            (uint256 childCount, Standing memory childStanding) =
+                _standings(vm.getRecordedLogs(), address(child));
+            assertEq(childCount, 1);
+            assertEq(childStanding.matchCount, 0);
+            assertTrue(childStanding.dangling.isZero());
+            assertTrue(childStanding.parentCommitment.isZero());
+            assertEq(childStanding.resultAt, block.number);
+            assertEq(childStanding.winnerExpiresAt, 0);
+            _probe(child, childStanding);
+        }
+        vm.recordLogs();
+        parent.eliminateInnerTournament(child);
+        (uint256 count, Standing memory standing) =
+            _standings(vm.getRecordedLogs(), address(parent));
+        assertEq(count, 1);
+        assertEq(standing.matchCount, 0);
+        _assertNodeEq(standing.dangling, parentDangling);
+        _probe(parent, standing);
     }
 
     function testChildWinnerTwoPropagatesAndWinsRoot() public {
@@ -831,10 +911,48 @@ contract RecursiveTournamentLifecycleTest is Test {
 
             ++count;
             assertEq(entry.topics[1], Match.IdHash.unwrap(origin.hashFromId()));
-            assertEq(entry.data.length, 0);
             recorded = InspectableTournament(
                 address(uint160(uint256(entry.topics[2])))
             );
+            (
+                Tree.Node one,
+                Tree.Node two,
+                Machine.Hash finalOne,
+                Machine.Hash finalTwo,
+                ITournament.TournamentDescriptor memory descriptor,
+                uint256 bond
+            ) = abi.decode(
+                entry.data,
+                (
+                    Tree.Node,
+                    Tree.Node,
+                    Machine.Hash,
+                    Machine.Hash,
+                    ITournament.TournamentDescriptor,
+                    uint256
+                )
+            );
+            assertEq(
+                Tree.Node.unwrap(one), Tree.Node.unwrap(origin.commitmentOne)
+            );
+            assertEq(
+                Tree.Node.unwrap(two), Tree.Node.unwrap(origin.commitmentTwo)
+            );
+            ITournament.TournamentArguments memory args =
+                recorded.tournamentArguments();
+            assertEq(
+                Machine.Hash.unwrap(finalOne),
+                Machine.Hash.unwrap(args.nestedDispute.contestedFinalStateOne)
+            );
+            assertEq(
+                Machine.Hash.unwrap(finalTwo),
+                Machine.Hash.unwrap(args.nestedDispute.contestedFinalStateTwo)
+            );
+            assertEq(
+                abi.encode(descriptor),
+                abi.encode(recorded.tournamentDescriptor())
+            );
+            assertEq(bond, recorded.bondValue());
         }
         assertEq(count, 1);
         assertNotEq(address(recorded), address(0));
@@ -1161,7 +1279,9 @@ contract RecursiveTournamentLifecycleTest is Test {
             winner.children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
         uint256 childBalance = address(child).balance;
 
+        vm.recordLogs();
         _winInnerTournament(left, right);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
         assertEq(address(child).balance, childBalance);
 
         Tree.Node selectedParent = winner.root();
@@ -1179,6 +1299,9 @@ contract RecursiveTournamentLifecycleTest is Test {
             Time.Duration.unwrap(selectedClock.allowance), expectedAllowance
         );
         assertEq(Time.Instant.unwrap(danglingClock.startInstant), block.number);
+        _assertRepairEvents(
+            logs, finalMatch, left, danglingClock, expectedAllowance
+        );
 
         (Tree.Node dangling, uint256 matches, Time.Instant lastDeleted) =
             parent.observedTopology();
@@ -1190,6 +1313,101 @@ contract RecursiveTournamentLifecycleTest is Test {
         assertEq(parent.getMatchDeletedCount(), 1);
         assertEq(parent.getNewInnerTournamentCount(), 1);
         _assertClearedOrigin();
+    }
+
+    /// @dev The re-paired survivor's refilled clock waits on the started
+    /// dangling clock, and the standing reports the new live match.
+    function _assertRepairEvents(
+        Vm.Log[] memory logs,
+        Match.Id memory finalMatch,
+        Tree.Node survivorLeft,
+        Clock.State memory danglingClock,
+        uint64 survivorAllowance
+    ) private {
+        uint256 created = _indexOf(
+            logs, address(parent), ITournament.MatchCreated.selector
+        );
+        uint256 deleted =
+            _indexOf(logs, address(parent), ITournament.MatchDeleted.selector);
+        assertLt(created, deleted);
+        assertLt(deleted, _indexOf(logs, address(parent), STANDING_TOPIC));
+        assertEq(
+            logs[created].topics[1],
+            Match.IdHash.unwrap(finalMatch.hashFromId())
+        );
+        (
+            Tree.Node leftOfTwo,
+            Time.Instant responderDeadline,
+            Time.Instant eliminableAt
+        ) = abi.decode(
+            logs[created].data, (Tree.Node, Time.Instant, Time.Instant)
+        );
+        _assertNodeEq(leftOfTwo, survivorLeft);
+        assertEq(
+            Time.Instant.unwrap(responderDeadline),
+            _deadline(danglingClock.startInstant, danglingClock.allowance)
+        );
+        assertEq(
+            Time.Instant.unwrap(eliminableAt)
+                - Time.Instant.unwrap(responderDeadline),
+            survivorAllowance
+        );
+
+        (uint256 count, Standing memory standing) =
+            _standings(logs, address(parent));
+        assertEq(count, 1);
+        assertEq(standing.matchCount, 1);
+        assertTrue(standing.dangling.isZero());
+        _probe(parent, standing);
+    }
+
+    /// @dev The parent's verbs, not only the child's views, at the instants
+    /// the child's standing published: neither verb before `resultAt`, the
+    /// win from `resultAt` through `winnerExpiresAt - 1`, and only the
+    /// elimination from `winnerExpiresAt`. Each arm runs in a snapshot.
+    function _assertParentVerbsAtChildStanding(
+        uint8 winnerClaim,
+        uint64 resultAt,
+        uint64 winnerExpiresAt
+    ) private {
+        (Tree.Node left, Tree.Node right) = _parentTree(winnerClaim)
+            .children(SmallTwoLevelGeometry.ROOT_HEIGHT, 0);
+        uint256 snapshot = vm.snapshotState();
+        if (resultAt > block.number) {
+            vm.roll(resultAt - 1);
+            assertFalse(_tryWinInner(left, right), "win before resultAt");
+            assertFalse(_tryEliminateInner(), "elimination before resultAt");
+            vm.roll(resultAt);
+        }
+        assertTrue(_tryWinInner(left, right), "win at resultAt");
+        vm.revertToState(snapshot);
+
+        snapshot = vm.snapshotState();
+        vm.roll(winnerExpiresAt - 1);
+        assertFalse(_tryEliminateInner(), "elimination before expiry");
+        assertTrue(_tryWinInner(left, right), "win at winnerExpiresAt - 1");
+        vm.revertToState(snapshot);
+
+        snapshot = vm.snapshotState();
+        vm.roll(winnerExpiresAt);
+        assertFalse(_tryWinInner(left, right), "win at winnerExpiresAt");
+        assertTrue(_tryEliminateInner(), "elimination at winnerExpiresAt");
+        vm.revertToState(snapshot);
+    }
+
+    function _tryWinInner(Tree.Node left, Tree.Node right)
+        private
+        returns (bool won)
+    {
+        try parent.winInnerTournament(child, left, right) {
+            won = true;
+        } catch {}
+    }
+
+    function _tryEliminateInner() private returns (bool eliminated) {
+        try parent.eliminateInnerTournament(child) {
+            eliminated = true;
+        } catch {}
     }
 
     function _resolveFinalRootTimeout(

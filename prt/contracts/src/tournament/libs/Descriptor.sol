@@ -7,6 +7,10 @@ import {ITournament} from "prt-contracts/ITournament.sol";
 import {Bond} from "prt-contracts/tournament/libs/Bond.sol";
 
 /// @notice The public projection of a tournament's clone arguments.
+/// @dev The clone's `tournamentDescriptor()`, the factory's
+/// `TournamentCreated` and its `instantiateInner` result all project the
+/// clone arguments through `fromArguments`, so a published descriptor equals
+/// the clone's view by construction.
 library Descriptor {
     function fromArguments(ITournament.TournamentArguments memory args)
         internal

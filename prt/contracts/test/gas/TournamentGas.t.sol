@@ -146,7 +146,7 @@ abstract contract TournamentGasTest is Test, ConfigurableCommitmentFixture {
     }
 
     function _leafMatchFixture(CommitmentShape opponent) internal {
-        tournament = FACTORY.instantiateInner(
+        (tournament,) = FACTORY.instantiateInner(
             STATE_A,
             sameNode(ROOT_HEIGHT),
             STATE_A,

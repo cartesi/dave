@@ -28,6 +28,9 @@ interface IMultiLevelTournamentFactory is ITournamentFactory {
         view
         returns (TournamentParameters memory);
 
+    /// @return The new inner tournament
+    /// @return Its `tournamentDescriptor()`, projected from the arguments the
+    /// factory encoded, so the parent can publish it without calling the child
     function instantiateInner(
         Machine.Hash _initialHash,
         Tree.Node _contestedCommitmentOne,
@@ -38,5 +41,5 @@ interface IMultiLevelTournamentFactory is ITournamentFactory {
         uint256 _startCycle,
         uint64 _level,
         IDataProvider _provider
-    ) external returns (ITournament);
+    ) external returns (ITournament, ITournament.TournamentDescriptor memory);
 }
