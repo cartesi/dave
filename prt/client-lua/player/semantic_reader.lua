@@ -141,7 +141,9 @@ end
 
 -- Each layout names its indexed topics and its data words in ABI order, one
 -- name per word; a static tuple spans its components, named
--- "<tuple>.<component>". The decoder reads fields only by these names.
+-- "<tuple>.<component>". The decoder reads fields only by these names, and
+-- `just test-lua-client` checks every layout against the compiled ABI: a
+-- stale signature fails nothing here, the log filter just stops matching it.
 local EVENT_LAYOUTS = {
     {
         kind = Fold.EventKind.COMMITMENT_JOINED,
@@ -885,5 +887,6 @@ end
 
 SemanticReader.CastTransport = CastTransport
 SemanticReader.normalize_logs = normalize_logs
+SemanticReader.EVENT_LAYOUTS = EVENT_LAYOUTS
 
 return SemanticReader

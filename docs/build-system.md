@@ -347,7 +347,8 @@ debugging the environment:
 `just check` is the pre-commit gate: fmt checks (Rust workspace and both
 contract dirs), luacheck over the Lua client and harness, clippy with warnings
 denied, the build-tooling regressions, the provider-free contract suites, and
-the Rust and Lua unit suites. `just doctor` diagnoses build/check inputs,
+the Rust and Lua unit suites, with the Lua client's event layouts checked
+against the compiled ABI. `just doctor` diagnoses build/check inputs,
 including the standard echo and yield images; `just doctor-e2e` diagnoses the
 E2E image set, devnet artifacts, and E2E litter; `just doctor-all` aggregates
 both. Every failed check prints the command that fixes it. Run the relevant
