@@ -25,6 +25,16 @@ contract OrdinaryLeafWinTwoFfiTest is LeafTournamentGasFixture {
     }
 }
 
+contract UnpairedOrdinaryLeafWinTwoFfiTest is LeafTournamentGasFixture {
+    function setUp() public {
+        _initializeUnpairedLeafGasFixture(1, new uint256[](0), WinnerSide.TWO);
+    }
+
+    function testMeasureOrdinaryStepWithTwoWinningUnpaired() public {
+        _measureLeafWin("ordinary step two wins unpaired");
+    }
+}
+
 contract ResetLeafWinOneFfiTest is LeafTournamentGasFixture {
     function setUp() public {
         _initializeLeafGasFixture((1 << 20) - 1, new uint256[](0), WinnerSide.ONE);

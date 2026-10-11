@@ -116,13 +116,31 @@ abstract contract LeafTournamentGasFixture is Test {
     receive() external payable {}
 
     function _initializeLeafGasFixture(uint256 counter, uint256[] memory payloadSizes, WinnerSide winner) internal {
+        _initializeLeafGasFixture(counter, payloadSizes, winner, true);
+    }
+
+    /// @dev Without a dangling rival the winner stays dangling with no live
+    /// match, so `StandingChanged` reads its final state and clock instead of
+    /// re-pairing it.
+    function _initializeUnpairedLeafGasFixture(uint256 counter, uint256[] memory payloadSizes, WinnerSide winner)
+        internal
+    {
+        _initializeLeafGasFixture(counter, payloadSizes, winner, false);
+    }
+
+    function _initializeLeafGasFixture(
+        uint256 counter,
+        uint256[] memory payloadSizes,
+        WinnerSide winner,
+        bool withDanglingRival
+    ) private {
         require(counter > 0);
         _initializeEnvironment();
 
         bytes[] memory inputs = _addInputs(payloadSizes);
         proofInputSize = _proofInputSize(counter, inputs);
         vector = _generateProof(counter, inputs);
-        _initializeConsensusAndMatch(counter, winner);
+        _initializeConsensusAndMatch(counter, winner, withDanglingRival);
     }
 
     function _initializeRevertLeafGasFixture(uint256 payloadSize, WinnerSide winner) internal {
@@ -133,7 +151,7 @@ abstract contract LeafTournamentGasFixture is Test {
         bytes[] memory inputs = _addInputs(payloadSizes);
         uint256 counter;
         (counter, vector) = _generateRevertProof(inputs);
-        _initializeConsensusAndMatch(counter, winner);
+        _initializeConsensusAndMatch(counter, winner, true);
     }
 
     function _initializeEnvironment() private {
@@ -154,15 +172,15 @@ abstract contract LeafTournamentGasFixture is Test {
         return inputs;
     }
 
-    function _initializeConsensusAndMatch(uint256 counter, WinnerSide winner) private {
+    function _initializeConsensusAndMatch(uint256 counter, WinnerSide winner, bool withDanglingRival) private {
         consensus = new DaveConsensus(
             inputBox, address(application), FACTORY, vector.epochInitialState, 0, address(this), new address[](0)
         );
 
-        _initializeMatch(counter, winner);
+        _initializeMatch(counter, winner, withDanglingRival);
     }
 
-    function _initializeMatch(uint256 counter, WinnerSide winner) private {
+    function _initializeMatch(uint256 counter, WinnerSide winner, bool withDanglingRival) private {
         // A right-branch divergence makes the fixture a coherent two-state
         // commitment and exercises the nonzero-position settlement path.
         Tree.Node agree = Tree.Node.wrap(Machine.Hash.unwrap(vector.agreeState));
@@ -197,9 +215,13 @@ abstract contract LeafTournamentGasFixture is Test {
         matchId = Match.Id(one, two);
         winnerCommitment = winner == WinnerSide.ONE ? one : two;
 
-        Tree.Node danglingRight = Tree.Node.wrap(Machine.Hash.unwrap(finalOne));
-        danglingCommitment = _danglingLeftNode().join(danglingRight);
-        _join(danglingCommitment, finalOne, _danglingLeftNode(), danglingRight);
+        uint256 joined = 2;
+        if (withDanglingRival) {
+            Tree.Node danglingRight = Tree.Node.wrap(Machine.Hash.unwrap(finalOne));
+            danglingCommitment = _danglingLeftNode().join(danglingRight);
+            _join(danglingCommitment, finalOne, _danglingLeftNode(), danglingRight);
+            ++joined;
+        }
 
         bytes32[] memory agreeProof = new bytes32[](1);
         agreeProof[0] = Machine.Hash.unwrap(finalOne);
@@ -209,7 +231,7 @@ abstract contract LeafTournamentGasFixture is Test {
 
         assertEq(tournament.getMatchCycle(Match.hashFromId(matchId)), counter);
         fundedBalance = address(tournament).balance;
-        assertEq(fundedBalance, 3 * tournament.bondValue());
+        assertEq(fundedBalance, joined * tournament.bondValue());
     }
 
     function _danglingLeftNode() private pure returns (Tree.Node) {
@@ -369,10 +391,18 @@ abstract contract LeafTournamentGasFixture is Test {
 
         Match.State memory oldMatch = tournament.getMatch(Match.hashFromId(matchId));
         assertFalse(Match.exists(oldMatch));
-        Match.Id memory repaired = Match.Id(danglingCommitment, winnerCommitment);
-        assertTrue(Match.exists(tournament.getMatch(Match.hashFromId(repaired))));
-        assertEq(tournament.getMatchCreatedCount(), 2);
-        assertEq(tournament.getMatchDeletedCount(), 1);
+        if (danglingCommitment.isZero()) {
+            assertEq(tournament.getMatchCreatedCount(), 1);
+            assertEq(tournament.getMatchDeletedCount(), 1);
+            ITournament.TournamentStandingView memory standing = tournament.tournamentStanding();
+            assertTrue(standing.hasCandidate);
+            assertTrue(standing.candidate.eq(winnerCommitment));
+        } else {
+            Match.Id memory repaired = Match.Id(danglingCommitment, winnerCommitment);
+            assertTrue(Match.exists(tournament.getMatch(Match.hashFromId(repaired))));
+            assertEq(tournament.getMatchCreatedCount(), 2);
+            assertEq(tournament.getMatchDeletedCount(), 1);
+        }
 
         _logMeasurement(label, result);
     }

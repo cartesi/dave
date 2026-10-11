@@ -119,7 +119,7 @@ before the freeze.
    list it as a known item.
 6. The leaf-proof gas witnesses in CI: done. `Gas.WIN_LEAF_MATCH =
    5,543,000` (`prt/contracts/src/tournament/libs/Gas.sol:35`), the largest
-   allocation, is witnessed only by the 12 full-stack FFI tests in
+   allocation, is witnessed only by the 13 full-stack FFI tests in
    `cartesi-rollups/contracts/test/gas/PrtLeafProofGasFfi.t.sol` (the
    maximum input measured 5,040,748), which `rollups-contracts::test`
    excludes. The calldata refund calibration (cartesi/dave#287) accepted

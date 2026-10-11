@@ -176,13 +176,13 @@ The retained suite must cover at least:
 | Allocation | Required witness shapes |
 | --- | --- |
 | `ADVANCE_MATCH` | Charged right advance with first counter and position writes; alternate orientation retained |
-| `WIN_MATCH_BY_TIMEOUT` | Active and sealed-leaf phases; both winners; nonzero position; dangling re-pairing |
-| `ELIMINATE_MATCH_BY_TIMEOUT` | Active equality boundary and sealed-leaf longer-clock deadline; nonzero position; both classifier orderings |
+| `WIN_MATCH_BY_TIMEOUT` | Active and sealed-leaf phases; both winners; nonzero position; dangling re-pairing; a non-root winner left dangling with no live match |
+| `ELIMINATE_MATCH_BY_TIMEOUT` | Active equality boundary and sealed-leaf longer-clock deadline; nonzero position; both classifier orderings; a non-root dangling claim left as the only survivor |
 | `SEAL_LEAF_MATCH` | Charged nonzero-position seal with the maximum supported agree-state proof |
 | `SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT` | Charged nonzero-position seal with maximum proof and real child clone |
-| `WIN_INNER_TOURNAMENT` | Both parent winners; resolved and single-claim children; final legal carryover block; dangling re-pairing |
+| `WIN_INNER_TOURNAMENT` | Both parent winners; resolved and single-claim children; final legal carryover block; dangling re-pairing; a winner left dangling |
 | `ELIMINATE_INNER_TOURNAMENT` | Expired resolved winner, expired single claimant, and no-winner child |
-| `WIN_LEAF_MATCH` reference subsidy | Full Tournament entry point through the production provider and state transition; ordinary, reset, rejected-input revert, in-range input boundaries, out-of-range fixpoint, both expensive winner orientations, nonzero position, and dangling re-pairing |
+| `WIN_LEAF_MATCH` reference subsidy | Full Tournament entry point through the production provider and state transition; ordinary, reset, rejected-input revert, in-range input boundaries, out-of-range fixpoint, both expensive winner orientations, nonzero position, dangling re-pairing, and a winner left dangling |
 
 When a more expensive reachable shape appears, it becomes the selected maximum.
 Keep cheaper alternate branches as regressions when their storage or control
