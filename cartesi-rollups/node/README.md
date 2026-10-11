@@ -137,7 +137,7 @@ plus the tip):
 ```
 floor = root bond + 2 x the leaf bond
         + (leaf-proof gas limit + 1M) x peak max fee
-      = 0.3737 + 2 x 0.5216 + (7.62M + 1M) x 200 gwei
+      = 0.36115 + 2 x 0.51265 + (7.61M + 1M) x 200 gwei
       = about 3.1 ETH
 ```
 

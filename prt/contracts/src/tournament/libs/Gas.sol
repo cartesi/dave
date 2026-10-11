@@ -25,12 +25,12 @@ library Gas {
     /// floor pays more per byte than this.
     uint256 constant CALLDATA_BYTE = 16;
 
-    uint256 constant ADVANCE_MATCH = 103000 + TX;
-    uint256 constant WIN_MATCH_BY_TIMEOUT = 238000 + TX;
-    uint256 constant ELIMINATE_MATCH_BY_TIMEOUT = 110000 + TX;
-    uint256 constant SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT = 367000 + TX;
-    uint256 constant WIN_INNER_TOURNAMENT = 273000 + TX;
-    uint256 constant ELIMINATE_INNER_TOURNAMENT = 135000 + TX;
-    uint256 constant SEAL_LEAF_MATCH = 127000 + TX;
-    uint256 constant WIN_LEAF_MATCH = 5_543_000;
+    uint256 constant ADVANCE_MATCH = 99000 + TX;
+    uint256 constant WIN_MATCH_BY_TIMEOUT = 236000 + TX;
+    uint256 constant ELIMINATE_MATCH_BY_TIMEOUT = 119000 + TX;
+    uint256 constant SEAL_INNER_MATCH_AND_CREATE_INNER_TOURNAMENT = 333000 + TX;
+    uint256 constant WIN_INNER_TOURNAMENT = 268000 + TX;
+    uint256 constant ELIMINATE_INNER_TOURNAMENT = 136000 + TX;
+    uint256 constant SEAL_LEAF_MATCH = 104000 + TX;
+    uint256 constant WIN_LEAF_MATCH = 5_536_000;
 }

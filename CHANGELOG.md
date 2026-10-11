@@ -17,7 +17,7 @@ needed.
 - Refunds count the leaf proof's bytes at 16 units per byte. Only the proof
   is metered: the state transition fixes its length, and it now rejects input
   bytes at a position with no input (`InputBytesWithoutInput`). Every
-  allocation was recalibrated; `WIN_LEAF_MATCH` is 5,543,000.
+  allocation was recalibrated; `WIN_LEAF_MATCH` is 5,536,000.
 - Interface changes: `TournamentArguments` (the clone arguments) and
   `TournamentParameters` gain `commitmentBudget`, so `tournamentParameters()`
   returns six fields; `CanonicalTournamentParametersProvider`'s constructor
@@ -55,7 +55,7 @@ needed.
   minutes on testnets, plus the claim staging period unless every sentry
   agrees.
 - Join bonds at the 50 gwei work-price cap, canonical table: root (height
-  54) 0.3737 ETH, leaf (38) 0.52155 ETH.
+  54) 0.36115 ETH, leaf (38) 0.51265 ETH.
 
 ### Chains
 
