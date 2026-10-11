@@ -159,6 +159,39 @@ contract PaymentCallbackReceiver {
     }
 }
 
+/// Makes one configured reentrant call from the refund callback and reports
+/// its result as an event, which unlike a storage write fits the callback's
+/// gas limit.
+contract ReentrantCallReceiver {
+    event Reentered(bool success, bytes4 selector);
+
+    bytes public reentry;
+
+    function setReentry(bytes calldata data) external {
+        reentry = data;
+    }
+
+    function invoke(address target, bytes calldata data) external {
+        (bool success, bytes memory ret) = target.call(data);
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(ret, 32), mload(ret))
+            }
+        }
+    }
+
+    receive() external payable {
+        (bool success, bytes memory ret) = msg.sender.call(reentry);
+        bytes4 selector;
+        if (ret.length >= 4) {
+            assembly ("memory-safe") {
+                selector := mload(add(ret, 32))
+            }
+        }
+        emit Reentered(success, selector);
+    }
+}
+
 contract RefundCallbacksTest is Test {
     using Match for Match.Id;
     using Match for Match.State;
@@ -220,6 +253,50 @@ contract RefundCallbacksTest is Test {
         assertGt(refund, 0);
         assertEq(tournamentBalanceBefore - address(tournament).balance, refund);
         assertEq(_refundEvent(tournament, receiver, true), refund);
+    }
+
+    /// The lock is every mutator's first gate. The refund callback of the
+    /// last elimination runs with the tournament finished and closed, so a
+    /// state gate checked before the lock would report its own error there.
+    function testRefundCallbackLockPrecedesEveryMutatorGate() public {
+        bytes[] memory calls = _gatedCalls();
+        for (uint256 i; i < calls.length; ++i) {
+            uint256 snapshot = vm.snapshotState();
+            (ITournament tournament, Match.Id memory matchId) = _matchFixture();
+            vm.roll(102);
+            (, ITournament.MatchTimeoutOutcome outcome,) =
+                tournament.classifyMatchTimeout(matchId);
+            assertEq(
+                uint8(outcome),
+                uint8(ITournament.MatchTimeoutOutcome.ELIMINATE_BOTH)
+            );
+            ReentrantCallReceiver receiver = new ReentrantCallReceiver();
+            receiver.setReentry(calls[i]);
+
+            vm.recordLogs();
+            receiver.invoke(
+                address(tournament),
+                abi.encodeCall(ITournament.eliminateMatchByTimeout, (matchId))
+            );
+            assertTrue(tournament.isFinished());
+            assertEq(
+                _reentrySelector(receiver),
+                ITournament.ReentrancyDetected.selector
+            );
+
+            // Outside the lock the same call reports its state gate, so the
+            // selector above is the lock's.
+            (bool success, bytes memory ret) =
+                address(tournament).call(calls[i]);
+            assertFalse(success);
+            bytes4 expected = i == 0
+                ? ITournament.TournamentIsClosed.selector
+                : i == calls.length - 1
+                    ? ITournament.NoWinner.selector
+                    : ITournament.TournamentIsFinished.selector;
+            assertEq(ret, abi.encodePacked(expected));
+            vm.revertToState(snapshot);
+        }
     }
 
     function testCallbackBehaviorDoesNotChangeRequestedRefund() public {
@@ -533,6 +610,60 @@ contract RefundCallbacksTest is Test {
             observedValue = abi.decode(entry.data, (uint256));
         }
         assertEq(refundEvents, 1);
+    }
+
+    /// One call to each state-changing entry point, with arguments no check
+    /// accepts; join comes first and bond recovery last.
+    function _gatedCalls() internal pure returns (bytes[] memory calls) {
+        Match.Id memory id = Match.Id(
+            Tree.Node.wrap(bytes32(uint256(0xa))),
+            Tree.Node.wrap(bytes32(uint256(0xb)))
+        );
+        Tree.Node n = Tree.Node.wrap(bytes32(uint256(0xc)));
+        bytes32[] memory empty = new bytes32[](0);
+        ITournament child = ITournament(address(0xdead));
+        calls = new bytes[](10);
+        calls[0] = abi.encodeCall(
+            ITournament.joinTournament, (INITIAL_STATE, empty, n, n)
+        );
+        calls[1] = abi.encodeCall(ITournament.advanceMatch, (id, n, n, n, n));
+        calls[2] = abi.encodeCall(ITournament.winMatchByTimeout, (id, n, n));
+        calls[3] = abi.encodeCall(ITournament.eliminateMatchByTimeout, (id));
+        calls[4] = abi.encodeCall(
+            ITournament.sealLeafMatch, (id, n, n, INITIAL_STATE, empty)
+        );
+        calls[5] =
+            abi.encodeCall(ITournament.winLeafMatch, (id, n, n, new bytes(0)));
+        calls[6] = abi.encodeCall(
+            ITournament.sealInnerMatchAndCreateInnerTournament,
+            (id, n, n, INITIAL_STATE, empty)
+        );
+        calls[7] = abi.encodeCall(ITournament.winInnerTournament, (child, n, n));
+        calls[8] = abi.encodeCall(ITournament.eliminateInnerTournament, (child));
+        calls[9] = abi.encodeCall(ITournament.tryRecoveringBond, ());
+    }
+
+    function _reentrySelector(ReentrantCallReceiver receiver)
+        internal
+        returns (bytes4 selector)
+    {
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 reentries;
+        for (uint256 i; i < logs.length; ++i) {
+            if (
+                logs[i].emitter != address(receiver)
+                    || logs[i].topics[0]
+                        != ReentrantCallReceiver.Reentered.selector
+            ) {
+                continue;
+            }
+
+            ++reentries;
+            bool success;
+            (success, selector) = abi.decode(logs[i].data, (bool, bytes4));
+            assertFalse(success);
+        }
+        assertEq(reentries, 1);
     }
 
     function _assertSealedMatch(ITournament tournament, Match.Id memory matchId)
