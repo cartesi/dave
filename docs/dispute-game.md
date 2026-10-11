@@ -748,12 +748,13 @@ known limitations;
 [`prt-refund-accounting.md`](prt-refund-accounting.md) derives the living
 reserve and conservation boundary.
 
-The 2026-10-02 calldata-refund calibration measured a 5,079,603-unit
-whole-transaction diagnostic for the maximum retained canonical input, 30.28%
-of Ethereum's 16,777,216-unit per-transaction cap. This establishes material
-admission headroom for that retained witness, not a permanent limit over
-future forks, proof encodings, or state-transition behavior. The
-[`calldata-refund calibration`](reviews/2026-10-02-prt-calldata-refund-calibration/)
+The 2026-10-11 events calibration measured a 5,076,415-unit
+whole-transaction diagnostic for the maximum retained canonical input, 30.26%
+of Ethereum's 16,777,216-unit per-transaction cap and 8.46% of the 60,000,000
+block gas limit observed that day. This establishes material admission
+headroom for that retained witness, not a permanent limit over future forks,
+proof encodings, or state-transition behavior. The
+[`events gas calibration`](reviews/2026-10-11-prt-events-gas-calibration/)
 records the comparison, and the runbook requires it to be repeated.
 
 The refund callback occurs after `gasAfter` is sampled, so accepting, rejecting,

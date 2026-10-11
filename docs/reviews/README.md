@@ -61,3 +61,6 @@ with, and some of those name nothing on main.
 - [`2026-10-02-prt-calldata-refund-calibration/`](2026-10-02-prt-calldata-refund-calibration/)
   - calldata counted in refunded units, every allocation remeasured, one-sided
     witnesses, and the re-pinned alpha-10 leaf-gate dependency digest.
+- [`2026-10-11-prt-events-gas-calibration/`](2026-10-11-prt-events-gas-calibration/)
+  - every allocation recalibrated after the event extension, with retained
+    witnesses for the dangling-survivor standing branches and lower bonds.

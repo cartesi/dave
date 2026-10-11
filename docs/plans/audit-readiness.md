@@ -128,7 +128,9 @@ before the freeze.
    pushes a leaf proof past its allocation fails CI.
 
 The refill review's release-evidence item ("Remaining assurance work", 3) is
-covered elsewhere: the gas calibration by the calldata refund calibration
+covered elsewhere: the gas calibration by the events calibration
+(reviews/2026-10-11-prt-events-gas-calibration), which supersedes the
+calldata refund calibration
 (reviews/2026-10-02-prt-calldata-refund-calibration), active real-machine
 tall-leaf differentials by the leaf builder's active-big-cycle differential
 (cartesi/dave#287), dense height-38 performance by
