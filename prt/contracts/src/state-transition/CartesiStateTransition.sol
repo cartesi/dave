@@ -36,6 +36,13 @@ contract CartesiStateTransition is IStateTransition {
     /// @dev Pinned to v0.21.0 until a released solidity-step exposes it.
     uint64 public constant CM_MARCHID = 21;
 
+    /// @notice Hash of the pristine uarch state that every uarch reset
+    /// restores in this verifier.
+    /// @dev A compiled verifier constant, published so a claimer can compare
+    /// it with its own emulator before joining, as with `CM_MARCHID`.
+    bytes32 public constant UARCH_PRISTINE_STATE_HASH =
+        EmulatorConstants.UARCH_PRISTINE_STATE_HASH;
+
     using SafeCast for uint256;
 
     error CounterOutsideEpoch(uint256 counter);
