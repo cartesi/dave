@@ -64,7 +64,11 @@ provider. The concrete adapter also exposes the `CM_MARCHID` qualified for the
 pinned Cartesi Machine v0.21 release. Dave pins that value locally until a
 released solidity-step exports it. Node startup compares the deployed value
 with the linked Cartesi Machine library before opening or initializing local
-storage.
+storage. The adapter also publishes `UARCH_PRISTINE_STATE_HASH`, the pristine
+uarch hash that every uarch reset restores, taken from solidity-step's
+`EmulatorConstants` rather than pinned locally. It is published for claimers
+to compare with their own emulator before joining; the node does not read it
+yet.
 
 ## The leaf sequence
 
@@ -133,8 +137,9 @@ it too. A template with custom uarch code is outside the model: on the
 release corpus case `uarch-near-limit-tail`, Solidity, the CLI and Dave give
 three different roots. The node refuses such a template at startup, before
 it touches the data directory: a uarch reset must leave the template's root
-unchanged. That compares with the linked emulator's pristine uarch; that it is
-the deployed step's is the provenance gate's concern.
+unchanged. That compares with the linked emulator's pristine uarch. The
+deployed step publishes its own as `UARCH_PRISTINE_STATE_HASH`, which the node
+does not read; that the two agree is the provenance gate's concern.
 
 ### Toy picture
 

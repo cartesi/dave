@@ -23,8 +23,9 @@ needed.
   returns six fields; `CanonicalTournamentParametersProvider`'s constructor
   takes `(blockMilliseconds, censorshipSeconds, inclusionSeconds)`, derives
   the budgets (`ClockBudgets`) and can revert with `BlockTimeCannotBeZero`;
-  `CartesiStateTransition` gains one error. Tournament's function and event
-  ABI is unchanged.
+  `CartesiStateTransition` gains one error and the
+  `UARCH_PRISTINE_STATE_HASH()` getter. Tournament's function and event ABI
+  is unchanged.
 - The canonical table is two levels: `log2step = [38, 0]`,
   `height = [54, 38]`, with a 120-minute commitment budget. Existing
   applications keep the table of the factory that deployed them:

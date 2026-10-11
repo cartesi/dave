@@ -69,6 +69,13 @@ contract StateTransitionTest is Util {
         assertEq(STATE_TRANSITION.CM_MARCHID(), 21);
     }
 
+    function testUarchPristineStateHashIsTheResetConstant() public view {
+        assertEq(
+            STATE_TRANSITION.UARCH_PRISTINE_STATE_HASH(),
+            EmulatorConstants.UARCH_PRISTINE_STATE_HASH
+        );
+    }
+
     function testTransitionInputBoundaryWithInputEntersCmioProof(uint24 inputIndex)
         public
     {
