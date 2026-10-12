@@ -38,6 +38,10 @@ carry no backlog (reviews/README.md).
   and the serial anvil-test workaround. (computation-hash.md)
 - Ask for a solidity-step release that exports `CM_MARCHID`.
   (computation-hash.md)
+- Back `Machine::uarch_pristine_hash()` by libcartesi's
+  `cm_get_uarch_pristine_hash()` once `cm.h` exports it (agreed with the
+  machine team), and drop the sys crate's hand-written declarations of the
+  internal symbols and the provider requirement they add. (machine/README.md)
 - Track upstream PR #390 (new pristine uarch hash and proof format) as its own
   coordinated generation. (build-system.md)
 
