@@ -215,7 +215,7 @@ async fn extend_tournament(
     let logs = chain
         .raw_logs(address, phase.from, phase.head.number)
         .await?;
-    let mut tournament = fold_local_logs(chain, tournament, logs, validation).await?;
+    let mut tournament = fold_local_logs(tournament, logs, validation)?;
 
     // A child resolved within the range was dropped with its match, so its
     // stream is never fetched.
@@ -226,8 +226,7 @@ async fn extend_tournament(
     Ok(tournament)
 }
 
-async fn fold_local_logs(
-    chain: &Chain,
+fn fold_local_logs(
     mut tournament: Tournament,
     mut logs: Vec<Log>,
     validation: &mut HarvestValidation,
@@ -239,7 +238,7 @@ async fn fold_local_logs(
     sort_logs(&mut logs);
 
     for log in logs {
-        let Some(event) = decode_log(chain, &log, validation.phase.head).await? else {
+        let Some(event) = decode_log(&log)? else {
             continue;
         };
         tournament.apply(event).with_context(|| {
@@ -333,7 +332,7 @@ fn sort_logs(logs: &mut [Log]) {
 /// Decodes one structural event. Accounting events and `StandingChanged`,
 /// whose standing the observer reads from `tournamentStanding`, decode to
 /// `None`.
-async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Option<EventKind>> {
+fn decode_log(log: &Log) -> Result<Option<EventKind>> {
     let tournament = log.address();
     let topic = log
         .inner
@@ -373,11 +372,17 @@ async fn decode_log(chain: &Chain, log: &Log, head: ChainHead) -> Result<Option<
             eliminable_at: event.eliminableAt,
         }
     } else if topic == bindings::Tournament::NewInnerTournament::SIGNATURE_HASH {
+        // The factory projects the event's descriptor from the clone
+        // arguments, so it is the child's own `tournamentDescriptor()`
+        // without a call into the child.
         let event = bindings::Tournament::NewInnerTournament::decode_log(&log.inner)
-            .context("malformed NewInnerTournament event")?;
+            .context("malformed NewInnerTournament event")?
+            .data;
+        let child = event.childTournament;
         EventKind::NewInnerTournament {
             match_id_hash: event.matchIdHash.into(),
-            child: observer::read_descriptor(chain, event.childTournament, head).await?,
+            child: observer::decode_descriptor(child, event.descriptor)
+                .with_context(|| format!("decode descriptor for tournament {child}"))?,
         }
     } else if topic == bindings::Tournament::MatchDeleted::SIGNATURE_HASH {
         let event = bindings::Tournament::MatchDeleted::decode_log(&log.inner)
@@ -734,21 +739,20 @@ mod tests {
         assert!(error.to_string().contains("conflicting hashes"));
     }
 
-    #[tokio::test]
-    async fn decoder_is_strict() {
+    #[test]
+    fn decoder_is_strict() {
         let root = address(1);
         let at = head(10, 0x10);
-        let (chain, asserter, _) = recording_chain();
         let joined = join_log(root, at, 0, digest(10));
         assert_eq!(
-            decode_log(&chain, &joined, at).await.unwrap(),
+            decode_log(&joined).unwrap(),
             Some(EventKind::CommitmentJoined { root: digest(10) })
         );
 
         let mut unknown = log_at(root, at, 2);
         unknown.inner =
             PrimitiveLog::new_unchecked(root, vec![B256::repeat_byte(0xaa)], Bytes::new());
-        assert!(decode_log(&chain, &unknown, at).await.is_err());
+        assert!(decode_log(&unknown).is_err());
 
         let refund = event_log_at(
             root,
@@ -760,7 +764,7 @@ mod tests {
                 success: true,
             },
         );
-        assert_eq!(decode_log(&chain, &refund, at).await.unwrap(), None);
+        assert_eq!(decode_log(&refund).unwrap(), None);
 
         let standing = event_log_at(
             root,
@@ -774,7 +778,7 @@ mod tests {
                 winnerExpiresAt: 0,
             },
         );
-        assert_eq!(decode_log(&chain, &standing, at).await.unwrap(), None);
+        assert_eq!(decode_log(&standing).unwrap(), None);
 
         let mut truncated = log_at(root, at, 5);
         truncated.inner = PrimitiveLog::new_unchecked(
@@ -782,16 +786,14 @@ mod tests {
             vec![bindings::Tournament::StandingChanged::SIGNATURE_HASH],
             Bytes::new(),
         );
-        let error = decode_log(&chain, &truncated, at).await.unwrap_err();
+        let error = decode_log(&truncated).unwrap_err();
         assert!(error.to_string().contains("malformed StandingChanged"));
-        assert!(asserter.read_q().is_empty());
     }
 
-    #[tokio::test]
-    async fn pre_deadline_event_abi_fails_as_a_coordinated_boundary() {
+    #[test]
+    fn pre_deadline_event_abi_fails_as_a_coordinated_boundary() {
         let root = address(1);
         let at = head(10, 0x10);
-        let (chain, asserter, _) = recording_chain();
         let mut legacy = log_at(root, at, 0);
         legacy.inner = PrimitiveLog::new_unchecked(
             root,
@@ -799,9 +801,42 @@ mod tests {
             Bytes::new(),
         );
 
-        let error = decode_log(&chain, &legacy, at).await.unwrap_err();
+        let error = decode_log(&legacy).unwrap_err();
         assert!(error.to_string().contains("coordinated version boundary"));
-        assert!(asserter.read_q().is_empty());
+    }
+
+    #[test]
+    fn a_child_descriptor_comes_from_its_creation_event() {
+        let root = address(1);
+        let child = address(2);
+        let at = head(10, 0x10);
+        let id = MatchID {
+            commitment_one: digest(10),
+            commitment_two: digest(20),
+        };
+        assert_eq!(
+            decode_log(&new_inner_log(root, at, 0, id, child)).unwrap(),
+            Some(EventKind::NewInnerTournament {
+                match_id_hash: id.hash(),
+                child: descriptor(child, 1, TournamentKind::Leaf),
+            })
+        );
+
+        // The descriptor is decoded as strictly as a view's.
+        let mut invalid = new_inner_log(root, at, 1, id, child);
+        let mut event = bindings::Tournament::NewInnerTournament::decode_log(&invalid.inner)
+            .unwrap()
+            .data;
+        event.descriptor.kind = 7;
+        invalid.inner = PrimitiveLog {
+            address: root,
+            data: event.encode_log_data(),
+        };
+        let error = decode_log(&invalid).unwrap_err();
+        assert!(
+            format!("{error:#}").contains(&format!("decode descriptor for tournament {child}")),
+            "unexpected error: {error:#}"
+        );
     }
 
     #[tokio::test]
@@ -824,10 +859,6 @@ mod tests {
             match_created_log(root, head(10, 0x10), 2, id, 30),
             new_inner_log(root, discovery_block, 3, id, child),
         ]);
-        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
-            &asserter,
-            &descriptor_response(1, TournamentKind::Leaf),
-        );
         asserter.push_success(&vec![join_log(child, discovery_block, 4, child_commitment)]);
 
         let root = Tournament::new(descriptor(root, 0, TournamentKind::NonLeaf));
@@ -838,6 +869,10 @@ mod tests {
             .unwrap();
         let dispute = Dispute::from_root(loaded);
         let child_tournament = dispute.tournament(&child).unwrap();
+        assert_eq!(
+            child_tournament.descriptor(),
+            descriptor(child, 1, TournamentKind::Leaf)
+        );
         assert!(child_tournament.commitment(&child_commitment).is_some());
         assert!(matches!(
             dispute
@@ -849,24 +884,14 @@ mod tests {
         ));
         assert!(asserter.read_q().is_empty());
 
+        // Discovery reads nothing from the child but its logs.
         let recorded = requests.lock().unwrap();
-        assert_eq!(
+        assert!(
             recorded
                 .iter()
-                .filter(|request| request["method"] == "eth_getLogs")
-                .count(),
-            2
+                .all(|request| request["method"] == "eth_getLogs")
         );
-        let descriptor_call = recorded
-            .iter()
-            .find(|request| request["method"] == "eth_call")
-            .unwrap();
-        // alloy 2 serializes a `BlockId::Hash` without `require_canonical` as a
-        // bare EIP-1898 hash string instead of a `{ "blockHash": ... }` object.
-        assert_eq!(
-            descriptor_call["params"][1],
-            serde_json::json!(format!("{:#x}", at.hash))
-        );
+        assert_eq!(recorded.len(), 2);
     }
 
     #[tokio::test]
@@ -1126,10 +1151,6 @@ mod tests {
         warm.fetch_from_root(root).await.unwrap();
         asserter.push_success(&Some(block(second_finalized, discovered.hash)));
         asserter.push_success(&second_root_logs);
-        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
-            &asserter,
-            &descriptor_response(1, TournamentKind::Leaf),
-        );
         asserter.push_success(&child_logs);
         asserter.push_success(&Some(block(second_finalized, discovered.hash)));
         warm.fetch_from_root(root).await.unwrap();
@@ -1143,10 +1164,6 @@ mod tests {
             &descriptor_response(0, TournamentKind::NonLeaf),
         );
         asserter.push_success(&[first_root_logs, second_root_logs].concat());
-        push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
-            &asserter,
-            &descriptor_response(1, TournamentKind::Leaf),
-        );
         asserter.push_success(&child_logs);
         asserter.push_success(&Some(block(second_finalized, discovered.hash)));
         cold.fetch_from_root(root).await.unwrap();
@@ -1178,6 +1195,20 @@ mod tests {
                 (serde_json::json!("0x28"), serde_json::json!("0x2b")),
             ],
             "a restart refolds every stream from the root's creation block"
+        );
+        // The root's descriptor is the fold's one point read, pinned to the
+        // finalized hash; alloy 2 serializes a `BlockId::Hash` without
+        // `require_canonical` as a bare EIP-1898 hash string.
+        let point_reads = cold_requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request["method"] == "eth_call")
+            .map(|request| request["params"][1].clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            point_reads,
+            vec![serde_json::json!(format!("{:#x}", second_finalized.hash))]
         );
     }
 

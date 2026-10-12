@@ -456,8 +456,8 @@ match that is no longer clocked, a second deletion). A commitment's standing
 is derived from its latest match rather than tracked. A new reader folds from
 the root tournament's creation block, so a restart is a cold start: it
 refetches the full finalized range of every tournament still live at the
-finalized head once (a child resolved before it costs only its descriptor
-read), which costs response-clock time on a long dispute, and a bad finalized
+finalized head once (a child resolved before it costs no read of its own),
+which costs response-clock time on a long dispute, and a bad finalized
 prefix (a provider fault or a mixed fork) does not survive it. A finalized
 event that does not fold onto Solid (an omitted log surfacing at the match's
 next event) drops Solid in process, and the next tick takes the same cold
@@ -489,8 +489,10 @@ Oversized ranges use the same binary range partitioning as other log
 ingestion.
 
 Events own tournament structure, commitment placement, match lifecycle, and
-the inclusive block at which a clock-bearing match can be eliminated. Point
-reads add one immutable descriptor when a tournament is discovered, one
+the inclusive block at which a clock-bearing match can be eliminated, and a
+child's immutable descriptor arrives in its `NewInnerTournament` event, which
+the factory projects from the child's clone arguments. Point reads add only
+the root's descriptor on a cold fold (the node reads no factory logs), one
 current standing per reachable tournament, and the phase payload for each
 engaged match on the Hero's one recursive path.
 A match resolution drops its child subtree, so the reader stops fetching the

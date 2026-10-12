@@ -387,8 +387,8 @@ against settlement.
 ## Known blind spots, by layer
 
 - The Rust tournament reader's focused suite covers the recursively owned
-  `Dispute`, log-ordered local transitions, dynamic child discovery and
-  descriptor enrichment, strict event decoding, finalized Solid plus
+  `Dispute`, log-ordered local transitions, dynamic child discovery with
+  the event's descriptor, strict event decoding, finalized Solid plus
   disposable Foam, and the narrow observer boundary; event parity with the
   contracts rests on the Solidity, Lua, reader and end-to-end suites.
 - Hero policy, context assembly, fulfillment, dispatch, and GC are separate
