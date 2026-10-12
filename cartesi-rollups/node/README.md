@@ -118,8 +118,8 @@ without acting, for comparison with the deployed response and commitment
 budgets.
 
 Each transaction's gas limit is its estimate at the latest block plus half
-again, at least 150,000 (a join that pairs on inclusion needs 117,262 more
-than its estimate), and stops at the EIP-7825 cap of 16,777,216 when the
+again, at least 150,000 (a join that pairs on inclusion needs up to 110,161
+more than its estimate), and stops at the EIP-7825 cap of 16,777,216 when the
 estimate fits under it; the largest action, a maximum-input leaf proof,
 estimates about 5.1M. A call that already reverts there is not sent. When
 estimation fails for another reason the node falls back to 15M. A transaction

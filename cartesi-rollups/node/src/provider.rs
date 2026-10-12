@@ -302,9 +302,9 @@ const _: () = assert!(FALLBACK_GAS_LIMIT <= TX_GAS_CAP);
 /// largest state move between an estimate and inclusion: a join or one of
 /// the three win paths that finds a rival's commitment dangling by
 /// inclusion stores a match and starts its clocks. The harness measured
-/// that move at 117,262 gas on every level's first match, 70% of the
+/// that move at up to 110,161 gas on every level's first match, 66% of the
 /// cheapest join's estimate, so half the estimate alone runs a join out of
-/// gas; this adds a quarter as margin.
+/// gas; this adds a third as margin.
 const MIN_HEADROOM: u64 = 150_000;
 
 /// The gas limit for an estimate at latest: half the estimate again, at
