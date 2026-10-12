@@ -572,7 +572,7 @@ configured endpoint in order; a rejected submission does not discard the tail.
 It does not wait for a receipt. Each gas limit is the estimate at latest plus
 half again, at least 150,000: a join or win that finds a rival's commitment
 dangling at inclusion takes the pairing branch, which the harness measured at
-117,262 gas over the estimate, 70% of the cheapest join's estimate. The limit
+up to 110,161 gas over the estimate, 66% of the cheapest join's. The limit
 stops at the EIP-7825 cap when the estimate fits under it, so the padding
 never makes an admissible call inadmissible (a fork that lifts the cap leaves
 the clamp conservative, never harmful); estimation failing other than by a
