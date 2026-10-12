@@ -1,7 +1,8 @@
 //! Dave-derived values built from the emulator's canonical rollup geometry.
 //! The primitive field widths stay owned by `cartesi_machine::constants::rollup`;
 //! this module contains only masks and aggregate spans derived from that
-//! authority, plus the named checkpoint address used by Dave.
+//! authority, plus the named checkpoint address and the uarch state's node
+//! used by Dave.
 
 use crate::arithmetic;
 use cartesi_machine::constants::rollup::{
@@ -33,9 +34,19 @@ pub const LOG2_EPOCH_RULER_SPAN: u64 = LOG2_MAX_ADVANCE_STATES_PER_EPOCH + LOG2_
 /// stay in sync after any emulator or step bump.
 pub use cartesi_machine::constants::ar::SHADOW_REVERT_ROOT_HASH_START as CHECKPOINT_ADDRESS;
 
+/// The uarch state's node in the machine hash tree, which every uarch reset
+/// rewrites whole (solidity-step's `EmulatorCompat.resetState`), to the hash
+/// `Machine::uarch_pristine_hash` returns. The emulator's C API exports
+/// neither number yet (its Lua module does);
+/// `tests::linked_emulator_and_step_agree_on_the_pristine_uarch` holds them
+/// to step's `UARCH_STATE_START_ADDRESS` and `UARCH_STATE_LOG2_SIZE`.
+pub const UARCH_STATE_START: u64 = 0x40_0000;
+pub const UARCH_STATE_LOG2_SIZE: u32 = 22;
+
 #[cfg(test)]
 mod tests {
-    use super::CHECKPOINT_ADDRESS;
+    use super::{CHECKPOINT_ADDRESS, UARCH_STATE_LOG2_SIZE, UARCH_STATE_START};
+    use alloy::primitives::B256;
     use cartesi_machine::{
         Machine,
         cartesi_machine_sys::{
@@ -94,6 +105,56 @@ mod tests {
             "Emulator CM_AR_SHADOW_REVERT_ROOT_HASH_START ({CHECKPOINT_ADDRESS:#x}) \
              does not match step's EmulatorConstants.REVERT_ROOT_HASH_ADDRESS ({step_value:#x}). \
              The off-chain client and on-chain verifier will disagree on the revert slot."
+        );
+    }
+
+    fn solidity_bytes32(source: &str, marker: &str) -> B256 {
+        let pos = source
+            .find(marker)
+            .unwrap_or_else(|| panic!("{marker} not found in contract source"));
+        let after = &source[pos + marker.len()..];
+        let eq = after.find('=').expect("expected `=` after constant name");
+        let semi = after.find(';').expect("expected `;` after constant value");
+        after[eq + 1..semi]
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("{marker} is not a bytes32 Solidity constant"))
+    }
+
+    /// Guardrail: every uarch reset the on-chain step verifies writes step's
+    /// `UARCH_PRISTINE_STATE_HASH` over the uarch region, while every reset
+    /// the node runs or logs restores the linked emulator's. Startup refuses
+    /// a deployment or a template whose hash differs from the linked
+    /// emulator's; this holds the step submodule to the same value, and the
+    /// pinned coordinates to step's, so a mismatched emulator or step bump
+    /// fails here, not at startup. The hash moves only in a coordinated
+    /// generation (docs/build-system.md): bump both together.
+    #[test]
+    fn linked_emulator_and_step_agree_on_the_pristine_uarch() {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let source = std::fs::read_to_string(
+            manifest_dir
+                .join("../..")
+                .join("machine/step/src/EmulatorConstants.sol"),
+        )
+        .expect("read EmulatorConstants.sol");
+
+        assert_eq!(
+            UARCH_STATE_START,
+            solidity_constant(&source, "UARCH_STATE_START_ADDRESS"),
+            "uarch state start disagrees with EmulatorConstants.sol"
+        );
+        assert_eq!(
+            u64::from(UARCH_STATE_LOG2_SIZE),
+            solidity_constant(&source, "UARCH_STATE_LOG2_SIZE"),
+            "uarch state size disagrees with EmulatorConstants.sol"
+        );
+        let linked = B256::from(Machine::uarch_pristine_hash());
+        let step = solidity_bytes32(&source, "UARCH_PRISTINE_STATE_HASH");
+        assert_eq!(
+            linked, step,
+            "the linked emulator resets the uarch to {linked}, but step's \
+             EmulatorConstants.UARCH_PRISTINE_STATE_HASH is {step}"
         );
     }
 

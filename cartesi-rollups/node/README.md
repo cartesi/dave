@@ -83,7 +83,11 @@ start pins a directory to its application, chain and template, and every start
 checks the `--template-path` image against the application's on-chain initial
 hash; a mismatch is refused before anything is written, and so is a matching
 image that is not paused at a manual accepted yield, from which no epoch can
-start.
+start. Startup also refuses a deployment whose state transition disagrees
+with the linked Cartesi Machine library (its `CM_MARCHID` or pristine uarch
+hash), an image whose uarch state is not that pristine uarch (custom uarch
+code, or an image built by another emulator), and one whose hash tree is not
+Keccak-256.
 
 One node process owns a data directory: startup locks its `node.lock` and
 refuses a directory another process holds, or one on a filesystem without

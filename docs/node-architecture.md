@@ -33,13 +33,16 @@ between one big cycle and one input window). It does not judge whether a table
 can be built in time and does not pin or check `T`: sizing the leaf to `T` is
 the operator's and the geometry's concern. It refuses to start unless
 `CartesiStateTransition.CM_MARCHID()` equals the `CM_MARCHID` exported by the
-linked Cartesi Machine library. It then inspects the `--template-path` template
-(one private load: its root hash, the pristine-uarch check, and whether it is
-paused at a manual accepted yield) and requires that hash to equal the
-consensus's initial hash. A matching template paused elsewhere is the deployed
-application's own and still refused: the engine starts every epoch from a
-state awaiting input, so the node could not defend any of its epochs. Only
-then does it take the data-directory lock and open the directory. A seeded
+linked Cartesi Machine library and `UARCH_PRISTINE_STATE_HASH()` equals the
+library's pristine uarch hash (computation-hash.md says how it is read). It
+then inspects the `--template-path` template (one private load: its root hash;
+its hash function, which must be Keccak-256; its uarch state's hash, which must
+be that pristine uarch hash; and whether it is paused at a manual accepted
+yield) and requires the root hash to equal the consensus's initial hash. A
+matching template paused elsewhere is the deployed application's own and still
+refused: the engine starts every epoch from a state awaiting input, so the node
+could not defend any of its epochs. Only then does it take the data-directory
+lock and open the directory. A seeded
 directory is compared with its `sling_config` pins (app, chain, consensus,
 template, emulator and table) before anything is written. A mismatch names the
 flag to fix (`--app-address`, `--blockchain-id`), calls the directory another

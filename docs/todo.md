@@ -42,6 +42,12 @@ carry no backlog (reviews/README.md).
   `cm_get_uarch_pristine_hash()` once `cm.h` exports it (agreed with the
   machine team), and drop the sys crate's hand-written declarations of the
   internal symbols and the provider requirement they add. (machine/README.md)
+- Take the uarch state's start address and log2 size from the C API once it
+  exports them (suggested to the machine team; the Lua module exports both):
+  drop the pins in `engine/constants.rs` and in the bindings tests
+  (`cartesi-machine/src/machine.rs`), and have
+  `linked_emulator_and_step_agree_on_the_pristine_uarch` hold step's values to
+  the API's. (computation-hash.md)
 - Track upstream PR #390 (new pristine uarch hash and proof format) as its own
   coordinated generation. (build-system.md)
 
@@ -93,8 +99,9 @@ carry no backlog (reviews/README.md).
 - Pin the capacity boundaries: the last input slot and the last stride.
   (test-harness.md)
 - When the development emulator pin leaves v0.21.0, check the linked
-  library's pristine uarch hash and marchid against solidity-step, and identify
-  the reference CLI by package digest instead of its version string.
+  library's marchid against solidity-step (a unit test already holds its
+  pristine uarch hash to step's), and identify the reference CLI by package
+  digest instead of its version string.
   (test-harness.md)
 - Optional: a steered divergence point for the harness's tail adversary, to
   dispute active spans in-process. (test-harness.md)

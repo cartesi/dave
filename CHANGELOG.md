@@ -83,6 +83,10 @@ needed.
 - Startup checks the template against the chain, the directory's pins and
   the chain id before writing anything, and refuses a template no epoch can
   start from.
+- Startup also requires the deployed state transition's
+  `UARCH_PRISTINE_STATE_HASH()`, the linked emulator's pristine uarch hash and
+  the template's uarch state hash to be equal, beside the `CM_MARCHID` check,
+  and names the pair that disagrees.
 - Ingestion starts at the application's (or its consensus's) deployment,
   checks the chain's input and sealed-epoch totals at the finalized head, and
   refuses an incomplete response there before committing (catch-up chunks are
