@@ -8,8 +8,9 @@ Everything that connects Dave to the Cartesi Machine.
 - `step/` is the generated Solidity implementation of the uarch state
   transition. Its `EmulatorConstants.sol` must stay in sync with the emulator;
   `cartesi-rollups/node/src/engine/constants.rs` guards that agreement.
-- `rust-bindings/cartesi-machine-sys` provides the raw C API bindings and links
-  the selected `libcartesi.a`.
+- `rust-bindings/cartesi-machine-sys` provides the raw C API bindings, plus two
+  internal library symbols (see the provider contract below), and links the
+  selected `libcartesi.a`.
 - `rust-bindings/cartesi-machine` is the safe Rust API used by the node.
 
 ## Library provider
@@ -31,6 +32,14 @@ commands do not initialize or build the emulator submodule. The sys crate's
 build script is network-free in both modes: it selects the provider, generates
 Rust bindings, stages static archives, and links them; it never downloads or
 generates source inputs.
+
+Until `cm.h` exports `cm_get_uarch_pristine_hash()`, the provider's
+`libcartesi.a` must also define the internal `uarch_pristine_hash` and
+`uarch_pristine_hash_len` (the emulator's `src/uarch-pristine.hpp`), which
+the sys crate declares by hand for `Machine::uarch_pristine_hash()`. The
+v0.21.0 archive defines both; its shared library does not export them, so
+they resolve only because the library is linked statically. A provider that
+renamed them fails at link time (docs/todo.md, Upstream).
 
 ## Source-provider lifecycle
 

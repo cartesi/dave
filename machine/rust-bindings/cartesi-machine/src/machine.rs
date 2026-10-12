@@ -130,6 +130,30 @@ impl Machine {
         Ok(val)
     }
 
+    /// The linked `libcartesi`'s pristine uarch state hash: the hash of the
+    /// uarch state's node in the machine hash tree, which every uarch reset
+    /// restores. Backed by an internal library symbol until the C API's
+    /// `cm_get_uarch_pristine_hash()` ships, which changes only this body.
+    ///
+    /// Panics on a hash of another length: only a broken library has one.
+    pub fn uarch_pristine_hash() -> Hash {
+        // SAFETY: the linked library defines this immutable `unsigned int`.
+        let len = unsafe { cartesi_machine_sys::uarch_pristine_hash_len };
+        assert_eq!(
+            len,
+            constants::machine::HASH_SIZE,
+            "the linked libcartesi's pristine uarch hash is {len} bytes long, not a machine hash"
+        );
+        // SAFETY: the library defines `uarch_pristine_hash` as an immutable
+        // array of `uarch_pristine_hash_len` bytes, just checked to be a
+        // `Hash`'s length, and a byte array needs no alignment.
+        unsafe {
+            (&raw const cartesi_machine_sys::uarch_pristine_hash)
+                .cast::<Hash>()
+                .read()
+        }
+    }
+
     // -----------------------------------------------------------------------------
     // Machine API functions
     // -----------------------------------------------------------------------------
@@ -370,6 +394,25 @@ impl Machine {
     pub fn root_hash(&mut self) -> Result<Hash> {
         let mut hash = Hash::default();
         let err_code = unsafe { cartesi_machine_sys::cm_get_root_hash(self.machine, &mut hash) };
+        check_err!(err_code)?;
+
+        Ok(hash)
+    }
+
+    /// Obtains the hash of a node in the machine state Merkle tree: the
+    /// 2^`log2_size`-byte subtree at `address`, aligned to its size.
+    pub fn node_hash(&mut self, address: u64, log2_size: u32) -> Result<Hash> {
+        let mut hash = Hash::default();
+        // SAFETY: `self.machine` is the live machine `self` owns, and `hash`
+        // is a writable `cm_hash` that outlives the call.
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_get_node_hash(
+                self.machine,
+                address,
+                log2_size as i32,
+                &mut hash,
+            )
+        };
         check_err!(err_code)?;
 
         Ok(hash)
@@ -1066,6 +1109,74 @@ mod tests {
 
         let ucycle = machine.ucycle()?;
         assert_eq!(ucycle, 0);
+
+        Ok(())
+    }
+
+    /// The uarch state's node, which every uarch reset rewrites whole. The C
+    /// API exports neither number yet (the emulator's Lua module and step's
+    /// `EmulatorConstants.sol` do).
+    const UARCH_STATE_START: u64 = 0x40_0000;
+    const UARCH_STATE_LOG2_SIZE: u32 = 22;
+
+    fn create_tiny_machine() -> Result<Machine> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        create_machine(&config)
+    }
+
+    #[test]
+    fn node_hash_is_the_proofs_target_hash() -> Result<()> {
+        use constants::machine::{
+            HASH_TREE_LOG2_PAGE_SIZE, HASH_TREE_LOG2_ROOT_SIZE, HASH_TREE_LOG2_WORD_SIZE,
+        };
+        let mut machine = create_tiny_machine()?;
+        machine.write_memory(constants::ar::RAM_START, &[0xab; 8])?;
+
+        for (address, log2_size) in [
+            (constants::ar::RAM_START, HASH_TREE_LOG2_WORD_SIZE),
+            (constants::ar::RAM_START, HASH_TREE_LOG2_PAGE_SIZE),
+            (UARCH_STATE_START, UARCH_STATE_LOG2_SIZE),
+            (0, HASH_TREE_LOG2_ROOT_SIZE),
+        ] {
+            let proof = machine.proof(address, log2_size, HASH_TREE_LOG2_ROOT_SIZE)?;
+            assert_eq!(
+                machine.node_hash(address, log2_size)?,
+                proof.target_hash,
+                "node {address:#x} of log2 size {log2_size}"
+            );
+        }
+        assert_eq!(
+            machine.node_hash(0, HASH_TREE_LOG2_ROOT_SIZE)?,
+            machine.root_hash()?
+        );
+        assert!(
+            machine
+                .node_hash(UARCH_STATE_START + 8, UARCH_STATE_LOG2_SIZE)
+                .is_err(),
+            "a misaligned node must be refused"
+        );
+
+        Ok(())
+    }
+
+    /// Ties the library's constant to its behavior: a uarch reset restores
+    /// exactly that hash over the uarch state's node.
+    #[test]
+    fn uarch_pristine_hash_is_what_a_uarch_reset_restores() -> Result<()> {
+        let mut machine = create_tiny_machine()?;
+        machine.run_uarch(1)?;
+        assert_ne!(
+            machine.node_hash(UARCH_STATE_START, UARCH_STATE_LOG2_SIZE)?,
+            Machine::uarch_pristine_hash(),
+            "a uarch cycle must move the uarch state"
+        );
+
+        machine.reset_uarch()?;
+        assert_eq!(
+            machine.node_hash(UARCH_STATE_START, UARCH_STATE_LOG2_SIZE)?,
+            Machine::uarch_pristine_hash()
+        );
 
         Ok(())
     }
