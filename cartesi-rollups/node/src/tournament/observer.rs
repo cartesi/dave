@@ -1,8 +1,9 @@
 //! Pinned contract observations decoded into wire-independent values.
 //!
 //! Events own dispute structure and match cleanup schedules. This module reads
-//! only the immutable descriptor of a newly discovered tournament, current
-//! tournament standings, and the one live match selected by Hero.
+//! only the root tournament's immutable descriptor, current tournament
+//! standings, and the one live match selected by Hero; it decodes a child's
+//! descriptor from its creation event.
 
 use std::collections::HashMap;
 
@@ -110,8 +111,9 @@ pub enum ObserverError {
 
 /// Read one immutable descriptor at a caller-supplied block hash.
 ///
-/// The reader calls this once when an event first discovers a tournament and
-/// stores the resulting value in the recursive dispute tree.
+/// The reader calls this for the root when it folds from the root's creation
+/// block: the node reads no factory logs, so no event carries the root's. A
+/// child's comes with its `NewInnerTournament` event ([`decode_descriptor`]).
 pub async fn read_descriptor(
     chain: &Chain,
     address: Address,
@@ -332,7 +334,7 @@ fn collect_standing_requests(
     }
 }
 
-fn decode_descriptor(
+pub(crate) fn decode_descriptor(
     address: Address,
     wire: AbiTournamentDescriptor,
 ) -> ObserverResult<TournamentDescriptor> {
