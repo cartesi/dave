@@ -8,12 +8,16 @@
 
 use super::error::Result;
 use super::sql::schema;
+use crate::engine::constants::{UARCH_STATE_LOG2_SIZE, UARCH_STATE_START};
 use crate::engine::{EngineConfig, Structure, TournamentGeometry, config as sling_config};
 use crate::merkle::Digest;
 use alloy::primitives::Address;
 use anyhow::{Context, ensure};
 use cartesi_machine::{
-    config::runtime::RuntimeConfig, format_emulator_version, machine::Machine, types::Hash,
+    config::{machine::HashFunctionType, runtime::RuntimeConfig},
+    format_emulator_version,
+    machine::Machine,
+    types::Hash,
 };
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use std::{
@@ -96,13 +100,14 @@ pub struct Template {
 
 impl Template {
     /// Hashes the image and refuses one without the pristine uarch of the
-    /// linked emulator, which is assumed to be the deployed step's (the
-    /// provenance gate's concern): every commitment shortcut assumes it at
+    /// linked emulator, which startup checks is the deployed step's (in
+    /// `discover_deployed_tournament`): every commitment shortcut assumes it at
     /// big-cycle boundaries, and every closing reset restores it, so within
     /// the node only the template can break it (custom uarch code, or an image
     /// built by an emulator with another uarch). Commitments over such a
-    /// template would be silently wrong; a reset that changes the root is the
-    /// test.
+    /// template would be silently wrong. A template is a big-cycle boundary,
+    /// so its uarch state's node must hash to the linked emulator's pristine
+    /// uarch hash.
     pub fn inspect(path: &Path) -> anyhow::Result<Self> {
         ensure!(
             path.is_dir(),
@@ -112,12 +117,25 @@ impl Template {
         let mut machine = Machine::load(path, &RuntimeConfig::quiet_console())
             .with_context(|| format!("failed to load template `{}`", path.display()))?;
         let hash = machine.root_hash()?;
-        machine.reset_uarch()?;
+        // Under any other hash function the comparison below fails for that
+        // reason alone, and would blame the uarch.
+        let hash_function = machine.initial_config()?.hash_tree.hash_function;
         ensure!(
-            machine.root_hash()? == hash,
-            "template `{}` does not carry the pristine uarch of this node's emulator \
-             (custom uarch code or another emulator's image); refusing it",
+            hash_function == HashFunctionType::Keccak256,
+            "template `{}` uses a {hash_function:?} hash tree, but the uarch and the \
+             on-chain step need Keccak-256; refusing it",
             path.display()
+        );
+        let uarch_hash = machine.node_hash(UARCH_STATE_START, UARCH_STATE_LOG2_SIZE)?;
+        let linked_hash = Machine::uarch_pristine_hash();
+        ensure!(
+            uarch_hash == linked_hash,
+            "template `{}` does not carry the linked emulator's pristine uarch: its uarch \
+             state hash is {}, the linked emulator's {} (custom uarch code or another \
+             emulator's image); refusing it",
+            path.display(),
+            alloy::hex::encode_prefixed(uarch_hash),
+            alloy::hex::encode_prefixed(linked_hash),
         );
         let awaits_input = crate::engine::machine_stf::awaits_input(&mut machine)?;
         Ok(Self {
@@ -468,13 +486,34 @@ mod tests {
     fn template_inspection_refuses_a_non_pristine_uarch() {
         let dir = tempfile::tempdir().unwrap();
         let template = dir.path().join("template");
-        // Any uarch edit a reset would undo; custom uarch code moves the pc.
+        // Any edit of the uarch state; custom uarch code moves the pc.
         store_template(&template, |machine| {
             machine.write_reg(CM_REG_UARCH_PC, 0x700000).unwrap();
         });
         let error = Template::inspect(&template).expect_err("a non-pristine uarch must be refused");
+        let error = format!("{error:#}");
+        let linked = alloy::hex::encode_prefixed(Machine::uarch_pristine_hash());
         assert!(
-            format!("{error:#}").contains("pristine uarch"),
+            error.contains("pristine uarch: its uarch state hash is 0x")
+                && error.contains(&format!("the linked emulator's {linked}")),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn template_inspection_refuses_a_non_keccak_hash_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        let mut config = Machine::default_config().unwrap();
+        config.ram.length = 4096;
+        config.hash_tree.hash_function = HashFunctionType::Sha256;
+        Machine::create(&config, &RuntimeConfig::default())
+            .unwrap()
+            .store(&template)
+            .unwrap();
+        let error = Template::inspect(&template).expect_err("a SHA-256 hash tree must be refused");
+        assert!(
+            format!("{error:#}").contains("uses a Sha256 hash tree"),
             "unexpected error: {error:#}"
         );
     }

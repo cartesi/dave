@@ -108,12 +108,18 @@ before the freeze.
    (`.github/workflows/build.yml:422-431`). `docs/runbooks/` holds only the
    gas runbook. Write a deployment runbook: chains, parameters, broadcast,
    address verification against the release asset, post-deploy checks (a
-   node started against the deployment checks geometry and `CM_MARCHID`).
+   node started against the deployment checks geometry, `CM_MARCHID`, and
+   that `UARCH_PRISTINE_STATE_HASH` equals its emulator's pristine uarch hash
+   and its template's uarch state hash).
 5. The `CM_MARCHID` literal. `CartesiStateTransition.sol:35-37` hard-codes
    21 until a solidity-step release exports it; machine/step v0.15.0 exports
    none, and the only Solidity test echoes the literal. A new node refuses a
-   mismatched deployment, but an old node binary against a deployment whose
-   step changed and whose literal did not would start silently (a lead).
+   mismatched deployment, and any step bump that moves the pristine uarch,
+   whatever the literal says: it also checks `UARCH_PRISTINE_STATE_HASH`,
+   which the adapter imports from step. Under an unchanged literal, two
+   cases would still start silently (a lead): a step change that keeps the
+   pristine uarch hash while changing other semantics, and any step change
+   against a node binary released before the node checked the uarch hash.
    Importing the upstream constant changes the bytecode and the addresses,
    so it rides the next deployment bundle (normally the next generation);
    list it as a known item.

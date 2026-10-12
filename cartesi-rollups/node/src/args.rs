@@ -7,12 +7,13 @@ use crate::engine::{Level, Structure, TournamentGeometry};
 use crate::storage::{StateDirLock, Storage, StorageError, Template};
 use alloy::{
     network::EthereumWallet,
-    primitives::Address,
+    primitives::{Address, B256},
     providers::{DynProvider, Provider},
     transports::http::reqwest::Url,
 };
 use alloy_chains::NamedChain;
 use anyhow::{Context, Result, ensure};
+use cartesi_machine::Machine;
 use cartesi_prt_contracts::{
     cartesi_state_transition::CartesiStateTransition,
     multi_level_tournament_factory::MultiLevelTournamentFactory,
@@ -65,9 +66,21 @@ fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
     Ok(())
 }
 
+/// The deployed step's resets must restore the uarch the node's resets
+/// restore: otherwise every big-cycle boundary the node commits to is one
+/// the step does not prove.
+fn validate_state_transition_uarch(deployed_hash: B256, linked_hash: B256) -> Result<()> {
+    ensure!(
+        deployed_hash == linked_hash,
+        "incompatible state transition pristine uarch hash: deployed {deployed_hash}, linked emulator {linked_hash}"
+    );
+    Ok(())
+}
+
 /// Discovers the deployed tournament geometry from the factory the
 /// consensus instantiates every epoch's tournament with, and checks the
-/// factory's state transition against the linked machine.
+/// factory's state transition against the linked machine: its MARCHID and
+/// the pristine uarch its resets restore.
 pub(crate) async fn discover_deployed_tournament(
     tournament_factory: Address,
     provider: &impl Provider,
@@ -105,21 +118,32 @@ pub(crate) async fn discover_deployed_tournament(
     let state_transition = factory.stateTransition().call().await.with_context(|| {
         format!("failed to query state transition from tournament factory {tournament_factory}")
     })?;
-    let deployed_marchid = CartesiStateTransition::new(state_transition, provider)
-        .CM_MARCHID()
+    let deployed = CartesiStateTransition::new(state_transition, provider);
+    let deployed_marchid = deployed.CM_MARCHID().call().await.with_context(|| {
+        format!(
+            "failed to query MARCHID from state transition {state_transition} configured by tournament factory {tournament_factory}"
+        )
+    })?;
+    let deployed_uarch_hash = deployed
+        .UARCH_PRISTINE_STATE_HASH()
         .call()
         .await
         .with_context(|| {
             format!(
-                "failed to query MARCHID from state transition {state_transition} configured by tournament factory {tournament_factory}"
+                "failed to query the pristine uarch hash from state transition {state_transition} configured by tournament factory {tournament_factory}"
             )
         })?;
+    // Read outside the context below: a local fault must never be reported
+    // as an incompatible deployment.
+    let linked_uarch_hash = B256::from(Machine::uarch_pristine_hash());
 
-    validate_state_transition_marchid(deployed_marchid).with_context(|| {
-        format!(
-            "state transition {state_transition} configured by tournament factory {tournament_factory} is incompatible"
-        )
-    })?;
+    validate_state_transition_marchid(deployed_marchid)
+        .and_then(|()| validate_state_transition_uarch(deployed_uarch_hash, linked_uarch_hash))
+        .with_context(|| {
+            format!(
+                "state transition {state_transition} configured by tournament factory {tournament_factory} is incompatible"
+            )
+        })?;
     Ok(geometry)
 }
 
@@ -486,6 +510,26 @@ mod tests {
             error.to_string(),
             format!(
                 "incompatible state transition MARCHID: deployed {deployed}, node requires {required}"
+            )
+        );
+    }
+
+    #[test]
+    fn accepts_the_linked_pristine_uarch() {
+        let linked = B256::from(Machine::uarch_pristine_hash());
+        validate_state_transition_uarch(linked, linked).unwrap();
+    }
+
+    #[test]
+    fn rejects_another_pristine_uarch() {
+        let linked = B256::from(Machine::uarch_pristine_hash());
+        let mut deployed = linked;
+        deployed[31] ^= 1;
+        let error = validate_state_transition_uarch(deployed, linked).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "incompatible state transition pristine uarch hash: deployed {deployed}, linked emulator {linked}"
             )
         );
     }

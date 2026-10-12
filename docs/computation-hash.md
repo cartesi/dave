@@ -66,9 +66,27 @@ released solidity-step exports it. Node startup compares the deployed value
 with the linked Cartesi Machine library before opening or initializing local
 storage. The adapter also publishes `UARCH_PRISTINE_STATE_HASH`, the pristine
 uarch hash that every uarch reset restores, taken from solidity-step's
-`EmulatorConstants` rather than pinned locally. It is published for claimers
-to compare with their own emulator before joining; the node does not read it
-yet.
+`EmulatorConstants` rather than pinned locally, for claimers to compare with
+their own emulator before joining.
+
+Node startup requires three hashes of the uarch state's node to be equal:
+the template's (T), the deployed `UARCH_PRISTINE_STATE_HASH` (S) and the
+linked library's pristine uarch hash (H). It refuses S != H beside the
+`CM_MARCHID` check, as an incompatible deployment, before opening local
+storage, and T != H at template inspection (below); each refusal names the
+pair that disagrees. Inspection first refuses a template whose hash tree is
+not Keccak-256, under which T cannot equal H and the uarch cannot run. The
+emulator's C API exports neither H nor the node's coordinates
+(`UARCH_STATE_START_ADDRESS` 0x400000 and `UARCH_STATE_LOG2_SIZE` 22) yet,
+though its Lua module exports all three (todo.md, Upstream). Until then the
+Rust bindings read H from the library's internal `uarch_pristine_hash`
+symbol, declared by hand in `cartesi-machine-sys` (a provider requirement,
+machine/README.md), and the node pins the coordinates in
+`engine/constants.rs`, as do the bindings tests. The unit test
+`linked_emulator_and_step_agree_on_the_pristine_uarch` holds H and the
+coordinates to step's, and the bindings test
+`uarch_pristine_hash_is_what_a_uarch_reset_restores` holds H to what a uarch
+reset writes.
 
 ## The leaf sequence
 
@@ -136,10 +154,11 @@ span stands for every later one. The v0.21 CLI and the Lua client rely on
 it too. A template with custom uarch code is outside the model: on the
 release corpus case `uarch-near-limit-tail`, Solidity, the CLI and Dave give
 three different roots. The node refuses such a template at startup, before
-it touches the data directory: a uarch reset must leave the template's root
-unchanged. That compares with the linked emulator's pristine uarch. The
-deployed step publishes its own as `UARCH_PRISTINE_STATE_HASH`, which the node
-does not read; that the two agree is the provenance gate's concern.
+it touches the data directory: a template is a big-cycle boundary, so the
+hash of its uarch state's node must be the linked emulator's pristine uarch
+hash (T == H above). Startup also requires the deployed step's
+`UARCH_PRISTINE_STATE_HASH` to be that hash (S == H), so the template
+carries the uarch every on-chain reset restores.
 
 ### Toy picture
 
