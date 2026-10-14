@@ -49,10 +49,10 @@ contract DevnetGeometryDeploymentTest is Test {
         TournamentParameters memory root = provider.tournamentParameters(0);
         assertEq(root.log2step, 44);
         assertEq(root.height, 48);
-        // No censorship on devnets: the root join's inclusion plus one refill
-        // per inner level.
+        // No censorship on devnets: the root join's inclusion, the in-flight
+        // reserve, and one refill per inner level.
         assertEq(
-            Time.Duration.unwrap(root.maxAllowance), 25 + 2 * (150 + 2 * 25)
+            Time.Duration.unwrap(root.maxAllowance), 2 * 25 + 2 * (150 + 2 * 25)
         );
     }
 }

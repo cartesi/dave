@@ -13,8 +13,14 @@ import {Time} from "prt-contracts/tournament/libs/Time.sol";
 /// commitment. Responses are discounted by one inclusion. A child that returns
 /// its winner refills it by up to one refill: the build plus two inclusions,
 /// for the join and for the propagation. The root allowance is the censorship
-/// budget, one inclusion for the root join, and one refill per inner level:
-/// the delegations a correct commitment may have pending on its path.
+/// budget, one inclusion for the root join, one inclusion held in reserve for
+/// the action in flight, and one refill per inner level: the delegations a
+/// correct commitment may have pending on its path. The reserve exists
+/// because a response is accepted only while its latency fits the balance
+/// and is discounted only after acceptance, so the balance must hold that
+/// latency on top of the join's lateness; at inner levels a pending
+/// delegation's unspent propagation inclusion covers it, at the root nothing
+/// else does.
 library ClockBudgets {
     error BlockTimeCannotBeZero();
 
@@ -52,7 +58,8 @@ library ClockBudgets {
     }
 
     /// @dev Each term converts separately, so the allowance holds exactly
-    /// `levels - 1` of the refills winInnerTournament grants.
+    /// `levels - 1` of the refills winInnerTournament grants and two response
+    /// budgets: the root join and the in-flight reserve.
     function maxAllowance(Model memory model, uint64 levels)
         internal
         pure
@@ -65,7 +72,7 @@ library ClockBudgets {
                         _blocks(
                             model.censorshipSeconds, model.blockMilliseconds
                         )
-                    ) + Time.Duration.unwrap(responseBudget(model))
+                    ) + 2 * Time.Duration.unwrap(responseBudget(model))
                 + (levels - 1) * Time.Duration.unwrap(refill(model))
             );
     }

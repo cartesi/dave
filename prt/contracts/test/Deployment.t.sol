@@ -38,9 +38,10 @@ contract DeploymentTest is Test {
     uint64 constant RESPONSE_BLOCKS = (5 minutes) / (12 seconds);
     uint64 constant COMMITMENT_BLOCKS =
         ArbitrationConstants.COMMITMENT_BUDGET / (12 seconds);
-    // One inclusion for the root join, and one refill (the build plus two
-    // inclusions) per inner level of the checked-in table.
-    uint64 constant PENDING = RESPONSE_BLOCKS
+    // One inclusion for the root join, one in reserve for the action in
+    // flight, and one refill (the build plus two inclusions) per inner level
+    // of the checked-in table.
+    uint64 constant PENDING = 2 * RESPONSE_BLOCKS
         + (ArbitrationConstants.LEVELS - 1)
         * (COMMITMENT_BLOCKS + 2 * RESPONSE_BLOCKS);
 

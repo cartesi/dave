@@ -97,8 +97,9 @@ library TournamentParameterTableValidator {
 
     /// @dev Budgets belong to the clock model, not to a level: each parent
     /// refills a returning winner from its own row, so every row must serve
-    /// the same budgets for the root allowance to hold the root join plus one
-    /// refill per inner level. Inner rows' maxAllowance is never read.
+    /// the same budgets for the root allowance to hold the root join, one
+    /// in-flight inclusion, and one refill per inner level. Inner rows'
+    /// maxAllowance is never read.
     function _validateBudgets(
         TournamentParameters[] memory table,
         uint64 levels
@@ -119,7 +120,7 @@ library TournamentParameterTableValidator {
         if (refill > type(uint64).max) {
             revert RefillExceedsDuration(refill);
         }
-        uint256 pending = inclusion + (levels - 1) * refill;
+        uint256 pending = 2 * uint256(inclusion) + (levels - 1) * refill;
         uint256 allowance = Time.Duration.unwrap(table[0].maxAllowance);
         if (allowance < pending) {
             revert RootAllowanceBelowPendingDelegations(allowance, pending);

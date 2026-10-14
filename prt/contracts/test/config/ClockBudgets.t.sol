@@ -32,20 +32,23 @@ contract ClockBudgetsTest is Test {
         assertEq(_unwrap(ClockBudgets.commitmentBudget(model)), 150);
         // The build plus one inclusion each for the join and the propagation.
         assertEq(_unwrap(ClockBudgets.refill(model)), 200);
-        // One week, one inclusion for the root join, two refills.
-        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 3)), 50_400 + 425);
+        // One week, the root join and the in-flight inclusion, two refills.
+        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 3)), 50_400 + 450);
     }
 
     function testEthereumTwoLevelBudgets() public pure {
         ClockBudgets.Model memory model = _ethereum(1 weeks, 120 minutes);
         assertEq(_unwrap(ClockBudgets.commitmentBudget(model)), 600);
         assertEq(_unwrap(ClockBudgets.refill(model)), 650);
-        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 2)), 50_400 + 675);
+        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 2)), 50_400 + 700);
     }
 
+    /// A single level holds the root join and the in-flight reserve, and no
+    /// refill. At `C + G` the reserve was missing (F-01,
+    /// reviews/2026-10-13-prt-cyber-verification).
     function testSingleLevelAllowanceHasNoRefill() public pure {
         ClockBudgets.Model memory model = _ethereum(1 weeks, 60 minutes);
-        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 1)), 50_400 + 25);
+        assertEq(_unwrap(ClockBudgets.maxAllowance(model, 1)), 50_400 + 50);
     }
 
     function testFuzzAllowanceHoldsOneRefillPerInnerLevel(
@@ -74,7 +77,7 @@ contract ClockBudgetsTest is Test {
         assertEq(_unwrap(ClockBudgets.refill(model)), refill);
         assertEq(
             _unwrap(ClockBudgets.maxAllowance(model, levels)),
-            censorship * 1000 / blockMilliseconds + inclusionBlocks
+            censorship * 1000 / blockMilliseconds + 2 * inclusionBlocks
                 + (levels - 1) * refill
         );
     }
