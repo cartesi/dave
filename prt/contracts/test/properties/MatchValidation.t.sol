@@ -229,6 +229,52 @@ contract MatchValidationTest is Test {
         _assertStateEquals(beforeState);
     }
 
+    /// @dev At even height commitment two reveals the leaves, so this pins
+    /// the position-zero agree state on the other revealer and after a
+    /// left descent.
+    function testSealAtPositionZeroByCommitmentTwoRejectsWrongInitialAgreeWithoutMutation()
+        public
+    {
+        SmallFullTree.Data memory one =
+            _fourLeafTree(_node(0x10), _node(0x11), _node(0x12), _node(0x13));
+        SmallFullTree.Data memory two =
+            _fourLeafTree(_node(0x20), _node(0x11), _node(0x12), _node(0x13));
+        (Commitment.Arguments memory args, Match.Id memory id) =
+            _initialize(one, two);
+        assertEq(args.height % 2, 0);
+
+        (Tree.Node oneLeft, Tree.Node oneRight) = one.children(args.height, 0);
+        (Tree.Node oneLeftLeft, Tree.Node oneLeftRight) = one.children(1, 0);
+        MatchValidationMutation.advance(
+            _state, oneLeft, oneRight, oneLeftLeft, oneLeftRight
+        );
+        assertEq(_state.currentHeight, 1);
+        assertEq(_state.runningLeafPosition, 0);
+
+        (Tree.Node twoLeftLeft, Tree.Node twoLeftRight) = two.children(1, 0);
+        assertFalse(twoLeftLeft.eq(oneLeftLeft));
+        Match.State memory beforeState = _state;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ITournament.IncorrectAgreeState.selector,
+                Machine.Hash.unwrap(INITIAL_STATE),
+                Machine.Hash.unwrap(WRONG_AGREE_STATE)
+            )
+        );
+        MatchValidationMutation.seal(
+            _state,
+            args,
+            id,
+            twoLeftLeft,
+            twoLeftRight,
+            WRONG_AGREE_STATE,
+            new bytes32[](0)
+        );
+
+        _assertStateEquals(beforeState);
+    }
+
     function testSealRejectsWrongProofLengthAtNonzeroPositionWithoutMutation()
         public
     {

@@ -703,6 +703,34 @@ contract TournamentTest is Util {
         );
     }
 
+    function testLeafProofByCommitmentOnePaysOnlyBeyondOneResponseBudget()
+        public
+    {
+        SealedLeafFixture memory fixture =
+            _createAsymmetricSealedLeaf(false, 10);
+        uint64 excess = 7;
+        vm.roll(
+            Time.Instant.unwrap(fixture.clockOne.startInstant)
+                + Time.Duration.unwrap(RESPONSE_BUDGET) + excess
+        );
+
+        Tree.Node child = _commitmentChild(fixture.tournament, true);
+        _mockLeafWinner(fixture.tournament, true);
+        fixture.tournament
+            .winLeafMatch(fixture.matchId, child, child, new bytes(0));
+
+        assertFalse(
+            fixture.tournament.getMatch(fixture.matchId.hashFromId()).exists()
+        );
+        (Clock.State memory winner,) =
+            fixture.tournament.getCommitment(fixture.matchId.commitmentOne);
+        assertTrue(winner.startInstant.isZero());
+        assertEq(
+            Time.Duration.unwrap(winner.allowance),
+            Time.Duration.unwrap(fixture.clockOne.allowance) - excess
+        );
+    }
+
     function testTimeoutCapabilityRejectsNonexistentAndDeletedMatches() public {
         topTournament = Util.initializePlayer0Tournament(FACTORY);
         uint256 opponent = 1;

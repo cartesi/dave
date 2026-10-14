@@ -390,6 +390,15 @@ contract ClockTest is Test {
         harness.pauseWinnerAt(_duration(16), Time.ZERO_DURATION, _instant(16));
     }
 
+    /// @dev Forgiving one budget does not soften an overcharge: a cost beyond
+    /// the balance plus the budget still fails through checked arithmetic.
+    function testChargeRejectsAPausedOverchargeBeyondTheBudget() public {
+        harness.initialize(_instant(10), _duration(20), _instant(10));
+
+        vm.expectRevert(stdError.arithmeticError);
+        harness.pauseWinnerAt(_duration(26), _duration(5), _instant(100));
+    }
+
     function testFuzzPausedCarryoverPreservesTheChargedRemainder(uint64 rawCharge)
         public
     {
