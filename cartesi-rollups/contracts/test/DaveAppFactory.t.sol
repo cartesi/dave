@@ -72,15 +72,16 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
 
     // The canonical provider derives block budgets from wall-clock inputs. At
     // one-minute blocks, 35 minutes of censorship and 5 of inclusion give a
-    // response budget of 5 and an allowance of 35 + 5 plus one refill (the
-    // commitment budget plus 2 * 5) per inner level of the checked-in table.
+    // response budget of 5 and an allowance of 35 + 2 * 5 (the root join and
+    // the in-flight reserve) plus one refill (the commitment budget plus
+    // 2 * 5) per inner level of the checked-in table.
     uint64 constant BLOCK_MILLISECONDS = 60_000;
     uint64 constant CENSORSHIP_SECONDS = 35 minutes;
     uint64 constant INCLUSION_SECONDS = 5 minutes;
     Time.Duration constant RESPONSE_BUDGET = Time.Duration.wrap(5);
     uint64 constant COMMITMENT_BLOCKS = ArbitrationConstants.COMMITMENT_BUDGET / 1 minutes;
     Time.Duration constant MAX_ALLOWANCE =
-        Time.Duration.wrap(35 + 5 + (ArbitrationConstants.LEVELS - 1) * (COMMITMENT_BLOCKS + 10));
+        Time.Duration.wrap(35 + 2 * 5 + (ArbitrationConstants.LEVELS - 1) * (COMMITMENT_BLOCKS + 10));
     uint256 constant STAGING_GAS_CEILING = 500_000;
 
     function setUp() external {
