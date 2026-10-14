@@ -13,7 +13,14 @@ needed.
   to `T + 2G` (commitment budget plus two inclusions), within the sealed
   pair's envelope `max(r1, r2)`, so repeated Sybil delegations cannot drain a
   correct commitment's clock. A leaf proof or a timeout win earns one
-  inclusion `G`. The root allowance is `C + G + (L - 1)(T + 2G)`.
+  inclusion `G`. The root allowance is `C + 2G + (L - 1)(T + 2G)`.
+- In-flight reserve: the root allowance holds one more inclusion, because a
+  response is accepted only while its latency fits the balance and the root
+  join's lateness is deducted with no discount; at one level `C + G` lost
+  the correct commitment at zero censorship (F-01,
+  docs/reviews/2026-10-13-prt-cyber-verification). The canonical mainnet
+  allowance is one week plus 140 minutes. `ClockBudgets` changes, so the
+  provider's initcode and every address built from it move.
 - Refunds count the leaf proof's bytes at 16 units per byte. Only the proof
   is metered: the state transition fixes its length, and it now rejects input
   bytes at a position with no input (`InputBytesWithoutInput`). Every

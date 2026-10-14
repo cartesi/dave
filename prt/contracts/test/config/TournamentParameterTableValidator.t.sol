@@ -92,8 +92,8 @@ contract TournamentParameterTableValidatorTest is Test {
     function testRootAllowanceMustHoldTheRootJoinAndOneRefillPerInnerLevel()
         public
     {
-        // One inclusion (3) plus three refills of 7 + 2 * 3.
-        uint64 pending = 3 + 3 * 13;
+        // Two inclusions (3 each) plus three refills of 7 + 2 * 3.
+        uint64 pending = 2 * 3 + 3 * 13;
         TournamentParameters[] memory table = _budgetedFourLevelTable(3, 7);
         table[0].maxAllowance = Time.Duration.wrap(pending);
         VALIDATOR.validate(table, 4);
