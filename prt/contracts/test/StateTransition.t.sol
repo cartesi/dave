@@ -144,6 +144,23 @@ contract StateTransitionTest is Util {
         assertEq(result, machineState);
     }
 
+    /// The step just before a uarch span's closing takes no reset proof.
+    function testTransitionLastInteriorUcycleOfTheEpochIsPlainStep()
+        public
+        view
+    {
+        (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+
+        bytes32 result = STATE_TRANSITION.transitionState(
+            machineState,
+            EPOCH_RULER_SPAN - 2,
+            proof,
+            IDataProvider(address(0x123))
+        );
+
+        assertEq(result, machineState);
+    }
+
     function testTransitionBigCycleOpeningIsPlainStep(
         uint24 inputIndex,
         uint48 mcycle
@@ -161,6 +178,23 @@ contract StateTransitionTest is Util {
         assertEq(result, machineState);
     }
 
+    /// A big-cycle opening inside an input window takes no input header.
+    function testTransitionLastBigCycleOpeningOfTheEpochIsPlainStep()
+        public
+        view
+    {
+        (bytes32 machineState, bytes memory proof) = cycleOverflowProof();
+
+        bytes32 result = STATE_TRANSITION.transitionState(
+            machineState,
+            EPOCH_RULER_SPAN - UARCH_SPAN_TO_BARCH,
+            proof,
+            IDataProvider(address(0x123))
+        );
+
+        assertEq(result, machineState);
+    }
+
     function testTransitionFirstBigStepBoundaryRequiresResetProof() public {
         (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
         bytes memory invalidResetProof = new bytes(43 * 32);
@@ -170,6 +204,36 @@ contract StateTransitionTest is Util {
             machineState,
             UARCH_SPAN_TO_BARCH - 1,
             bytes.concat(stepProof, invalidResetProof),
+            IDataProvider(address(0x123))
+        );
+    }
+
+    function testTransitionClosingRejectsTrailingProofBytes() public {
+        (bytes32 machineState, bytes memory proof, bytes32 resetState) =
+            cycleOverflowClosingProof();
+
+        assertNotEq(resetState, machineState);
+        assertEq(
+            STATE_TRANSITION.transitionState(
+                machineState,
+                UARCH_SPAN_TO_BARCH - 1,
+                proof,
+                IDataProvider(address(0x123))
+            ),
+            resetState
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.InvalidAccessLogProofLength.selector,
+                proof.length,
+                proof.length + 1
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            machineState,
+            UARCH_SPAN_TO_BARCH - 1,
+            bytes.concat(proof, hex"00"),
             IDataProvider(address(0x123))
         );
     }
@@ -199,6 +263,31 @@ contract StateTransitionTest is Util {
         );
         STATE_TRANSITION.transitionState(
             bytes32(0), EPOCH_RULER_SPAN, hex"", IDataProvider(address(0x123))
+        );
+    }
+
+    /// The bound rejects the counter itself, not a malformed witness: this
+    /// opening would otherwise be accepted as an input index past the epoch.
+    function testTransitionRejectsAWellFormedOpeningAtTheEpochEnd() public {
+        (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
+        IDataProvider provider = IDataProvider(address(0x123));
+        vm.mockCall(
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(bytes32(0))
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.CounterOutsideEpoch.selector,
+                EPOCH_RULER_SPAN
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            machineState,
+            EPOCH_RULER_SPAN,
+            abi.encodePacked(uint64(0), stepProof),
+            provider
         );
     }
 
@@ -249,6 +338,41 @@ contract StateTransitionTest is Util {
         );
         STATE_TRANSITION.transitionState(
             machineState, 1, truncatedProof, IDataProvider(address(0x123))
+        );
+    }
+
+    /// At an input opening the access log starts after the length header.
+    function testTransitionInputOpeningRejectsTrailingProofBytes() public {
+        (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
+        IDataProvider provider = IDataProvider(address(0x123));
+        vm.mockCall(
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(bytes32(0))
+        );
+
+        assertEq(
+            STATE_TRANSITION.transitionState(
+                machineState,
+                3 * INPUT_WINDOW_SPAN,
+                abi.encodePacked(uint64(0), stepProof),
+                provider
+            ),
+            machineState
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.InvalidAccessLogProofLength.selector,
+                stepProof.length,
+                stepProof.length + 1
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            machineState,
+            3 * INPUT_WINDOW_SPAN,
+            abi.encodePacked(uint64(0), stepProof, hex"00"),
+            provider
         );
     }
 
@@ -351,6 +475,29 @@ contract StateTransitionTest is Util {
             abi.encodePacked(
                 uint64(paddingLength), new bytes(paddingLength), stepProof
             ),
+            provider
+        );
+    }
+
+    function testTransitionLastInputOpeningRejectsOneByteWithoutInput() public {
+        (bytes32 machineState, bytes memory stepProof) = cycleOverflowProof();
+        IDataProvider provider = IDataProvider(address(0x123));
+        vm.mockCall(
+            address(provider),
+            abi.encode(IDataProvider.provideMerkleRootOfInput.selector),
+            abi.encode(bytes32(0))
+        );
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                CartesiStateTransition.InputBytesWithoutInput.selector,
+                uint64(1)
+            )
+        );
+        STATE_TRANSITION.transitionState(
+            machineState,
+            LAST_INPUT_INDEX * INPUT_WINDOW_SPAN,
+            abi.encodePacked(uint64(1), hex"00", stepProof),
             provider
         );
     }
@@ -459,5 +606,87 @@ contract StateTransitionTest is Util {
             Memory.regionFromLeafAddress(leafAddress),
             keccak256(abi.encodePacked(leaf))
         );
+    }
+
+    /// A closing over an overflowed uarch: the step's cycle read, the reset's
+    /// uarch-region write, and its read of a zero IFLAGS.Y word. Every
+    /// sibling is zero except where the two paths meet: the uarch region
+    /// (stride one at its level) and the subtree holding IFLAGS.Y (stride
+    /// zero) are each other's sibling.
+    function cycleOverflowClosingProof()
+        private
+        pure
+        returns (bytes32 machineState, bytes memory proof, bytes32 resetState)
+    {
+        uint8 regionLevel =
+            EmulatorConstants.UARCH_STATE_LOG2_SIZE - Memory.LOG2_LEAF;
+        bytes memory belowRegion = new bytes(uint256(regionLevel) * 32);
+        bytes memory aboveRegion =
+            new bytes((uint256(Memory.LOG2_MAX_SIZE) - regionLevel - 1) * 32);
+
+        Memory.PhysicalAddress cycleAddress =
+            Memory.toPhysicalAddress(EmulatorConstants.UARCH_CYCLE_ADDRESS);
+        (Memory.PhysicalAddress cycleLeafAddress, uint64 wordOffset) =
+            Memory.truncateToLeaf(cycleAddress);
+        bytes32 cycleLeaf = AccessLogs.setBytes8ToBytes32AtOffset(
+            AccessLogs.solidityUint64ToMachineWord(
+                EmulatorConstants.UARCH_CYCLE_MAX
+            ),
+            bytes32(0),
+            wordOffset
+        );
+        (Memory.PhysicalAddress iflagsLeafAddress,) = Memory.truncateToLeaf(
+            Memory.toPhysicalAddress(EmulatorConstants.IFLAGS_Y_ADDRESS)
+        );
+        bytes32 uarchRegion = zeroSiblingsRoot(
+            keccak256(abi.encodePacked(cycleLeaf)),
+            Memory.PhysicalAddress.unwrap(cycleLeafAddress) >> Memory.LOG2_LEAF,
+            regionLevel
+        );
+        bytes32 iflagsSubtree = zeroSiblingsRoot(
+            keccak256(abi.encodePacked(bytes32(0))),
+            Memory.PhysicalAddress.unwrap(iflagsLeafAddress)
+                >> Memory.LOG2_LEAF,
+            regionLevel
+        );
+
+        bytes memory cycleRead = abi.encodePacked(
+            cycleLeaf, belowRegion, iflagsSubtree, aboveRegion
+        );
+        bytes memory iflagsRead = abi.encodePacked(
+            bytes32(0),
+            belowRegion,
+            EmulatorConstants.UARCH_PRISTINE_STATE_HASH,
+            aboveRegion
+        );
+        proof = abi.encodePacked(
+            cycleRead,
+            abi.encodePacked(uarchRegion, iflagsSubtree, aboveRegion),
+            iflagsRead
+        );
+
+        machineState = Buffer.Context(cycleRead, 32)
+            .getRoot(
+                Memory.regionFromLeafAddress(cycleLeafAddress),
+                keccak256(abi.encodePacked(cycleLeaf))
+            );
+        resetState = Buffer.Context(iflagsRead, 32)
+            .getRoot(
+                Memory.regionFromLeafAddress(iflagsLeafAddress),
+                keccak256(abi.encodePacked(bytes32(0)))
+            );
+    }
+
+    function zeroSiblingsRoot(bytes32 node, uint256 position, uint256 levels)
+        private
+        pure
+        returns (bytes32)
+    {
+        for (uint256 i; i < levels; ++i) {
+            node = (position >> i) & 1 == 0
+                ? keccak256(abi.encodePacked(node, bytes32(0)))
+                : keccak256(abi.encodePacked(bytes32(0), node));
+        }
+        return node;
     }
 }

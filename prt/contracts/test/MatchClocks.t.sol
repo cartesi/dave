@@ -555,6 +555,14 @@ contract MatchClocksTest is Test {
         assertEq(_childReturn(type(uint64).max, type(uint64).max), 90);
     }
 
+    function testChildReturnClampsACarriedRemainderAboveClockTwosEnvelope()
+        public
+    {
+        _initializePaused(40, 90);
+        assertEq(_childReturn(91, 0), 90);
+        assertEq(_childReturn(1000, 5), 90);
+    }
+
     function testChildReturnRequiresTheSealedInnerShape() public {
         _initializePaused(40, 90);
         harness.startOneAt(Time.Instant.wrap(10));
