@@ -401,7 +401,9 @@ contract Tournament is ITournament, ERC165 {
     /// - ROOT:
     ///     * Winner is the root tournament winner.
     /// - NON-ROOT:
-    ///     * Winner is the inner winner that will be used by the parent tournament.
+    ///     * Winner is the child's dangling commitment, paid whether or not
+    ///       the parent consumed it: a winner whose carryover window expired
+    ///       is still paid from the child's own reserve.
     /// - Configured refund caps reserve one minimum join bond.
     /// - A zero balance completes without calling the winner.
     /// - At or below one bond, the winner receives the full balance.
@@ -597,6 +599,8 @@ contract Tournament is ITournament, ERC165 {
             revert CannotAdvanceTimedOutClock();
         }
 
+        // The cycle the agree state sits at, which is also the index of the
+        // transition, and of its output leaf, that the adapter verifies.
         uint256 agreeCycle =
             args.commitmentArgs.toCycle(divergence.divergencePosition);
 

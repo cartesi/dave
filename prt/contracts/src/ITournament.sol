@@ -81,15 +81,20 @@ interface ITournament {
     /// of a leaf tournament.
     /// @param TIMEOUT The match was deleted because the clock
     /// of at least one of the commitments has timed out.
-    /// Note that it is possible that both clocks time out,
-    /// in which a third party can delete the match in a way
-    /// similar to a garbage-collection routine.
+    /// Both commitments are eliminated when neither can survive
+    /// the timeout accounting: in a sealed leaf, both clocks
+    /// expired; in bisection, the responder expired and the paused
+    /// opponent's remainder does not exceed the overdue. A third
+    /// party can then delete the match in a way similar to a
+    /// garbage-collection routine.
     /// @param CHILD_TOURNAMENT The match was deleted because
     /// of a result of a child tournament. It may be the case
-    /// that the child tournament finished without a winner,
-    /// in which case both commitments are eliminated, or
-    /// with a winner, in which case only one of the commitments
-    /// (the loser one in the child tournament) is eliminated.
+    /// that the child tournament finished without a winner, or
+    /// with a winner whose carryover window expired before it was
+    /// propagated, in which case both commitments are eliminated,
+    /// or with a usable winner, in which case only one of the
+    /// commitments (the loser one in the child tournament) is
+    /// eliminated.
     enum MatchDeletionReason {
         STEP,
         TIMEOUT,
@@ -191,7 +196,11 @@ interface ITournament {
     /// @dev A historical snapshot of commitment storage: eliminated
     /// commitments intentionally keep their last written clock, and match
     /// topology, not clock storage, determines liveness. `claimer` is zeroed
-    /// after a successful terminal bond recovery pays the winning claimer.
+    /// when the commitment is eliminated from a match and after a successful
+    /// terminal bond recovery pays the winning claimer, so a joined
+    /// commitment with a zero claimer is either eliminated or recovered;
+    /// `tournamentStanding`, `bondRecovery` or the match topology tells the
+    /// two apart.
     /// For a paused clock, `clockAllowance` is the frozen remaining reserve
     /// and `clockDeadline` is canonically zero. For a running clock,
     /// `clockDeadline` is the first inclusive instant at which the clock is
@@ -528,6 +537,9 @@ interface ITournament {
     /// @notice The tournament has finished but with no winners.
     /// This is unexpected to happen because we assume that at least
     /// one player is actively defending the correct commitment.
+    /// @dev No Tournament function raises it: `tournamentStanding`
+    /// reports `ROOT_FAILED` instead. It stays in the ABI for
+    /// consumers and test helpers that raise it themselves.
     error TournamentFailedNoWinner();
 
     /// @notice The child tournament has not yet finished,
@@ -544,10 +556,11 @@ interface ITournament {
     error ChildTournamentMustBeEliminated();
 
     /// @notice The player has provided commitment root children
-    /// whose parent is different from the commitment root that won
-    /// a child tournament.
+    /// whose parent is different from the parent commitment the
+    /// child tournament's winner maps to by final state.
     /// @param commitmentRoot The commitment root provided by the player
-    /// @param winner The child-tournament winning commitment root
+    /// @param winner The parent commitment the child's winner maps to,
+    /// not the child's winning root
     error WrongTournamentWinner(Tree.Node commitmentRoot, Tree.Node winner);
 
     /// @notice The on-chain implementation of the state-transition
