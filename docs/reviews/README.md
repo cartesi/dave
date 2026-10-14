@@ -64,3 +64,9 @@ with, and some of those name nothing on main.
 - [`2026-10-11-prt-events-gas-calibration/`](2026-10-11-prt-events-gas-calibration/)
   - every allocation recalibrated after the event extension, with retained
     witnesses for the dangling-survivor standing branches and lower bonds.
+- [`2026-10-13-prt-cyber-verification/`](2026-10-13-prt-cyber-verification/)
+  - the Cyber Verification campaign on `prt/contracts`: threat model, one
+  reproduced finding (the one-level in-flight reserve), sixteen priced or
+  documentary leads, the honest-survival search, adapter composition at the
+  epoch extremes, mutation and exploit-class evidence, and the honest node's
+  composition contract.
