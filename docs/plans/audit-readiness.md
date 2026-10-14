@@ -55,11 +55,13 @@ cartesi-rollups/contracts/AGENTS.md ("Explicit non-claims") and
 dispute-game.md:
 
 - No general recursive liveness proof: neither termination nor a delay
-  bound, and R19 claims neither. Honest survival under `C`, and a correct
-  winner if the root finishes, are open until R19 lands
-  ([r19-honest-survival.md](r19-honest-survival.md)).
+  bound. Honest survival under `C`, and a correct winner if the root
+  finishes, have a balance argument and a two-level search as evidence
+  (dimensioning.md, "Honest survival under the budgets";
+  reviews/2026-10-13-prt-cyber-verification), not a theorem.
 - The accepted CF-01 leaf handover limitation (dispute-game.md, "Resolution
-  and winner re-entry").
+  and winner re-entry"): the proof and its fallback claim share one `G`,
+  which the campaign found to be the budget argument's binding margin.
 - A well-formed table does not prove that clients build the same
   commitments.
 - Non-Ethereum time and fee conformance is not established.
@@ -73,9 +75,12 @@ dispute-game.md:
 Each is a script, test, CI or docs change except where noted; all can land
 before the freeze.
 
-1. R19, the honest-survival model ([r19-honest-survival.md](r19-honest-survival.md)).
-   A counterexample would be a bytecode change, so it must come before the
-   freeze.
+1. R19, the honest-survival model: landed as
+   `prt/contracts/test/properties/HonestSurvivalInvariant.t.sol` with its argument
+   in dimensioning.md. The campaign's one finding (F-01, the one-level
+   in-flight reserve) was a bytecode change to `ClockBudgets`, made before
+   the freeze; the argument still awaits a reviewer other than its author
+   (todo.md).
 2. Contract code shaped for tests. `_getClockModel(Seconds commitmentBudget)`
    in `prt/contracts/script/Deployment.s.sol:232` takes a parameter only the
    devnet script varies (`test/devnet/DevnetGeometryDeployment.s.sol:63`);
@@ -95,8 +100,10 @@ before the freeze.
    `testCanonicalProviderRowsAndTiling` compares the provider with
    `ClockBudgets` itself. State the table as trusted configuration. A root
    allowance short by one refill is a fixed loss of `T + 2G` (tolerance
-   falls from `C` to `C - (T + 2G)`), decisive only near `C = 0`; an
-   accumulating drain needs per-row or understated budgets.
+   falls from `C` to `C - (T + 2G)`), decisive only near `C = 0`; a root
+   allowance short by the in-flight inclusion is a fixed loss of `G`, which
+   at one level was the whole margin (F-01); an accumulating drain needs
+   per-row or understated budgets.
 4. The deployment path, and a runbook it lacks. `deploy.sh` runs three Forge
    scripts in order (PRT, the rollups-contracts dependency, Dave); every
    address is CREATE2 with a zero salt over the full initcode
@@ -110,7 +117,15 @@ before the freeze.
    address verification against the release asset, post-deploy checks (a
    node started against the deployment checks geometry, `CM_MARCHID`, and
    that `UARCH_PRISTINE_STATE_HASH` equals its emulator's pristine uarch hash
-   and its template's uarch state hash).
+   and its template's uarch state hash). Two lines the campaign added
+   (reviews/2026-10-13, L-08 and L-15): addresses are not chain-bound, so
+   any registered chain's provider and factory, the devnet's `C = 0` set
+   included, can be replayed at its published address on another chain, and
+   only the per-chain release asset authenticates a factory, so verify the
+   provider's budgets against the chain's registration, not only the
+   address; and the deployments import fails closed on a planted duplicate
+   name but silently imports stale extra names, so deploy from a clean
+   checkout.
 5. The `CM_MARCHID` literal. `CartesiStateTransition.sol:35-37` hard-codes
    21 until a solidity-step release exports it; machine/step v0.15.0 exports
    none, and the only Solidity test echoes the literal. A new node refuses a
@@ -132,6 +147,14 @@ before the freeze.
    events calibration (cartesi/dave#297) accepted them by manual runs; the
    `prt-contracts` CI job now runs `just test-prt-gas`, so a change that
    pushes a leaf proof past its allocation fails CI.
+7. The pinned compiler against its bug list. At solc 0.8.30 under via-IR
+   the campaign excluded the transient-storage clearing collision (needs
+   `delete` on a transient variable; the lock is only assigned), the two
+   mutual-recursion spill bugs (no recursion in `src/`) and the
+   named-parameter custom-error bug (none used). One Yul optimizer entry
+   fixed after 0.8.37 cannot be excluded by reading; re-run the check at the
+   freeze and either pin a fixed compiler or record why the entry does not
+   apply.
 
 The refill review's release-evidence item ("Remaining assurance work", 3) is
 covered elsewhere: the gas calibration by the events calibration
@@ -194,7 +217,7 @@ addresses (build-system.md).
    start against earlier contracts, and #287's node fixes (the
    terminal-application hold, seam 2, input-index continuity) reach
    integrators only with it. The candidate is their main path, not an extra.
-4. R19, in its own PR.
+4. R19: landed with the campaign (item 1), awaiting its reviewer.
 5. The canonical table confirmed on validator-grade hardware (todo.md),
    before the freeze: a replacement table moves the provider's bytecode and
    CREATE2 addresses, which the freeze forbids.

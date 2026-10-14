@@ -589,9 +589,14 @@ configured revert-protecting endpoint arbitrates races and duplicates. The
 lane observes no receipts, so a call that passes its estimate and loses a
 race before inclusion is paid for. Every contested step races among the
 honest nodes that share a commitment, so each may pay for the reverts of
-steps another won, a reverted leaf proof's calldata included. A
-revert-protecting endpoint behind `--blockchain-http-submit-endpoint` avoids
-that cost; the node recommends one and does not require it.
+steps another won, a reverted leaf proof's calldata included. An adversary
+who orders transactions can impose the same cost on every honest action by
+landing an identical copy first, up to the EIP-7623 floor of a maximum-input
+leaf proof, about 3.76M gas, at no extra bond
+(reviews/2026-10-13-prt-cyber-verification, L-06). A revert-protecting
+endpoint behind `--blockchain-http-submit-endpoint` avoids that cost; the
+node recommends one and does not require it, and a production deployment
+should treat it as required.
 
 A slot the pool turns down on price is signed once more at the quote's max
 fee with the tip raised to it. geth replaces only on 10% more of both fees,

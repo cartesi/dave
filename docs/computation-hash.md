@@ -120,7 +120,13 @@ big-step boundary calls `UArchStep` and then `UArchReset`; every other position
 calls only `UArchStep`. Each branch requires the access-log proof buffer to be
 consumed completely before returning its root, and an input boundary with no
 input rejects any input bytes, so a valid proof has exactly one length (the
-leaf refund meters it).
+leaf refund meters it). The adapter uses the counter only to select the shape
+and the input index, so a counter error that keeps the shape is invisible to
+it; the composition is pinned at the shape boundaries instead
+(`prt/contracts/test/TournamentStateTransitionExtremesFfi.t.sol`). Under any in-table geometry an
+input-window opening is a leaf child's position zero, since every leaf tile
+divides `2^68`, so the agree state at an opening is always the child's
+`initialHash`.
 
 The node's computation source owns transition-proof preparation: it replays
 to the disputed position, checks the sealed agree-state hash, generates the

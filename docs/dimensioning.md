@@ -45,9 +45,13 @@ to the average case.
   event that does not fit its span is fatal - the coordinate system
   cannot represent the honest computation, so the honest validator
   cannot even state the truth. Even an honest program occasionally
-  executes the worst instruction (the sqrt / TLB-flush class, near
-  the 2^20 bound - which is why the span is 2^20). One occurrence,
-  ever, breaks soundness, so rarity does not discount anything.
+  executes the worst instruction (the sqrt / TLB-flush class), and one
+  occurrence, ever, past the span would break soundness, so rarity
+  does not discount anything. The span is the emulator's uarch cycle
+  budget, `2^20 - 1` executed usteps per big cycle plus the closing
+  slot; the heaviest instruction measured on v0.21, `sfence.vma`, takes
+  17,595 usteps, about 60 times below it (one workload on one machine;
+  re-measure with the validator-grade run, todo.md).
   The input span differs in kind: no single legitimate event exceeds
   it, only a flood of roughly 5e11 gas of inputs in one epoch. Past
   it the contracts never feed the tail, and the Rust node panics
@@ -160,6 +164,29 @@ An overrun is charged to the honest clock beyond `G` and draws on `C`: it
 spends censorship tolerance before it loses a dispute. Past the contract, as
 past the other out-of-model bounds, the protocol promises nothing.
 
+### Aggregate throughput, the second per-app contract
+
+The per-input contract bounds one input. The root join window bounds their
+sum. The root allowance `C + 2G + (L - 1)(T + 2G)` holds no term for building
+the level-0 commitment, because the node computes it while the inputs
+arrive, so the honest root join assumes the node has kept up with the
+epoch's inputs when the epoch seals. The input author is untrusted, and
+sealing takes every input posted before the acceptance block, so an epoch's
+total compute is adversarial even when every input respects the per-input
+contract. A backlog larger than the root window at the seal makes the honest
+root join miss closure, and a Sybil's claim then wins the root unopposed; the
+cost is the inputs' gas and one bond, far below the 2^24 flood
+(reviews/2026-10-13-prt-cyber-verification, L-01). The assumption is
+therefore the app's second contract: the app digests, within the root
+window, any input stream the chain can deliver in one epoch, with margin for
+the node's catch-up after a burst. An app meets it the way it meets the
+per-input contract, by design: it meters effort per input and prices it,
+with prices that rise as the epoch's effort is consumed, so that underpriced
+inputs are dismissed cheaply. In practice inputs execute nearly instantly and
+the contract is slack; it binds only for an app whose inputs can each reach
+the per-input bound. The trigger, sealing with no input cap or minimum
+notice, belongs to DaveConsensus and is priced in that campaign.
+
 ## Base-layer censorship model
 
 The contracts adopt the base-layer adversary model from Section 3 of the
@@ -230,17 +257,26 @@ boundary slack rather than map equality to equality.
 For `L` tournament levels, the root allowance and structural clock bound are
 
 ```text
-maxAllowance = C + G + (L - 1) * (T + 2G)
+maxAllowance = C + 2G + (L - 1) * (T + 2G)
 ```
 
-The rule behind it: every honest action gets one inclusion `G`, and joining a
-child also gets the build `T`. Responses are discounted by `G` as they land. A
+The rule behind it: every honest action gets one inclusion `G`, joining a
+child also gets the build `T`, and one inclusion is held in reserve for the
+action in flight. Responses are discounted by `G` as they land, but only
+after they land: a response is accepted only while its latency fits the
+balance, and the root join's lateness is deducted with no discount, so the
+balance must hold the join's lateness and the next action's latency at once.
+At inner levels a pending delegation's unspent propagation inclusion covers
+that reserve; at the root nothing else does, which is why a single-level
+table at `C + G` lost the honest commitment at zero censorship (F-01,
+reviews/2026-10-13-prt-cyber-verification). A
 delegation costs the build and the join, charged at the join as lateness, and
 the propagation back, deducted from the carried remainder; when the child
 returns its winner, the parent refills it by up to `T + 2G`, within the sealed
 pair's envelope, so each delegation is paid back. The root allowance holds the
-censorship budget, one inclusion for the root join, and one refill per inner
-level: the delegations a correct commitment may have pending on its path.
+censorship budget, one inclusion for the root join, one in reserve, and one
+refill per inner level: the delegations a correct commitment may have pending
+on its path.
 `ClockBudgets` derives it, `responseBudget = G` and `commitmentBudget = T` from
 the wall-clock inputs and the deployment's block time. The number of children
 a correct commitment passes through is chosen by the adversary, one Sybil bond
@@ -275,7 +311,7 @@ The canonical table is two levels, `log2step = [38, 0]` and
 `height = [54, 38]`: the `T = 60` derivation in
 docs/measurements/constants.md, which prices the leaf on the node's bulk
 collection path with hardware slack 2, deployed with `T = 120 minutes` for
-double slack. On Ethereum it gives one week plus 135 minutes. The three-level
+double slack. On Ethereum it gives one week plus 140 minutes. The three-level
 table (`[44, 27, 0]` / `[48, 17, 27]`) predates the current measurement
 tooling and is not a `T = 30` derivation; it remains the devnet test table
 that CI and local tests run, at `T = 30 minutes`.
@@ -334,8 +370,69 @@ chain with slower finality must not reuse Ethereum's `T` without checking it.
 s by default), the action's preparation (a leaf proof replays the disputed
 input's prefix, bounded by the per-input compute contract), and inclusion.
 A leaf proof, and the fallback timeout claim when the opponent's expiry
-overtakes it, should land within one `G` of the seal (dispute-game.md,
-CF-01).
+overtakes it, should land together within one `G` of the seal: the two
+landings share one inclusion budget (dispute-game.md, CF-01), and the node
+plans the claim instead of the proof when the opponent's clock cannot outlive
+the proof.
+
+## Honest survival under the budgets
+
+The safety claim the budgets serve, with the argument that composes the
+clock rules into it. The claim: fix the correct computation and the correct
+commitment at every level; if the correct participant follows the eager
+strategy below and the adversary's cumulative censorship of its transactions
+across the root and every linked descendant is at most `C`, then its clock
+never expires in any tournament it enters, it is never eliminated, and a
+finished root carries its final state. Termination and the delay bound stay
+separate non-claims.
+
+The strategy, as latency bounds: the root join lands within `G` of the
+root's start; each child join within `T + G` of the seal that created the
+child; every advance, seal, timeout claim and propagation within `G` of
+becoming due; a leaf proof and its fallback timeout claim together within
+`G` of the seal, the claim planned instead of the proof whenever the
+opponent's clock cannot outlive the proof's latency. Every bound is strict,
+since a clock expires at equality. Lateness beyond a bound is censorship,
+drawn from one ledger that nothing refills.
+
+The adversary enters Sybils at any level and time, in either contested
+final-state class, the correct one's included; times its own actions freely;
+controls both sides of its own matches; orders transactions within a block;
+acts on the correct side's behalf wherever the surface is permissionless;
+and censors within `C`. It cannot prove a wrong leaf.
+
+The argument is a balance. Write `F = T + 2G` for one refill and
+`D = L - 1` for the inner levels. After the root join at lateness `j0 < G`
+and `d` child joins each at lateness `j_i < T + G`, with `c` of censorship
+spent so far, the correct clock holds at least
+
+```text
+C - c + (G - j0) + G + (D - d) * F + sum_i (F - j_i)
+```
+
+because every landed response or win is forgiven up to `G`, every child
+return refills its delegation by `F` within the pair envelope, and the
+envelope is at least the correct side's own remainder at the seal. The
+reserve `G` stays unspent until an action is in flight; each pending
+delegation's unspent propagation inclusion adds another. A response or claim
+in flight needs the balance to exceed its latency, which the reserve
+supplies at every level. The leaf race is the tight step: after the worst
+in-bound child join the correct child clock is `G + 2` blocks before the
+reserve, and a Sybil that joins one block before closure and seals in its
+pairing block forces the proof-to-timeout handover at any proof latency, so
+the proof and the claim must share one `G`. The reserve added for F-01 lifts
+that margin by `G` without changing the argument.
+
+Evidence: `prt/contracts/test/properties/HonestSurvivalInvariant.t.sol`, a
+stateful search over the small two-level geometry with budgets one inclusion
+below the formula, the strategy above derived from production state, the
+adversary powers above, and one ledger, in both orientations at `C` of 0, 2
+and 5, 256 runs of depth 250 each; no schedule eliminated the correct
+commitment or finished the root with another final state, and removing the
+child-return refill makes every configuration fail. The deterministic worst
+schedule is `HonestSurvivalSchedule.t.sol`. The argument has not yet been
+reviewed by someone other than its author, and the search covers two levels
+in a small box; neither is a theorem for any level count.
 
 For one leaf match with current live balances `b1`, `b2` and `h` responses left,
 the safe local wall-time bound is `b1 + b2 + h * G`. It cannot be replaced by one

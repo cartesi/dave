@@ -25,8 +25,14 @@ conditional, not absolute.
 Safety requires:
 
 - At least one participant joins the correct commitment when a dispute exists.
-- A correct participant can submit required transactions before its clocks and
-  the relevant tournament windows expire.
+- A correct participant lands each required transaction within the latency
+  bounds the clock budgets assume: the root join within `G` of the root's
+  start, each child join within `T + G` of the seal that created the child,
+  every other action within `G` of becoming due, and a leaf proof together
+  with its fallback timeout claim within `G` of the seal, with the
+  adversary's cumulative censorship of those transactions at most `C` across
+  the root and its descendants. Under those bounds its clocks never expire
+  (dimensioning.md, "Honest survival under the budgets").
 - The participant can obtain the inputs, machine states, and proofs needed to
   act.
 - Commitment hashes and Merkle proofs have their assumed collision and
@@ -348,13 +354,19 @@ The status of the delay claims is:
 Clock-induced delay and transaction work are different properties. A skewed
 arrival schedule can force a correct survivor through a number of matches
 linear in the claims, with work proportional to the claims times the
-commitment height, but only in a bounded regime. A tournament closes to joins
-at its start plus its allowance, at most one commitment waits unpaired, and
-the survivor's matches run one at a time, each taking time, so only the
-claims that fit the join window meet it one by one. Further claims pair with
-each other and reach the survivor through a bracket, adding matches
-logarithmically, so for many claims the work grows like the delay. The
-regime's size per level is not computed here. Clock conservation prevents
+commitment height, but only in a bounded regime. The regime is bounded by
+settlement, not by the join window: Sybil pairs formed inside the window can
+burn their clocks together and release their survivors one at a time after
+closure, and a Sybil-versus-Sybil timeout re-pairs its survivor with the
+dangling correct commitment inside the same call. With `A` the allowance,
+`h` the height, `G` the response budget and `delta` the survivor's response
+latency, about `(A + (h - 2)G) / ((h / 2) delta + G + 1)` claims can meet
+the survivor one by one, at two bonds per claim met; on the canonical root
+that is about 988 sequential matches at one-block responses and 75 at
+`delta = G`, inside roughly one allowance after closure
+(prt-delay-bound.md, "Post-closure staggered release"). Beyond that count,
+claims add matches logarithmically, so for many claims the work grows like
+the delay. Clock conservation prevents
 arbitrary refill (a child return refills at most `T + 2G`, within its pair's
 envelope), but does not shrink the bounded regime's work. Finite blockspace
 can turn that transaction workload into additional wall-clock delay. Bond
@@ -416,9 +428,17 @@ often this happens, one Sybil bond each, but not the latencies. Each
 occurrence can cost up to one `G` of `C` even when both actions land within
 their own `G`: the review's trace lost a match at `C = 0` with every inclusion
 inside its bound. It costs nothing only if the proof and its fallback claim
-land within one `G` of the seal, an operating assumption the R19 model states
-explicitly (todo.md). Letting `winLeafMatch` settle as the timeout win the
-classifier selects was judged not worth revising the disjoint verbs.
+together land within one `G` of the seal: the two landings share one
+inclusion budget, they do not get one each. The 2026-10-13 campaign's
+honest-survival search found that margin to be the binding one of the budget
+argument rather than a side case: a Sybil that joins a leaf child one block
+before closure, with a clock of one, and seals in the block it is paired
+forces the handover at any proof latency of one block or more. The honest
+node avoids the cost by planning: when the opponent's leaf clock cannot
+outlive the proof's latency, it claims the timeout at the opponent's deadline
+instead of sending the proof (reviews/2026-10-13-prt-cyber-verification,
+L-11). Letting `winLeafMatch` settle as the timeout win the classifier
+selects was judged not worth revising the disjoint verbs.
 
 A non-leaf match resolves when its linked child finishes:
 
@@ -521,6 +541,9 @@ so the parent verbs partition exactly.
 clock snapshot: claimed final state, claimer, and either the paused clock's
 frozen reserve or the running clock's fixed inclusive deadline. Eliminated
 commitments keep their last written clock; liveness stays topological.
+Elimination deletes the claimer, as terminal recovery does, so a joined
+commitment with a zero claimer is either eliminated or recovered; the
+standing views and the match topology tell them apart.
 
 The standing also reports `finishedAt`, the block-number instant when the
 tournament became safe to decide: the later of its closure deadline and its
@@ -560,13 +583,23 @@ chain. Therefore a wall-clock statement is only valid when the chain's
 `block.number` semantics and the registered conversion agree. Registration is
 not support: Ethereum is the supported deployment target, and every other
 registered chain is experimental. Refunds price `gasleft` deltas, so on an L2
-the parent-chain data fee is not refunded.
+the parent-chain data fee is not refunded. Deployed budgets are block counts
+in an immutable provider: a change to Ethereum's own slot time would scale
+every wall-clock budget by the same factor with no on-chain or node signal,
+halving `C`, `G` and `T` at six-second slots, so such a change is a trigger
+for a new deployment generation (build-system.md).
 
 - OP Stack chains (OP and Base, mainnet and Sepolia) register their 2 s L2
   block, which `block.number` counts, so the conversion is exact while that
   block time holds. Deployed budgets are block counts: a network upgrade that
   shortened the block time would shorten every wall-clock budget. Finality
-  against `T`, fee conformance and sequencer censorship are not validated.
+  against `T`, fee conformance and sequencer censorship are not validated. A
+  sequencer that censors and leaves only forced inclusion, hours per
+  transaction, consumes `C` at that rate: on the canonical root-to-leaf path
+  of 50 honest actions, a correct commitment lands about 14 actions on OP
+  Mainnet and 7 on Arbitrum One before `C` is spent, and the eight-hour
+  testnets cannot land the root join (reviews/2026-10-13-prt-cyber-verification,
+  L-16; the forced-inclusion delays are leads to verify).
 - Arbitrum One and Arbitrum Sepolia register 12 s: their `NUMBER` opcode
   returns an estimate of the parent chain's block number (Ethereum's or
   Sepolia's), so their deployment arguments, and therefore their addresses,
@@ -661,11 +694,16 @@ The allowance is derived, never configured directly (derivation in
 [`dimensioning.md`](dimensioning.md)):
 
 ```text
-maxAllowance = C + G + (levels - 1) * (T + 2G)
+maxAllowance = C + 2G + (levels - 1) * (T + 2G)
 ```
 
-Every honest action gets one inclusion `G`, and joining a child also gets the
-build `T`. `ClockBudgets` computes the allowance, with `responseBudget = G` and
+Every honest action gets one inclusion `G`, joining a child also gets the
+build `T`, and one inclusion is held in reserve for the action in flight: a
+response is accepted only while its latency fits the balance and is
+discounted only after acceptance, so the balance must hold that latency on
+top of the join's lateness, and at the root nothing else does (F-01 in
+reviews/2026-10-13-prt-cyber-verification). `ClockBudgets` computes the
+allowance, with `responseBudget = G` and
 `commitmentBudget = T`, from wall-clock inputs: the deployment's block time and
 censorship budget `C`, `G = 5 minutes`, and `T`, which belongs with the
 tournament geometry, since a generated geometry is only valid for a `T` at
@@ -673,9 +711,10 @@ least the one it was generated against. `ArbitrationConstants.COMMITMENT_BUDGET`
 is 120 minutes, double the 60 the canonical two-level table was derived at.
 The devnet that CI and local tests run keeps a three-level test table, with
 its own 30 minutes (`DevnetGeometryDeployment`). The root allowance holds the
-root join's inclusion and one delegation per inner level on a correct
-commitment's active path; each child return refunds its delegation. On
-Ethereum mainnet the canonical table gives one week plus 135 minutes. The
+root join's inclusion, the in-flight reserve, and one delegation per inner
+level on a correct commitment's active path; each child return refunds its
+delegation. On Ethereum mainnet the canonical table gives one week plus 140
+minutes. The
 independent `prt/measure_constants` emulator benchmark and the Rust
 `just measure-level-constants` generator show how root slowdown and the
 commitment budget determine tournament strides and heights. On Ethereum `G`
@@ -802,9 +841,10 @@ the burn rule covers the balance present during successful recovery. If a
 nonzero recipient payment is rejected, recovery returns `false`, burns nothing,
 and preserves both the claimer and the full balance for retry. This idempotence
 and retry behavior are required because recovery is permissionless. Parent
-propagation deliberately does not settle the child balance: no value-moving
-call rides a tournament progress path, so a winning claimer's callback cannot
-interfere with one. A consumer that reads the result must keep the same rule;
+propagation deliberately does not settle the child balance: no terminal
+payment rides a tournament progress path, and the one value call on such a
+path is the bounded refund to the caller after every effect, so a winning
+claimer's callback cannot interfere with progress. A consumer that reads the result must keep the same rule;
 Dave's consensus does (cartesi-rollups/contracts/AGENTS.md).
 
 Terminal recipient code has the same 50,000-gas execution ceiling and no
@@ -838,10 +878,15 @@ Under this rule, small repeated vandalism remains possible by design. For
 example, two incorrect claims can make one opponent active while the other
 waits dangling, serializing the active pair and then a replacement match.
 Repeating the construction in sequential epochs creates linear cumulative
-disruption for linear forfeited reserves and transaction work. The structural
-population-window argument applies within one tournament after joining closes;
-it is neither exponential deterrence across games whose clocks reset nor a
-bound on transaction work.
+disruption for linear forfeited reserves and transaction work. On the
+canonical two-level table that example costs two root bonds and buys about
+`3A + 52G` of extra settlement, 21.5 days on top of the 7.1 undisputed, with
+no censorship: each delegation the correct side is forced through holds a
+child open for the correct side's own preserved remainder, and the refill
+keeps that floor constant (prt-delay-bound.md, "Two-level small-population
+prices"). The structural population-window argument applies within one
+tournament after joining closes; it is neither exponential deterrence across
+games whose clocks reset nor a bound on transaction work.
 
 Required economic invariants:
 
@@ -872,6 +917,15 @@ recovery are permissionless entry points. Correctness must not depend on the
 original claimer being the caller. Claimer identity controls only the capped
 terminal-payment recipient; the residual always goes to the fixed burn sink.
 
+The same openness lets an adversary who orders transactions land an identical
+copy of every honest action first. Protocol state is unaffected, and the
+copy's refund comes from the pool, but the honest copy reverts at the honest
+party's expense, up to the EIP-7623 floor of a maximum-input leaf proof
+(about 3.76M gas), with no extra bond for the adversary. A production node
+therefore submits through a revert-protecting endpoint
+(node-architecture.md, transaction submission;
+reviews/2026-10-13-prt-cyber-verification, L-06).
+
 Each tournament clone uses its own transient reentrancy lock around
 state-changing calls, external ETH transfers, and child interactions. A nested
 state-changing call to the same clone reverts with `ReentrancyDetected`. A
@@ -893,11 +947,20 @@ The most important prose invariants should also exist as Foundry properties:
 - Aggregate bond and refund accounting.
 - Deployment time-source conformance.
 
-The bounded single-level scheduler is landed. Remaining liveness work is an
-unbounded proof or counterexample, plus a recursive model that distinguishes an
-attacker's choices from the responsive correct participant's strategy. The
-finite search discovers and retains clock schedules; it must not be presented
-as that general theorem.
+The bounded single-level scheduler is landed, and the two-level
+honest-survival search of the 2026-10-13 campaign
+(`prt/contracts/test/properties/HonestSurvivalInvariant.t.sol`) composes the clock
+rules into the safety claim: with budgets one inclusion below the formula, an
+eager correct participant whose actions land within the bounds in the
+security statement and whose cumulative censorship is at most `C` is never
+eliminated, and a finished root carries its final state, in both
+orientations and at `C` of 0, 2 and 5; removing the child-return refill makes
+the search fail, as it must. Its argument is in dimensioning.md ("Honest
+survival under the budgets"). It is evidence for two levels in a small box,
+not a theorem. Remaining liveness work is unchanged: an unbounded proof or
+counterexample of termination and delay, and a recursive model for more than
+two levels. The finite searches discover and retain clock schedules; they
+must not be presented as that general theorem.
 
 Current Foundry evidence and its remaining gaps live in
 [`prt-contract-testing.md`](prt-contract-testing.md). The node's sealed-leaf
