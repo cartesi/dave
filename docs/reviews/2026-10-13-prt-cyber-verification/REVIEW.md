@@ -135,11 +135,13 @@ solc 0.8.30, via-IR, Prague:
 ```sh
 just prt-contracts::test-disputes
 just prt-contracts::test-stf
+just rollups-contracts::test
 ```
 
 The dispute suite passed 360 tests before the campaign and the FFI suite 29;
-with the campaign's files in their owning suites the FFI gate passes 42 and
-the dispute suite 447.
+with the campaign's files in their owning suites the FFI gate passes 42,
+the dispute suite 447, and the rollups suite 14 once its allowance fixture
+followed the new formula.
 Where each file went is in the campaign log of FINDINGS.md. Raw swarm output, journals and
 logs are kept out of tree in the campaign's scratch record. Per the
 repository rule, no commit hash is written here; the tree hash of the
