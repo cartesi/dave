@@ -433,12 +433,16 @@ inclusion budget, they do not get one each. The 2026-10-13 campaign's
 honest-survival search found that margin to be the binding one of the budget
 argument rather than a side case: a Sybil that joins a leaf child one block
 before closure, with a clock of one, and seals in the block it is paired
-forces the handover at any proof latency of one block or more. The honest
-node avoids the cost by planning: when the opponent's leaf clock cannot
-outlive the proof's latency, it claims the timeout at the opponent's deadline
-instead of sending the proof (reviews/2026-10-13-prt-cyber-verification,
-L-11). Letting `winLeafMatch` settle as the timeout win the classifier
-selects was judged not worth revising the disjoint verbs.
+forces the handover at any proof latency of one block or more. The
+survival argument's strategy avoids the cost by planning: when the
+opponent's leaf clock cannot outlive the proof's latency, claim the timeout
+at the opponent's deadline instead of sending the proof
+(reviews/2026-10-13-prt-cyber-verification, L-11). The node does not do
+this yet: at a sealed leaf it claims a timeout only once one has occurred
+and otherwise sends the proof (`plan_engagement`,
+cartesi-rollups/node/src/hero/planner.rs); the predictive choice is node
+work in todo.md. Letting `winLeafMatch` settle as the timeout win the
+classifier selects was judged not worth revising the disjoint verbs.
 
 A non-leaf match resolves when its linked child finishes:
 

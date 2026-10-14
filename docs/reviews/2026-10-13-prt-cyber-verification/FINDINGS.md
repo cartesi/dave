@@ -408,3 +408,10 @@ proofs; each names what it does not cover.
   sweep pins were dropped as duplicates. `testLead` became `testTrace`,
   `testProbe` lost its prefix, `testRefuted` stayed. Gate after the move: 447 dispute
   tests, FFI 42, format clean.
+- 2026-10-14, first review of the pull request: the rollups contracts'
+  allowance fixture still used the former formula, failing eight of its
+  tests; it now follows the provider. The documents had described
+  predictive timeout planning (claim instead of prove when the opponent's
+  leaf clock cannot outlive the proof) as node behavior; the planner claims
+  only a timeout that has occurred, so the documents now name it as the
+  survival argument's required strategy and pending node work.

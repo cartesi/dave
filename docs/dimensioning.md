@@ -371,9 +371,9 @@ s by default), the action's preparation (a leaf proof replays the disputed
 input's prefix, bounded by the per-input compute contract), and inclusion.
 A leaf proof, and the fallback timeout claim when the opponent's expiry
 overtakes it, should land together within one `G` of the seal: the two
-landings share one inclusion budget (dispute-game.md, CF-01), and the node
-plans the claim instead of the proof when the opponent's clock cannot outlive
-the proof.
+landings share one inclusion budget (dispute-game.md, CF-01). The strategy
+below plans the claim instead of the proof when the opponent's clock cannot
+outlive the proof; the node does not do that yet (todo.md, Node).
 
 ## Honest survival under the budgets
 
@@ -391,7 +391,9 @@ root's start; each child join within `T + G` of the seal that created the
 child; every advance, seal, timeout claim and propagation within `G` of
 becoming due; a leaf proof and its fallback timeout claim together within
 `G` of the seal, the claim planned instead of the proof whenever the
-opponent's clock cannot outlive the proof's latency. Every bound is strict,
+opponent's clock cannot outlive the proof's latency, a choice the node does
+not make yet: it claims only a timeout that has already occurred
+(todo.md, Node). Every bound is strict,
 since a clock expires at equality. Lateness beyond a bound is censorship,
 drawn from one ledger that nothing refills.
 
