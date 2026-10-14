@@ -17,8 +17,14 @@ carry no backlog (reviews/README.md).
 
 - Confirm `[38, 0]` / `[54, 38]` at `T = 120` on validator-grade hardware
   (measured on one M5 Max laptop, v0.21.0); the per-input compute contract
-  and the worst-case leaf proof plus fallback latency (CF-01) follow from it.
+  and the worst-case leaf proof plus fallback latency (CF-01, one shared
+  `G` for both landings) follow from it, and re-measure the heaviest
+  instruction's usteps while there.
   (measurements/constants.md, dimensioning.md)
+- Price input volume against the root window in the DaveConsensus campaign:
+  sealing takes every input before the acceptance block with no cap or
+  minimum notice, and the app's aggregate-throughput contract is what makes
+  the honest root join land. (dimensioning.md)
 - On the release candidate's staging, the first on two levels, stop and
   restart the node mid leaf build: three-level releases never took the
   span-by-span, resumable tall build, which only the spec and engine-machine
@@ -65,15 +71,26 @@ carry no backlog (reviews/README.md).
   both endpoints share `create_client`. (node-architecture.md, RPC client)
 - Measure and write down the node's supported workload envelope (inputs,
   live tournaments, provider capacity, action latency), in the steady state
-  and under the dimensioned attack:
+  and under the dimensioned attack, the post-closure staggered-release
+  regime included:
   [plans/provider-requirements.md](plans/provider-requirements.md).
-  (dimensioning.md)
+  (dimensioning.md, prt-delay-bound.md)
+- Take the contracts' composition contract for the honest node
+  (reviews/2026-10-13-prt-cyber-verification/HONEST-NODE-CONTRACT.md) as
+  the node campaign's brief: the revert-protecting endpoint as required,
+  superseding a pending transaction when intent changes, planning the
+  timeout claim when the opponent's leaf clock cannot outlive the proof, and
+  the two planner leads recorded there. (node-architecture.md)
 
 ## Contracts and assurance
 
-- An independent honest-survival model (R19) before the external audit:
-  [plans/r19-honest-survival.md](plans/r19-honest-survival.md).
-  (dispute-game.md)
+- Review the honest-survival argument (dimensioning.md, "Honest survival
+  under the budgets") by someone other than its author, and decide whether
+  the two-level search gates the external audit or is handed over as
+  evidence. (dispute-game.md)
+- Re-evaluate the pinned solc against its bug list at the audit freeze: one
+  Yul optimizer entry fixed after 0.8.37 cannot be excluded by reading.
+  (plans/audit-readiness.md)
 - Prepare the external contracts audit: scope, trust boundaries, non-claims,
   the pre-audit items below, freeze and audit identity:
   [plans/audit-readiness.md](plans/audit-readiness.md).

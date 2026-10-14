@@ -133,6 +133,9 @@ The living clock evidence map is:
 | Shared child envelopes, propagation, concurrent children, and generic depth | `test/properties/RecursiveTournamentLifecycle.t.sol`, `ConcurrentRecursivePopulation.t.sol`, and `FourLevelRecursiveLifecycle.t.sol` |
 | Ethereum and local-devnet block conversion for response and allowance budgets | `test/Deployment.t.sol` |
 | Published schedules and standing against the views, the classifier, and the mutators | `test/properties/EventViewAgreement.t.sol`, `StandingExactness.t.sol`, `RecursiveTournamentLifecycle.t.sol` (parent verbs at the child's published standing), the schedule tests in `test/MatchClocks.t.sol`, and the deadline tests in `test/Clock.t.sol` |
+| Composed honest survival under `C`, both orientations, formula budgets | `test/properties/HonestSurvivalInvariant.t.sol`, `HonestSurvivalSchedule.t.sol` |
+| The predecessor state and counter Tournament hands the adapter, every descent and every epoch boundary | `test/properties/AdapterComposition.t.sol` (independent coordinate model), `test/TournamentStateTransitionExtremesFfi.t.sol` (real adapter and proofs at the extremes) |
+| The one-level in-flight reserve (F-01) | `test/config/RootAllowanceReserve.t.sol`, `test/config/ClockBudgets.t.sol` |
 
 Within `RecursiveTournamentLifecycle.t.sol`,
 `testChildWinnerSelectsParentSideByFinalStateNotByRoot` pins final-state
@@ -144,9 +147,14 @@ general recursive delay bound.
 The one-level invariant establishes the exact parity-aware relation
 `runningClocks >= floor(K / 2)` for leaf tournaments. It is not a recursive
 clock theorem: sealed inner parents pause both clocks and delegate the
-obligation to a linked child. No current model combines an identified correct
-commitment, an eager correct strategy, an adversarial scheduler, and one shared
-censorship ledger `C`; that general recursive result remains open.
+obligation to a linked child. The two-level honest-survival invariant
+(`test/properties/HonestSurvivalInvariant.t.sol`) combines an identified correct
+commitment, an eager correct strategy derived from production state, an
+adversarial scheduler with Sybils in both final-state classes, and one shared
+censorship ledger `C`, at budgets one inclusion below the formula, in both
+orientations; its mutation control is the child-return refill. It is
+evidence for two levels in a small box; the general recursive result remains
+open (dimensioning.md, "Honest survival under the budgets").
 
 Events and views take each published instant, descriptor, and bond from the
 same helpers, so a check that an event equals its view cannot see a wrong
@@ -259,6 +267,11 @@ One PRT-side composition test carries a canonical input-opening vector through
 the real leaf Tournament and `CartesiStateTransition` with a standalone
 `IDataProvider`. This pins the generic dispute seam without depending on
 DaveConsensus or creating another expected-root implementation.
+`test/TournamentStateTransitionExtremesFfi.t.sol` extends that seam to the capacity extremes: the epoch's
+last counter, the opening of the last input slot with and without an input, a
+position-zero divergence on the plain-step branch, a child's last position,
+and a rejected-input closing, on both leaf heights and both orientations,
+asserting the counter by exact calldata and the branch by the provider call.
 
 This is bounded cross-implementation evidence for the v0.21 adapter. It is not
 an exhaustive enumeration of every RV64 instruction, access-log shape, proof
@@ -331,6 +344,14 @@ Add a test when it:
 - reproduces a concrete finding;
 - validates a new supported geometry, proof, or fee envelope; or
 - attacks an explicitly scoped open question.
+
+Name a test for what it establishes. A `testRefuted...` test keeps a refuted
+attack attempt as a negative oracle. A `testTrace...` test pins a reachable,
+priced schedule, a lower-bound trace, rather than a property. A
+`testRegression...` test reproduces a fixed finding. Review campaigns place
+their tests by the ownership table above, not in a directory of their own;
+the 2026-10-13 campaign's tests are listed in
+reviews/2026-10-13-prt-cyber-verification/REVIEW.md.
 
 Do not add fixed lifecycle traces or fuzz volume solely to improve headline
 counts. Current non-claims include a general recursive adversarial-arrival

@@ -51,7 +51,9 @@ PRT contract engineering:
 Historical internal reviews live under [reviews/](reviews/README.md). They preserve
 findings and evidence, but they are not current specifications or third-party
 assurance reports. The completed 2026-07 PRT campaign is archived at
-[reviews/2026-07-21-prt-dispute-game/](reviews/2026-07-21-prt-dispute-game/).
+[reviews/2026-07-21-prt-dispute-game/](reviews/2026-07-21-prt-dispute-game/),
+and the 2026-10 Cyber Verification campaign at
+[reviews/2026-10-13-prt-cyber-verification/](reviews/2026-10-13-prt-cyber-verification/).
 
 To-do: [todo.md](todo.md) is the one live list of agreed work; each item
 names the living doc that owns its reasoning, and a done item is deleted. A
@@ -59,7 +61,6 @@ campaign too large for a few lines may open a plan under [plans/](plans/),
 linked from todo.md; when it ends, its lasting invariants move into the living
 docs and the plan is deleted. Git and pull-request history preserve the
 exploration. Active plans:
-[r19-honest-survival.md](plans/r19-honest-survival.md),
 [audit-readiness.md](plans/audit-readiness.md) and
 [provider-requirements.md](plans/provider-requirements.md).
 

@@ -139,7 +139,9 @@ level. Terms marked (code) appear verbatim in identifiers.
   proof or timeout claim earns the same discount on its live cost. A child return
   separately refills its winner by up to `T + 2G`, within the pair envelope.
 - maxAllowance: root allowance and structural upper bound for clocks in
-  parent-linked tournaments, derived as `C + G + (levels - 1) * (T + 2G)`.
+  parent-linked tournaments, derived as `C + 2G + (levels - 1) * (T + 2G)`:
+  the censorship budget, the root join's inclusion, one inclusion in reserve
+  for the action in flight, and one refill per inner level.
   Inner sealing delegates the pair's greater remainder as a shared child
   envelope; no response operation raises a clock toward this bound, and a
   child return refills its winner only within that envelope.

@@ -207,3 +207,50 @@ The construction is not a recursive upper bound over every asynchronous
 ordering. The retained on-chain trace validates concurrent-child population
 mechanics for its fixed four-root, four-child-claim shape, not the expression's
 worst-case timing.
+
+## Two-level small-population prices
+
+The asymptotic shapes above suppress a per-delegation floor that dominates at
+small populations. When a parent match seals, its child receives the pair's
+greater remainder `max(r1, r2)`, and the child is finished no earlier than
+its closure, whoever joins it. Against a correct side that responds within
+`G`, that floor is the correct side's own preserved remainder, about `A`,
+whatever the Sybil spent, and the child-return refill restores it, so every
+delegation the adversary forces costs about `A` of settlement. The root's
+dangling slot holds a second Sybil's full paused clock for free. The traces in
+`prt/contracts/test/properties/DelayPerRootBond.t.sol` (small two-level geometry,
+extrapolated to the canonical table at Ethereum budgets, `A` about 51,100
+blocks, `G = 25`, `T = 600`) give:
+
+| Bonds | Settlement | Extra over the undisputed `A` |
+| --- | --- | --- |
+| none | `A` | 0 |
+| one root bond | about `2A` | about `A`, 7.1 days |
+| two root bonds | about `4A + 52G` | about `3A + 52G`, 21.5 days |
+| one root bond joining `G + 1` blocks before closure | about `2A` | about `A` |
+| one root and two leaf bonds in the correct side's child | about `3A` | about `2A` |
+
+Two root bonds, 0.72 ETH at the work price, therefore buy about 21.5 days of
+extra settlement with no censorship and a fully responsive correct side,
+about twice what `log2(R) * (A0 + log2(S) * A1)` gives for `R = 3`,
+`S = 1`. Past these first delegations the bracket halving takes over and
+delay grows logarithmically in bonds. Nothing here exceeds the accepted
+per-epoch vandalism or the delay non-claim; it prices them.
+
+## Post-closure staggered release
+
+The linear honest-work regime of dispute-game.md is bounded by settlement,
+not by the join window. Sybil pairs that join inside the window can each burn
+the elder's clock to `G + 1` one block before closure and let the newcomer's
+clock run out at a chosen block after closure; the pair's timeout then
+re-pairs the burned survivor with the dangling correct commitment inside the
+same call, the survivor expires on its seal turn, and the correct side claims
+and re-dangles for the next release. With `delta` the correct side's response
+latency, about `(A + (h - 2)G) / ((h / 2) delta + G + 1)` claims meet it one
+by one after closure, at two bonds each and with no clock cost to the correct
+side (`prt/contracts/test/properties/StaggeredReleaseWork.t.sol`). At the canonical
+root height 54 that is about 988 matches at `delta = 1` and 75 at
+`delta = G`, each 27 advances and one timeout claim, inside roughly one
+allowance after closure. Settlement delay is unchanged by the count; what the
+count sizes is the node's throughput and the provider's capacity
+(plans/provider-requirements.md).
