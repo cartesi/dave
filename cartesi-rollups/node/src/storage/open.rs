@@ -591,6 +591,31 @@ mod tests {
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
     }
 
+    /// Consensus, emulator and geometry drift asks for a rebuild, and
+    /// writes nothing first.
+    #[test]
+    fn a_drifted_config_needs_a_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        let state_dir = dir.path().join("state");
+        let mut storage = initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
+
+        // A nonzero watermark, so a stray seed would show.
+        let error = Storage::initialize(
+            &state_dir,
+            &Template::inspect(&template).unwrap(),
+            1000,
+            Address::ZERO,
+            Address::ZERO,
+            1,
+            &TournamentGeometry::three_level(),
+        )
+        .unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error.into()), 40);
+        assert_eq!(storage.latest_processed_block().unwrap(), 0);
+    }
+
     /// The caller bounds the watermark (AddressBook::initial_watermark);
     /// seeding stores it as given.
     #[test]
