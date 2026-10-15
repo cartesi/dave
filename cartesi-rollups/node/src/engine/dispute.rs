@@ -227,7 +227,7 @@ impl<F: RulerFactory> DisputeSource<F> {
         // serves everything - the pre-frontier full-replay behavior.
         // A nonzero prefix must match the closed epoch's input count
         // exactly; anything else is corruption. The padding value is
-        // the final boundary hash - the row the gap GC always keeps.
+        // the final boundary hash.
         let interior_height = structure.log2_window_span() - log2_run_stride;
         let inputs = storage.input_count(epoch)?;
         let rows = storage.window_root_count(epoch, log2_run_stride, interior_height, inputs)?;

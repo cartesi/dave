@@ -349,8 +349,8 @@ Directory removal is not serialized with publication, and need not be: with
 one process, a crossing never adopts a directory GC is removing. A Hero exists
 only for the completion cursor's epoch `e`, after the runner rolled it, and is
 dropped before the cursor advances, so crossings publish states of `e` only.
-Meanwhile GC deletes epochs below both cursors and the gap rows of the
-runner's later epoch, keeping every row of `e` and every later epoch's start.
+Meanwhile GC deletes only epochs below both cursors, keeping every row of `e`
+and of every later epoch.
 Equal machine states occur only on contiguous runs of boundaries: a rejected
 input restores its pre-input root, a terminal machine is a fixed point, the
 delivery at the budget edge or to a halted machine changes the state once and

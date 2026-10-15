@@ -19,8 +19,8 @@ use super::error::Result;
 use super::open::{create_epoch_dir, snapshots_path};
 use super::rollups_machine::RollupsMachine;
 use super::snapshots::{
-    gc_previous_advances_in, insert_snapshot_in, remove_orphan_dirs,
-    sweep_scratch_dirs_at_or_below, sweep_unreferenced_snapshots_in,
+    insert_snapshot_in, remove_orphan_dirs, sweep_scratch_dirs_at_or_below,
+    sweep_unreferenced_snapshots_in,
 };
 use super::{Input, Settlement, Storage, rollups_machine};
 use crate::engine::Run;
@@ -538,7 +538,7 @@ impl Storage {
     }
 
     /// Durably publishes only the batch's final boundary, then commits
-    /// that one row, every window root, and gap GC in one transaction.
+    /// that one row and every window root in one transaction.
     /// Clearing transient ownership immediately after CAS publication
     /// preserves the artifact across a database failure for retry.
     ///
@@ -567,8 +567,7 @@ impl Storage {
             })
             .collect();
 
-        let gap = self.snapshot_gap_inputs;
-        let orphans = self.write(|tx| {
+        self.write(|tx| {
             insert_snapshot_in(
                 tx,
                 batch.epoch,
@@ -576,12 +575,8 @@ impl Storage {
                 &batch.boundary_hash,
                 &batch.boundary_path,
             )?;
-            super::dispute::insert_quartet_nodes_in(tx, &window_roots)?;
-            gc_previous_advances_in(tx, batch.epoch, batch.boundary_input, gap)
-        })?;
-        remove_orphan_dirs(&orphans);
-
-        Ok(())
+            super::dispute::insert_quartet_nodes_in(tx, &window_roots)
+        })
     }
 
     /// Durably publishes a transient checkpoint, after which the batch no
@@ -613,8 +608,8 @@ impl Storage {
     }
 
     /// Publishes and registers a crossing's final boundary, the only one
-    /// later dispute actions resume from. No window roots and no gap GC:
-    /// the epoch is settled, and its rows are the dispute's.
+    /// later dispute actions resume from. No window roots: the epoch is
+    /// settled, and its rows are the dispute's.
     pub(crate) fn publish_crossing(&mut self, mut batch: AdvanceBatch) -> Result<()> {
         assert!(batch.records.is_empty(), "a crossing records no windows");
         self.publish_checkpoint(&mut batch)?;
