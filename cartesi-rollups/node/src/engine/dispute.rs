@@ -108,6 +108,28 @@ pub fn fold_runs(
     Ok(builder.build())
 }
 
+/// The level-0 tree over all window roots, tiling the whole ruler: the
+/// recorded windows' roots in order, then the padding window root (the
+/// fixed point `padding` folded up a window) repeated to fill the input
+/// span. The one composition behind both the settled claim and the
+/// root the frontier defends, so the two cannot drift apart.
+pub fn level0_tree(
+    window_roots: Vec<Digest>,
+    padding: Digest,
+    structure: &Structure,
+    log2_run_stride: u64,
+) -> Result<Arc<MerkleTree>> {
+    let window_height = structure.log2_window_span() - log2_run_stride;
+    let recorded = window_roots.len() as u64;
+    let mut runs: Vec<(Digest, u64)> = window_roots.into_iter().map(|root| (root, 1)).collect();
+    let max_windows = structure.max_inputs();
+    if recorded < max_windows {
+        let padding_root = fold_runs([(padding, 1u64 << window_height)], window_height)?;
+        runs.push((padding_root.root_hash(), max_windows - recorded));
+    }
+    fold_runs(runs, structure.log2_input_span)
+}
+
 /// Positional lookup: walk `depth` levels down from the root, taking
 /// the branch each `index` bit names (high bit first).
 fn descend(tree: Arc<MerkleTree>, depth: u64, index: U256) -> Arc<MerkleTree> {
@@ -352,32 +374,24 @@ impl<F: RulerFactory> DisputeSource<F> {
         self.structure.log2_window_span() - self.log2_run_stride
     }
 
-    /// The tree over all window roots, tiling the whole ruler: the
-    /// recorded prefix from its rows (one strict range scan), the
-    /// padding window root - the fixed point iterated up - repeated
-    /// to fill the input span. Memoized; folding is O(recorded).
+    /// The [`level0_tree`] over the recorded prefix's rows (one strict
+    /// range scan). Memoized; folding is O(recorded).
     fn top_tree(&mut self) -> Result<Arc<MerkleTree>> {
         if let Some(tree) = &self.frontier.top {
             return Ok(Arc::clone(tree));
         }
-        let interior_height = self.interior_height();
         let roots = self.storage.window_root_range(
             self.epoch,
             self.log2_run_stride,
-            interior_height,
+            self.interior_height(),
             self.frontier.recorded,
         )?;
-        let mut runs: Vec<(Digest, u64)> = roots.into_iter().map(|root| (root, 1)).collect();
-        let max_windows = self.structure.max_inputs();
-        if self.frontier.recorded < max_windows {
-            let padding_root = fold_runs(
-                [(self.frontier.padding, 1u64 << interior_height)],
-                interior_height,
-            )?
-            .root_hash();
-            runs.push((padding_root, max_windows - self.frontier.recorded));
-        }
-        let tree = fold_runs(runs, self.structure.log2_input_span)?;
+        let tree = level0_tree(
+            roots,
+            self.frontier.padding,
+            &self.structure,
+            self.log2_run_stride,
+        )?;
         self.frontier.top = Some(Arc::clone(&tree));
         Ok(tree)
     }

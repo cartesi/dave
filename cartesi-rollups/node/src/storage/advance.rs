@@ -24,7 +24,7 @@ use super::{Input, Settlement, Storage, rollups_machine};
 use crate::engine::Run;
 
 use crate::merkle::Digest;
-use cartesi_machine::{constants::rollup::LOG2_MAX_ADVANCE_STATES_PER_EPOCH, types::Hash};
+use cartesi_machine::types::Hash;
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::path::{Path, PathBuf};
 
@@ -580,28 +580,23 @@ impl Storage {
     }
 
     /// The settlement's computation hash: node(level-0 root) over the
-    /// persisted window roots plus padding math - the same material
-    /// and the same fold composition the dispute facade serves, so
-    /// the root the node settles on IS the root the hero can defend
-    /// from rows. Strict: every recorded window's row was prepaid by
-    /// the advance commit; a hole refuses to settle. The padding is
+    /// persisted window roots plus padding, folded by
+    /// [`crate::engine::level0_tree`], the composition the dispute facade
+    /// serves, so the root the node settles on IS the root the hero can
+    /// defend from rows. Strict: every recorded window's row was prepaid
+    /// by the advance commit; a hole refuses to settle. The padding is
     /// `boundary`, the machine's state at the epoch's final boundary.
     fn settlement_root(&mut self, epoch: u64, recorded: u64, boundary: Digest) -> Result<Digest> {
-        let log2_run_stride = self.sling_config()?.geometry.root_stride();
-        let window_height = rollups_machine::window_height(log2_run_stride);
-        let mut roots: Vec<(Digest, u64)> = self
-            .window_root_range(epoch, log2_run_stride, window_height, recorded)?
-            .into_iter()
-            .map(|root| (root, 1))
-            .collect();
-        let max_windows = 1u64 << LOG2_MAX_ADVANCE_STATES_PER_EPOCH;
-        if recorded < max_windows {
-            let pad_root =
-                crate::engine::fold_runs([(boundary, 1u64 << window_height)], window_height)?
-                    .root_hash();
-            roots.push((pad_root, max_windows - recorded));
-        }
-        Ok(crate::engine::fold_runs(roots, LOG2_MAX_ADVANCE_STATES_PER_EPOCH)?.root_hash())
+        let config = self.sling_config()?;
+        let log2_run_stride = config.geometry.root_stride();
+        let roots = self.window_root_range(
+            epoch,
+            log2_run_stride,
+            rollups_machine::window_height(log2_run_stride),
+            recorded,
+        )?;
+        let tree = crate::engine::level0_tree(roots, boundary, &config.structure, log2_run_stride)?;
+        Ok(tree.root_hash())
     }
 }
 
