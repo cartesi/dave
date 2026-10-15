@@ -246,13 +246,13 @@ test-computation-hash-corpus: \
 # regenerate the measurement baselines (docs/measurements/)
 measure *ARGS: bind
     ./script/machine-image-fingerprint.sh verify echo
-    cargo run --release -p cartesi-sling-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --example measure -- \
       --machine test/programs/echo/machine-image \
       --out docs/measurements/measurements.md --profile echo "$@"
 
 measure-stress *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-sling-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --example measure -- \
       --machine test/programs/stress/machine-image \
       --out docs/measurements/measurements-stress.md --profile stress "$@"
 
@@ -260,14 +260,14 @@ measure-stress *ARGS: bind
 # about an hour at the defaults, and TMPDIR should be the node's filesystem)
 measure-node-vs-emulator *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-sling-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --example measure -- \
       --machine test/programs/stress/machine-image --node-vs-emulator \
       --out docs/measurements/node-vs-emulator.md "$@"
 
 # derive tournament level constants (docs/measurements/constants.md)
 measure-level-constants *ARGS: bind
     ./script/machine-image-fingerprint.sh verify stress
-    cargo run --release -p cartesi-sling-node --bin measure -- \
+    cargo run --release -p cartesi-sling-node --example measure -- \
       --machine test/programs/stress/machine-image --constants \
       --out docs/measurements/constants.md --profile stress "$@"
 
