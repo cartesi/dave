@@ -57,8 +57,8 @@ needed.
   (an emulator mcycle computation-hash period of 2^18, 2^30 leaves per
   input window, root height 54), so a claimer pinned to the three-level
   root (2^44, height 48) cannot join applications from the new factory.
-- An epoch now settles no sooner than about one week and 135 minutes after it
-  seals on mainnet (one week and 60 minutes before), and about 10 hours 15
+- An epoch now settles no sooner than about one week and 140 minutes after it
+  seals on mainnet (one week and 60 minutes before), and about 10 hours 20
   minutes on testnets, plus the claim staging period unless every sentry
   agrees.
 - Join bonds at the 50 gwei work-price cap, canonical table: root (height
@@ -141,8 +141,8 @@ needed.
   provider (`TableTournamentParametersProvider`), the one CI and local tests
   run; `DEVNET_GEOMETRY=canonical` deploys the production contracts and
   geometry, as the release's `-anvil-` asset does. That asset's clocks assume
-  12 s blocks and no censorship slack: an epoch settles no sooner than 675
-  blocks (135 minutes) after it seals, and a leaf join gets 600 blocks to
+  12 s blocks and no censorship slack: an epoch settles no sooner than 700
+  blocks (140 minutes) after it seals, and a leaf join gets 600 blocks to
   build its commitment. A dense two-level leaf takes tens of minutes to
   build, so on a devnet that mines faster an honest node can run out of
   clock.
