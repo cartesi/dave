@@ -9,8 +9,9 @@
 //! transition is fused (delivery with revert root + first ustep, one
 //! leaf): post-feed states have no meta-cycle coordinate and are
 //! never stored. Under the (epoch, input) map sits a content-
-//! addressed store (directories named by machine root hash), which
-//! is what makes registration idempotent: identical states dedup,
+//! addressed store (directories named by machine root hash, so a row's
+//! hash is its path), which is what makes registration idempotent:
+//! identical states dedup,
 //! store races are benign, and a recomputation that disagrees with
 //! its row fails loudly (write-once cell semantics, enforced by the
 //! schema triggers).
@@ -38,6 +39,7 @@ use super::error::{Result, StorageError};
 use super::open::{Storage, snapshots_path};
 use super::rollups_machine::RollupsMachine;
 use crate::engine::InputBoundary;
+use std::collections::BTreeSet;
 
 use cartesi_machine::error::MachineError;
 use cartesi_machine::machine::Machine;
@@ -148,7 +150,7 @@ impl Storage {
         let dest = self
             .stage_machine_store(state_hash, |staging| machine.store(staging))
             .map_err(anyhow::Error::from)?;
-        self.insert_boundary(epoch_number, input_number, state_hash, &dest)?;
+        self.insert_boundary(epoch_number, input_number, state_hash)?;
         Ok(dest)
     }
 
@@ -161,7 +163,7 @@ impl Storage {
         store: impl FnOnce(&Path) -> cartesi_machine::error::MachineResult<()>,
     ) -> std::result::Result<PathBuf, StoreError> {
         let snapshots = snapshots_path(self.state_dir());
-        let dest = machine_store_path(&snapshots, state_hash);
+        let dest = snapshot_path(self.state_dir(), state_hash);
 
         if !dest.exists() {
             static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -218,7 +220,7 @@ impl Storage {
         );
 
         Machine::sync_stored(&staged)?;
-        let dest = machine_store_path(&snapshots_path(self.state_dir()), expected_hash);
+        let dest = snapshot_path(self.state_dir(), expected_hash);
 
         if dest.exists() {
             Machine::sync_stored(&dest)?;
@@ -301,19 +303,18 @@ impl Storage {
         Ok(())
     }
 
-    /// Registers a stored machine directory as the boundary before
-    /// `input_number` of `epoch_number`, in its own transaction.
+    /// Registers the published machine `state_hash` names as the boundary
+    /// before `input_number` of `epoch_number`, in its own transaction.
     /// Idempotent by the write-once cell: an identical registration
-    /// absorbs, a disagreeing hash or path fails loudly (schema
-    /// triggers). Callers never check before writing.
+    /// absorbs, a disagreeing hash fails loudly (schema triggers). Callers
+    /// never check before writing.
     pub fn insert_boundary(
         &mut self,
         epoch_number: u64,
         input_number: u64,
         state_hash: &Hash,
-        dir: &Path,
     ) -> Result<()> {
-        self.write(|tx| insert_snapshot_in(tx, epoch_number, input_number, state_hash, dir))
+        self.write(|tx| insert_snapshot_in(tx, epoch_number, input_number, state_hash))
     }
 }
 
@@ -335,12 +336,10 @@ impl Storage {
             let mut stmt = tx
                 .prepare_cached(
                     r#"
-                    SELECT e.input_number, s.file_path
-                    FROM epoch_snapshot_info AS e
-                    JOIN machine_state_snapshots AS s
-                    ON s.state_hash = e.state_hash
-                    WHERE e.epoch_number = ?1 AND e.input_number <= ?2
-                    ORDER BY e.input_number DESC
+                    SELECT input_number, state_hash
+                    FROM epoch_snapshot_info
+                    WHERE epoch_number = ?1 AND input_number <= ?2
+                    ORDER BY input_number DESC
                     "#,
                 )
                 .map_err(anyhow::Error::from)?;
@@ -351,7 +350,7 @@ impl Storage {
                     |row| {
                         Ok((
                             InputBoundary(i64_to_u64(row.get::<_, i64>(0)?)),
-                            PathBuf::from(row.get::<_, String>(1)?),
+                            row.get::<_, Vec<u8>>(1)?,
                         ))
                     },
                 )
@@ -362,72 +361,41 @@ impl Storage {
                 .map_err(anyhow::Error::from)?)
         })?;
 
-        candidates
-            .into_iter()
-            .find(|(_, path)| path.exists())
-            .ok_or_else(|| StorageError::DataNotFound {
-                description: format!(
-                    "no stored boundary at or before input {input} of epoch {epoch_number} \
-                     (the epoch start is the guaranteed floor)"
-                ),
-            })
+        for (boundary, hash) in candidates {
+            let path = snapshot_path(self.state_dir(), &blob_to_hash(hash)?);
+            if path.exists() {
+                return Ok((boundary, path));
+            }
+        }
+        Err(StorageError::DataNotFound {
+            description: format!(
+                "no stored boundary at or before input {input} of epoch {epoch_number} \
+                 (the epoch start is the guaranteed floor)"
+            ),
+        })
     }
 
+    /// The directory of a registered boundary, whether or not it survives.
     pub fn snapshot_dir(
         &mut self,
         epoch_number: u64,
         input_number: u64,
     ) -> Result<Option<PathBuf>> {
-        self.read(|tx| {
-            let mut stmt = tx
-                .prepare_cached(
-                    r#"
-                    SELECT s.file_path
-                    FROM epoch_snapshot_info AS e
-                    JOIN machine_state_snapshots AS s
-                    ON s.state_hash = e.state_hash
-                    WHERE e.epoch_number = ?1 AND e.input_number = ?2
-                    "#,
-                )
-                .map_err(anyhow::Error::from)?;
-
-            Ok(stmt
-                .query_row(
-                    params![u64_to_i64(epoch_number), u64_to_i64(input_number)],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(anyhow::Error::from)?
-                .map(PathBuf::from))
-        })
+        Ok(self
+            .snapshot_hash(epoch_number, input_number)?
+            .map(|hash| snapshot_path(self.state_dir(), &hash)))
     }
 
     /// The state hash a boundary row names: the CAS key, and for the
     /// epoch start the level-0 implicit hash. Trusting the row spares
     /// a whole machine load where only the hash is needed.
     pub fn snapshot_hash(&mut self, epoch_number: u64, input_number: u64) -> Result<Option<Hash>> {
-        self.read(|tx| {
-            let row = tx
-                .prepare_cached(
-                    r#"
-                    SELECT state_hash FROM epoch_snapshot_info
-                    WHERE epoch_number = ?1 AND input_number = ?2
-                    "#,
-                )
-                .map_err(anyhow::Error::from)?
-                .query_row(
-                    params![u64_to_i64(epoch_number), u64_to_i64(input_number)],
-                    |row| row.get::<_, Vec<u8>>(0),
-                )
-                .optional()
-                .map_err(anyhow::Error::from)?;
-
-            row.map(blob_to_hash).transpose()
-        })
+        self.read(|tx| snapshot_hash_in(tx, epoch_number, input_number))
     }
 
     pub fn latest_snapshot(&mut self) -> Result<RollupsMachine> {
-        let (path, epoch_number, input_number, expected_hash) = self.read(latest_boundary_in)?;
+        let (epoch_number, input_number, expected_hash) = self.read(latest_boundary_in)?;
+        let path = snapshot_path(self.state_dir(), &expected_hash);
         assert_runner_boundary_dir(&path, epoch_number, input_number);
         let mut machine = match RollupsMachine::new(&path, epoch_number, input_number) {
             Ok(machine) => machine,
@@ -452,16 +420,14 @@ impl Storage {
     /// input. Boundaries are typed: a stored machine sits yielded at
     /// the input window it names.
     pub fn epoch_snapshots(&mut self, epoch_number: u64) -> Result<Vec<(InputBoundary, PathBuf)>> {
-        self.read(|tx| {
+        let rows = self.read(|tx| {
             let mut stmt = tx
                 .prepare_cached(
                     r#"
-                    SELECT e.input_number, s.file_path
-                    FROM epoch_snapshot_info AS e
-                    JOIN machine_state_snapshots AS s
-                    ON s.state_hash = e.state_hash
-                    WHERE e.epoch_number = ?1
-                    ORDER BY e.input_number ASC
+                    SELECT input_number, state_hash
+                    FROM epoch_snapshot_info
+                    WHERE epoch_number = ?1
+                    ORDER BY input_number ASC
                     "#,
                 )
                 .map_err(anyhow::Error::from)?;
@@ -470,7 +436,7 @@ impl Storage {
                 .query_map([u64_to_i64(epoch_number)], |row| {
                     Ok((
                         InputBoundary(i64_to_u64(row.get::<_, i64>(0)?)),
-                        PathBuf::from(row.get::<_, String>(1)?),
+                        row.get::<_, Vec<u8>>(1)?,
                     ))
                 })
                 .map_err(anyhow::Error::from)?;
@@ -478,88 +444,94 @@ impl Storage {
             Ok(rows
                 .collect::<rusqlite::Result<Vec<_>>>()
                 .map_err(anyhow::Error::from)?)
-        })
+        })?;
+        rows.into_iter()
+            .map(|(boundary, hash)| {
+                Ok((
+                    boundary,
+                    snapshot_path(self.state_dir(), &blob_to_hash(hash)?),
+                ))
+            })
+            .collect()
     }
 }
 
-/// The newest snapshot boundary: (path, epoch, input, state_hash) -
-/// the machine runner's resume point. At least one exists from the
+/// The newest snapshot boundary: (epoch, input, state_hash) - the
+/// machine runner's resume point. At least one exists from the
 /// initialization's epoch-0 seed; its absence means a foreign or torn
 /// database.
-pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(PathBuf, u64, u64, Hash)> {
-    let mut stmt = tx
+pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
+    let row = tx
         .prepare_cached(
             r#"
-            SELECT s.file_path, e.epoch_number, e.input_number, e.state_hash
-            FROM epoch_snapshot_info AS e
-            JOIN machine_state_snapshots AS s
-            ON s.state_hash = e.state_hash
-            ORDER BY e.epoch_number DESC, e.input_number DESC
+            SELECT epoch_number, input_number, state_hash
+            FROM epoch_snapshot_info
+            ORDER BY epoch_number DESC, input_number DESC
             LIMIT 1
             "#,
         )
-        .map_err(anyhow::Error::from)?;
-
-    let row = stmt
+        .map_err(anyhow::Error::from)?
         .query_row([], |row| {
             Ok((
-                row.get::<_, String>(0)?,
+                row.get::<_, i64>(0)?,
                 row.get::<_, i64>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, Vec<u8>>(3)?,
+                row.get::<_, Vec<u8>>(2)?,
             ))
         })
         .optional()
         .map_err(anyhow::Error::from)?;
 
-    let (path, epoch, input, hash) = row.ok_or_else(|| StorageError::DataNotFound {
+    let (epoch, input, hash) = row.ok_or_else(|| StorageError::DataNotFound {
         description: "snapshot boundary (initialization seeds epoch 0)".into(),
     })?;
 
-    Ok((
-        path.into(),
-        i64_to_u64(epoch),
-        i64_to_u64(input),
-        blob_to_hash(hash)?,
-    ))
+    Ok((i64_to_u64(epoch), i64_to_u64(input), blob_to_hash(hash)?))
+}
+
+/// The state hash the boundary row at (epoch, input) names, if any.
+pub(super) fn snapshot_hash_in(
+    tx: &Transaction,
+    epoch_number: u64,
+    input_number: u64,
+) -> Result<Option<Hash>> {
+    tx.prepare_cached(
+        r#"
+        SELECT state_hash FROM epoch_snapshot_info
+        WHERE epoch_number = ?1 AND input_number = ?2
+        "#,
+    )
+    .map_err(anyhow::Error::from)?
+    .query_row(
+        params![u64_to_i64(epoch_number), u64_to_i64(input_number)],
+        |row| row.get::<_, Vec<u8>>(0),
+    )
+    .optional()
+    .map_err(anyhow::Error::from)?
+    .map(blob_to_hash)
+    .transpose()
 }
 
 //
 // Row registration (transaction-level, for the writer roles)
 //
 
-/// Registers a stored machine and indexes it as a boundary. Both
-/// inserts absorb identical replays; the schema triggers abort a
-/// disagreeing hash or path.
+/// Indexes a published machine as a boundary. An identical replay
+/// absorbs; the schema triggers abort a disagreeing hash.
 pub(super) fn insert_snapshot_in(
     tx: &Transaction,
     epoch_number: u64,
     input_number: u64,
     state_hash: &Hash,
-    dest_dir: &Path,
 ) -> Result<()> {
-    let mut stmt = tx
-        .prepare_cached(
-            r#"
-            INSERT INTO machine_state_snapshots(state_hash, file_path)
-            VALUES(?1, ?2)
-            ON CONFLICT(state_hash) DO NOTHING
-            "#,
-        )
-        .map_err(anyhow::Error::from)?;
-    stmt.execute(params![state_hash, dest_dir.to_string_lossy()])
-        .map_err(anyhow::Error::from)?;
-
-    let mut stmt = tx
-        .prepare_cached(
-            r#"
-            INSERT INTO epoch_snapshot_info(epoch_number, input_number, state_hash)
-            VALUES(?1, ?2, ?3)
-            ON CONFLICT(epoch_number, input_number) DO NOTHING
-            "#,
-        )
-        .map_err(anyhow::Error::from)?;
-    stmt.execute(params![
+    tx.prepare_cached(
+        r#"
+        INSERT INTO epoch_snapshot_info(epoch_number, input_number, state_hash)
+        VALUES(?1, ?2, ?3)
+        ON CONFLICT(epoch_number, input_number) DO NOTHING
+        "#,
+    )
+    .map_err(anyhow::Error::from)?
+    .execute(params![
         u64_to_i64(epoch_number),
         u64_to_i64(input_number),
         state_hash
@@ -573,30 +545,31 @@ pub(super) fn insert_snapshot_in(
 // Garbage collection
 //
 
-/// Deletes content-addressed rows no boundary references, returning their
-/// directories. The template needs no row of its own: epoch 0's start
-/// references it while anything can still need it.
-pub(super) fn sweep_unreferenced_snapshots_in(tx: &Transaction) -> Result<Vec<PathBuf>> {
-    let mut stmt = tx
+/// Deletes the boundaries of every epoch up to `max_epoch`, returning
+/// the states no remaining boundary names: their directories are
+/// orphans once this transaction commits. The template needs no row of
+/// its own: epoch 0's start names it while anything can still need it.
+pub(super) fn release_boundaries_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<Hash>> {
+    let released = tx
         .prepare_cached(
-            r#"
-            DELETE FROM machine_state_snapshots
-            WHERE state_hash NOT IN (SELECT state_hash FROM epoch_snapshot_info)
-            RETURNING file_path
-            "#,
+            "DELETE FROM epoch_snapshot_info WHERE epoch_number <= ?1 RETURNING state_hash",
         )
-        .map_err(anyhow::Error::from)?;
-
-    let rows = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(anyhow::Error::from)?;
-
-    Ok(rows
-        .collect::<rusqlite::Result<Vec<String>>>()
         .map_err(anyhow::Error::from)?
-        .into_iter()
-        .map(PathBuf::from)
-        .collect())
+        .query_map([u64_to_i64(max_epoch)], |row| row.get::<_, Vec<u8>>(0))
+        .map_err(anyhow::Error::from)?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()
+        .map_err(anyhow::Error::from)?;
+
+    let mut named = tx
+        .prepare_cached("SELECT 1 FROM epoch_snapshot_info WHERE state_hash = ?1 LIMIT 1")
+        .map_err(anyhow::Error::from)?;
+    let mut orphans = Vec::new();
+    for hash in released {
+        if !named.exists([&hash]).map_err(anyhow::Error::from)? {
+            orphans.push(blob_to_hash(hash)?);
+        }
+    }
+    Ok(orphans)
 }
 
 impl Storage {
@@ -636,9 +609,9 @@ pub(super) fn sweep_scratch_dirs_at_or_below(state_dir: &Path, max_epoch: u64) {
 /// Best-effort, strictly after the commit that unreferenced the rows:
 /// a failure leaves an orphan directory (harmless, re-adopted by a
 /// later identical store), never a row pointing at nothing.
-pub(super) fn remove_orphan_dirs(paths: &[PathBuf]) {
-    for path in paths {
-        if let Err(e) = std::fs::remove_dir_all(path)
+pub(super) fn remove_orphan_dirs(state_dir: &Path, hashes: &[Hash]) {
+    for path in hashes.iter().map(|hash| snapshot_path(state_dir, hash)) {
+        if let Err(e) = std::fs::remove_dir_all(&path)
             && e.kind() != std::io::ErrorKind::NotFound
         {
             log::warn!("orphan snapshot dir `{}` not removed: {e}", path.display());
@@ -646,27 +619,32 @@ pub(super) fn remove_orphan_dirs(paths: &[PathBuf]) {
     }
 }
 
-fn machine_store_path(snapshots_path: &Path, state_hash: &Hash) -> PathBuf {
-    snapshots_path.join(format!("0x{}", hex::encode(state_hash)))
+/// Where the store keeps the machine whose root is `state_hash`.
+pub(super) fn snapshot_path(state_dir: &Path, state_hash: &Hash) -> PathBuf {
+    snapshots_path(state_dir).join(format!("0x{}", hex::encode(state_hash)))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::sql::test_helper::setup_storage;
+    use super::super::sql::test_helper::{setup_storage, stub_snapshot};
     use super::*;
 
     #[test]
     fn insert_snapshot_and_latest_boundary() {
         let (_handle, mut s) = setup_storage();
-        let dir = tempfile::TempDir::new().unwrap();
 
-        s.insert_boundary(42, 2, &[1u8; 32], dir.path()).unwrap();
+        s.insert_boundary(42, 2, &[1u8; 32]).unwrap();
 
         let id = s.next_input_id().unwrap();
         assert_eq!(id.epoch_number, 42);
         assert_eq!(id.input_index_in_epoch, 2);
 
-        assert_eq!(s.snapshot_dir(42, 2).unwrap().unwrap(), dir.path());
+        assert_eq!(
+            s.snapshot_dir(42, 2).unwrap().unwrap(),
+            s.state_dir()
+                .join("snapshots")
+                .join(format!("0x{}", hex::encode([1u8; 32])))
+        );
         assert!(s.snapshot_dir(99, 99).unwrap().is_none());
         assert_eq!(s.snapshot_hash(42, 2).unwrap().unwrap(), [1u8; 32]);
         assert!(s.snapshot_hash(99, 99).unwrap().is_none());
@@ -676,10 +654,9 @@ mod tests {
     #[test]
     fn insert_boundary_absorbs_identical() {
         let (_handle, mut s) = setup_storage();
-        let dir = tempfile::TempDir::new().unwrap();
 
-        s.insert_boundary(7, 3, &[5u8; 32], dir.path()).unwrap();
-        s.insert_boundary(7, 3, &[5u8; 32], dir.path()).unwrap();
+        s.insert_boundary(7, 3, &[5u8; 32]).unwrap();
+        s.insert_boundary(7, 3, &[5u8; 32]).unwrap();
     }
 
     /// A disagreeing hash for the same boundary is nondeterminism:
@@ -689,10 +666,9 @@ mod tests {
     #[should_panic(expected = "tripwire")]
     fn insert_boundary_disagreement_panics() {
         let (_handle, mut s) = setup_storage();
-        let dir = tempfile::TempDir::new().unwrap();
 
-        s.insert_boundary(7, 3, &[5u8; 32], dir.path()).unwrap();
-        let _ = s.insert_boundary(7, 3, &[6u8; 32], dir.path());
+        s.insert_boundary(7, 3, &[5u8; 32]).unwrap();
+        let _ = s.insert_boundary(7, 3, &[6u8; 32]);
     }
 
     /// The dispute write-back verb: stores only when the CAS misses,
@@ -780,32 +756,27 @@ mod tests {
     #[test]
     fn nearest_boundary_answers_the_floor_and_self_heals() {
         let (_handle, mut s) = setup_storage();
-        let kept: Vec<tempfile::TempDir> =
-            (0..3).map(|_| tempfile::TempDir::new().unwrap()).collect();
-        let vanishing = tempfile::TempDir::new().unwrap();
-
-        s.insert_boundary(5, 0, &[1u8; 32], kept[0].path()).unwrap();
-        s.insert_boundary(5, 10, &[2u8; 32], kept[1].path())
-            .unwrap();
-        s.insert_boundary(5, 20, &[3u8; 32], vanishing.path())
-            .unwrap();
-        s.insert_boundary(5, 30, &[4u8; 32], kept[2].path())
-            .unwrap();
+        let dirs: Vec<PathBuf> = (1..=4u8)
+            .map(|byte| stub_snapshot(&s, &[byte; 32]))
+            .collect();
+        for (input, byte) in [(0, 1u8), (10, 2), (20, 3), (30, 4)] {
+            s.insert_boundary(5, input, &[byte; 32]).unwrap();
+        }
 
         let expect = |s: &mut Storage, input: u64, at: u64, path: &Path| {
             let (b, d) = s.nearest_boundary_at_or_before(5, input).unwrap();
             assert_eq!((b, d.as_path()), (InputBoundary(at), path));
         };
-        expect(&mut s, 0, 0, kept[0].path());
-        expect(&mut s, 9, 0, kept[0].path());
-        expect(&mut s, 10, 10, kept[1].path());
-        expect(&mut s, 25, 20, vanishing.path());
-        expect(&mut s, 1 << 23, 30, kept[2].path());
+        expect(&mut s, 0, 0, &dirs[0]);
+        expect(&mut s, 9, 0, &dirs[0]);
+        expect(&mut s, 10, 10, &dirs[1]);
+        expect(&mut s, 25, 20, &dirs[2]);
+        expect(&mut s, 1 << 23, 30, &dirs[3]);
 
         // Boundary 20's directory vanishes; its row is skipped and
         // the floor falls back to 10.
-        drop(vanishing);
-        expect(&mut s, 25, 10, kept[1].path());
+        std::fs::remove_dir(&dirs[2]).unwrap();
+        expect(&mut s, 25, 10, &dirs[1]);
 
         // A different epoch has no floor at all.
         assert!(s.nearest_boundary_at_or_before(6, 100).is_err());
@@ -848,28 +819,23 @@ mod tests {
         assert_eq!(floor, InputBoundary(4));
     }
 
-    /// Orphaned directories are removed only after the commit; the
-    /// returned paths are exactly the swept rows' directories.
+    /// A release orphans exactly the states no remaining boundary names,
+    /// once each: a state a later epoch shares survives.
     #[test]
-    fn gc_returns_orphan_directories_for_post_commit_removal() {
+    fn release_orphans_only_states_nothing_still_names() {
         let (_handle, mut s) = setup_storage();
-        let keep = tempfile::TempDir::new().unwrap();
-        let drop_ = tempfile::TempDir::new().unwrap();
+        let template = s.snapshot_hash(0, 0).unwrap().unwrap();
+        for (epoch, input, byte) in [(1, 0, 1u8), (1, 1, 2), (1, 2, 2), (2, 0, 1)] {
+            s.insert_boundary(epoch, input, &[byte; 32]).unwrap();
+        }
 
-        s.insert_boundary(3, 0, &[1u8; 32], keep.path()).unwrap();
-        s.insert_boundary(3, 1, &[2u8; 32], drop_.path()).unwrap();
-
-        let orphans = s
-            .write(|tx| {
-                tx.execute(
-                    "DELETE FROM epoch_snapshot_info WHERE epoch_number = 3 AND input_number = 1",
-                    [],
-                )
-                .map_err(anyhow::Error::from)?;
-                sweep_unreferenced_snapshots_in(tx)
-            })
-            .unwrap();
-        assert_eq!(orphans, vec![drop_.path().to_path_buf()]);
+        let mut orphans = s.write(|tx| release_boundaries_in(tx, 1)).unwrap();
+        orphans.sort();
+        let mut expected = vec![template, [2u8; 32]];
+        expected.sort();
+        assert_eq!(orphans, expected);
+        assert!(s.snapshot_hash(1, 0).unwrap().is_none());
+        assert_eq!(s.snapshot_hash(2, 0).unwrap(), Some([1u8; 32]));
     }
 
     /// The scratch sweep takes numeric dirs at or below the settled

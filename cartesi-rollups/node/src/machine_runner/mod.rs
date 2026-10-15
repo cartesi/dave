@@ -265,7 +265,6 @@ mod tests {
             input_count,
             sealed,
             inputs,
-            boundary_path: std::path::PathBuf::from("unused-by-plan-action"),
             boundary_hash: [0; 32],
         }
     }

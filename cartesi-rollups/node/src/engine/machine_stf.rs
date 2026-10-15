@@ -690,8 +690,8 @@ impl Positioner {
     /// inside one input, so that boundary is the one they resume from;
     /// a full store of each crossed boundary (about 410 MiB on the
     /// stress image) bought nothing more.
-    fn cross(&mut self, floor: u64, path: PathBuf, hash: Hash, to: u64) -> Result<()> {
-        let (mut machine, mut batch) = self.store.begin_crossing(path, self.epoch, floor, hash)?;
+    fn cross(&mut self, floor: u64, hash: Hash, to: u64) -> Result<()> {
+        let (mut machine, mut batch) = self.store.begin_crossing(self.epoch, floor, hash)?;
         for window in floor..to {
             // Dropping the batch on a stop cleans up as on any error.
             if self.interrupted() {
@@ -771,7 +771,7 @@ impl RulerFactory for Positioner {
                 let to = target.min(self.fed_windows);
                 if boundary.0 < to {
                     drop(stf);
-                    self.cross(boundary.0, path, expected, to)?;
+                    self.cross(boundary.0, expected, to)?;
                     continue;
                 }
                 break (boundary, stf);

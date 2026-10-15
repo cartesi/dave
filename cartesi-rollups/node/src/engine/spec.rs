@@ -936,10 +936,10 @@ fn record_toy_material(
         )])?;
     }
 
-    // The final boundary row: the toy's state at the frontier (the
-    // path is never loaded by these tests).
+    // The final boundary row: the toy's state at the frontier (its
+    // machine is never loaded by these tests).
     let final_hash = ruler.state_hash()?;
-    storage.insert_boundary(0, count, &final_hash.data(), std::path::Path::new("/toy"))?;
+    storage.insert_boundary(0, count, &final_hash.data())?;
     Ok(())
 }
 

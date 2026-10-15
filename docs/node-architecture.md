@@ -239,13 +239,15 @@ data_dir/
   node.lock           held by the one node process using the directory
   db.sqlite3          main database (WAL mode, busy_timeout 10s)
   snapshots/0x<hash>/ machine snapshots, named by machine root hash
-                      (the runner's boundaries and the disputes')
+                      (the runner's boundaries and the disputes'); the
+                      database stores hashes, never paths, so a stopped
+                      node's directory may move
   <epoch_number>/     per-epoch dispute scratch dir
     engine/           engine machine work dirs
 ```
 
 The storage module follows the sequencer's shape: `open.rs` owns connections
-(WAL, `foreign_keys=ON`, `synchronous=FULL`, busy timeout, a
+(WAL, `synchronous=FULL`, busy timeout, a
 read-only opener) and the `read`/`write` closure helpers (Deferred vs
 Immediate); writer roles live in per-role files - `ingest.rs`
 (blockchain-reader), `advance.rs` (machine-runner), `dispute.rs` (player), and
@@ -324,17 +326,17 @@ Main schema (`storage/sql/schema.sql`):
 - `settlement_info(epoch_number, computation_hash, final_state, data block and
   sibling blobs for iflags_Y, HTIF tohost, and the TX buffer)` - the TX data
   block is the outputs Merkle root
-- `machine_state_snapshots(state_hash, file_path)` + `epoch_snapshot_info`
-  (which (epoch, input) has which snapshot); the template is epoch 0's start
+- `epoch_snapshot_info(epoch_number, input_number, state_hash)` - which
+  machine sits before each stored input; the template is epoch 0's start
 
 Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
 monotonic watermark, prunable derived store - and the schema's
 trigger layer enforces the taxonomy against any writer, including raw
 connections (`sql/schema.sql`, tested by `sql/discipline.rs`).
-Snapshot directories are removed only AFTER the transaction that
-unreferenced their rows commits: a crash may orphan a directory,
-never dangle a row.
+GC releases boundary rows and, in the same transaction, finds the states no
+remaining row names; their directories are removed only AFTER that
+transaction commits: a crash may orphan a directory, never dangle a row.
 
 The manager drops an epoch's Hero before recording completion. The runner
 collects released snapshots, dispute rows, and scratch directories while

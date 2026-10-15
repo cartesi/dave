@@ -19,8 +19,8 @@ use super::error::Result;
 use super::open::create_epoch_dir;
 use super::rollups_machine::RollupsMachine;
 use super::snapshots::{
-    insert_snapshot_in, remove_orphan_dirs, sweep_scratch_dirs_at_or_below,
-    sweep_unreferenced_snapshots_in,
+    insert_snapshot_in, release_boundaries_in, remove_orphan_dirs, snapshot_path,
+    sweep_scratch_dirs_at_or_below,
 };
 use super::{Input, Settlement, Storage, rollups_machine};
 use crate::engine::Run;
@@ -41,7 +41,6 @@ pub(crate) struct AdvancePlan {
     pub(crate) input_count: u64,
     pub(crate) sealed: bool,
     pub(crate) inputs: Vec<Input>,
-    pub(crate) boundary_path: PathBuf,
     pub(crate) boundary_hash: Hash,
 }
 
@@ -213,7 +212,7 @@ fn assert_complete_window_prefix_in(tx: &Transaction, epoch: u64, input_count: u
 /// and inside the settlement transaction. It speaks only durable
 /// state: exact sealed epoch, final boundary, and complete root prefix.
 fn roll_ready_in(tx: &Transaction) -> Result<(u64, u64)> {
-    let (_, epoch, boundary_input, _) = super::snapshots::latest_boundary_in(tx)?;
+    let (epoch, boundary_input, _) = super::snapshots::latest_boundary_in(tx)?;
     assert!(
         epoch_is_sealed_in(tx, epoch)?,
         "refusing to roll open epoch {epoch}"
@@ -235,8 +234,7 @@ impl Storage {
     pub(crate) fn advance_plan(&mut self) -> Result<AdvancePlan> {
         let gap = self.snapshot_gap_inputs;
         let plan = self.read(|tx| {
-            let (boundary_path, epoch, boundary_input, boundary_hash) =
-                super::snapshots::latest_boundary_in(tx)?;
+            let (epoch, boundary_input, boundary_hash) = super::snapshots::latest_boundary_in(tx)?;
             let input_count = input_count_in(tx, epoch)?;
             assert!(
                 boundary_input <= input_count,
@@ -303,7 +301,6 @@ impl Storage {
                 input_count,
                 sealed,
                 inputs,
-                boundary_path,
                 boundary_hash,
             })
         })?;
@@ -311,7 +308,7 @@ impl Storage {
         // idle open tail cannot hide a dangling durable cursor behind
         // the runner's polling loop.
         super::snapshots::assert_runner_boundary_dir(
-            &plan.boundary_path,
+            &snapshot_path(&self.state_dir, &plan.boundary_hash),
             plan.epoch,
             plan.boundary_input,
         );
@@ -324,7 +321,7 @@ impl Storage {
     fn gc_completed_epochs(&mut self) -> Result<()> {
         if let Some(max_epoch) = self.read(collectable_epoch_in)? {
             let orphans = self.write(|tx| gc_old_epochs_in(tx, max_epoch))?;
-            remove_orphan_dirs(&orphans);
+            remove_orphan_dirs(&self.state_dir, &orphans);
             sweep_scratch_dirs_at_or_below(&self.state_dir, max_epoch);
         }
         Ok(())
@@ -336,8 +333,8 @@ impl Storage {
     /// a crash re-executes at most one batch of inputs from staging
     /// swept clean.
     pub fn begin_advances(&mut self) -> Result<(RollupsMachine, AdvanceBatch)> {
-        let (path, epoch, input, hash) = self.read(super::snapshots::latest_boundary_in)?;
-        self.begin_advances_at(path, epoch, input, hash)
+        let (epoch, input, hash) = self.read(super::snapshots::latest_boundary_in)?;
+        self.begin_advances_at(epoch, input, hash)
     }
 
     /// Opens exactly the durable boundary and payload vintage selected
@@ -347,21 +344,16 @@ impl Storage {
         &self,
         plan: &AdvancePlan,
     ) -> Result<(RollupsMachine, AdvanceBatch)> {
-        self.begin_advances_at(
-            plan.boundary_path.clone(),
-            plan.epoch,
-            plan.boundary_input,
-            plan.boundary_hash,
-        )
+        self.begin_advances_at(plan.epoch, plan.boundary_input, plan.boundary_hash)
     }
 
     fn begin_advances_at(
         &self,
-        path: PathBuf,
         epoch: u64,
         input: u64,
         hash: Hash,
     ) -> Result<(RollupsMachine, AdvanceBatch)> {
+        let path = snapshot_path(&self.state_dir, &hash);
         super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
         // Read before the checkout: nothing fallible may sit between the
         // clone and its cleanup guard.
@@ -568,13 +560,7 @@ impl Storage {
             .collect();
 
         self.write(|tx| {
-            insert_snapshot_in(
-                tx,
-                batch.epoch,
-                batch.boundary_input,
-                &batch.boundary_hash,
-                &batch.boundary_path,
-            )?;
+            insert_snapshot_in(tx, batch.epoch, batch.boundary_input, &batch.boundary_hash)?;
             super::dispute::insert_quartet_nodes_in(tx, &window_roots)
         })
     }
@@ -599,12 +585,11 @@ impl Storage {
     /// recording no window roots.
     pub(crate) fn begin_crossing(
         &self,
-        path: PathBuf,
         epoch: u64,
         input: u64,
         hash: Hash,
     ) -> Result<(RollupsMachine, AdvanceBatch)> {
-        self.begin_advances_at(path, epoch, input, hash)
+        self.begin_advances_at(epoch, input, hash)
     }
 
     /// Publishes and registers a crossing's final boundary, the only one
@@ -613,12 +598,7 @@ impl Storage {
     pub(crate) fn publish_crossing(&mut self, mut batch: AdvanceBatch) -> Result<()> {
         assert!(batch.records.is_empty(), "a crossing records no windows");
         self.publish_checkpoint(&mut batch)?;
-        self.insert_boundary(
-            batch.epoch,
-            batch.boundary_input,
-            &batch.boundary_hash,
-            &batch.boundary_path,
-        )
+        self.insert_boundary(batch.epoch, batch.boundary_input, &batch.boundary_hash)
     }
 
     /// Closes an exactly sealed and fully published epoch. The hard
@@ -644,7 +624,7 @@ impl Storage {
         let new_epoch_number = machine.epoch();
         create_epoch_dir(&self.state_dir, new_epoch_number)?;
 
-        let (dest_dir, state_hash) = self
+        let (_, state_hash) = self
             .store_boundary(&mut machine)
             .map_err(anyhow::Error::from)?;
 
@@ -667,7 +647,7 @@ impl Storage {
                 (previous_epoch_number, recorded),
                 "roll readiness changed before settlement commit"
             );
-            insert_snapshot_in(tx, new_epoch_number, 0, &state_hash, &dest_dir)?;
+            insert_snapshot_in(tx, new_epoch_number, 0, &state_hash)?;
             insert_settlement_in(tx, &settlement, previous_epoch_number)
         })?;
 
@@ -798,26 +778,21 @@ pub(super) fn insert_settlement_in(
 /// dispute material and the runner's newest durable boundary independently.
 pub(super) fn collectable_epoch_in(tx: &Transaction) -> Result<Option<u64>> {
     let next_epoch = super::queries::unfinished_epoch_number_in(tx)?;
-    let (_, machine_epoch, _, _) = super::snapshots::latest_boundary_in(tx)?;
+    let (machine_epoch, _, _) = super::snapshots::latest_boundary_in(tx)?;
     Ok(next_epoch.min(machine_epoch).checked_sub(1))
 }
 
-/// Prunes released epochs' boundaries and dispute caches, returning orphaned
-/// directories for post-commit removal. `max_epoch` comes from both cursors.
-fn gc_old_epochs_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<PathBuf>> {
-    tx.execute(
-        "DELETE FROM epoch_snapshot_info WHERE epoch_number <= ?1",
-        params![u64_to_i64(max_epoch)],
-    )
-    .map_err(anyhow::Error::from)?;
-
+/// Prunes released epochs' boundaries and dispute caches, returning the
+/// states whose directories are orphaned, for post-commit removal.
+/// `max_epoch` comes from both cursors.
+fn gc_old_epochs_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<Hash>> {
+    let orphans = release_boundaries_in(tx, max_epoch)?;
     tx.execute(
         "DELETE FROM sling_nodes WHERE epoch <= ?1",
         params![u64_to_i64(max_epoch)],
     )
     .map_err(anyhow::Error::from)?;
-
-    sweep_unreferenced_snapshots_in(tx)
+    Ok(orphans)
 }
 
 #[cfg(test)]
@@ -830,6 +805,7 @@ mod tests {
     use crate::storage::Epoch;
     use crate::storage::open::snapshots_path;
     use alloy::primitives::Address;
+    use cartesi_machine::machine::Machine;
 
     /// A window's runs for tests: arbitrary interior, tail carrying
     /// the machine's boundary state (the record contract), tiling the
@@ -935,9 +911,8 @@ mod tests {
         let epoch_start = s.snapshot_dir(0, 0).unwrap().unwrap();
         append_inputs(&mut s, 0, 1);
 
-        let latest = tempfile::tempdir().unwrap();
-        s.insert_boundary(0, 1, &[0xA5; 32], latest.path()).unwrap();
-        drop(latest);
+        // A row whose directory never existed: vanished from the start.
+        s.insert_boundary(0, 1, &[0xA5; 32]).unwrap();
 
         assert_eq!(
             s.nearest_boundary_at_or_before(0, 1).unwrap(),
@@ -957,12 +932,8 @@ mod tests {
         let (_handle, mut s) = setup_storage();
         let plan = s.advance_plan().unwrap();
         assert!(plan.inputs.is_empty());
-        assert!(
-            plan.boundary_path
-                .starts_with(snapshots_path(s.state_dir()))
-        );
 
-        std::fs::remove_dir_all(&plan.boundary_path).unwrap();
+        std::fs::remove_dir_all(s.snapshot_dir(0, 0).unwrap().unwrap()).unwrap();
         let _ = s.begin_planned_advances(&plan);
     }
 
@@ -975,7 +946,10 @@ mod tests {
         let path = s.snapshot_dir(0, 0).unwrap().unwrap();
         let wrong = [0xA5; 32];
         assert_ne!(s.snapshot_hash(0, 0).unwrap().unwrap(), wrong);
-        s.insert_boundary(42, 0, &wrong, &path).unwrap();
+        // The template's machine under a row that names another root.
+        let misfiled = snapshot_path(&s.state_dir, &wrong);
+        Machine::clone_stored(&path, &misfiled).unwrap();
+        s.insert_boundary(42, 0, &wrong).unwrap();
         let plan = s.advance_plan().unwrap();
 
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -988,7 +962,7 @@ mod tests {
             .or_else(|| panic.downcast_ref::<&str>().copied())
             .unwrap_or("non-string panic");
         assert!(message.contains("durable runner boundary root mismatch: epoch 42, input 0"));
-        assert!(message.contains(&path.display().to_string()));
+        assert!(message.contains(&misfiled.display().to_string()));
 
         let leaked_working = std::fs::read_dir(snapshots_path(s.state_dir()))
             .unwrap()
@@ -1101,9 +1075,8 @@ mod tests {
             vec![0, 1, 2]
         );
 
-        let start_path = s.snapshot_dir(0, 0).unwrap().unwrap();
         let start_hash = s.snapshot_hash(0, 0).unwrap().unwrap();
-        s.insert_boundary(0, 3, &start_hash, &start_path).unwrap();
+        s.insert_boundary(0, 3, &start_hash).unwrap();
         append_inputs(&mut s, 3, 1);
         let plan = s.advance_plan().unwrap();
         assert_eq!((plan.boundary_input, plan.input_count), (3, 4));
@@ -1137,7 +1110,7 @@ mod tests {
             vec![3, 4]
         );
 
-        s.insert_boundary(0, 5, &start_hash, &start_path).unwrap();
+        s.insert_boundary(0, 5, &start_hash).unwrap();
         let plan = s.advance_plan().unwrap();
         assert!(plan.sealed);
         assert_eq!((plan.boundary_input, plan.input_count), (5, 5));
@@ -1221,10 +1194,9 @@ mod tests {
     fn crossing_registers_only_its_final_boundary() {
         let (_handle, mut s) = setup_storage();
         append_inputs(&mut s, 0, 3);
-        let floor = s.snapshot_dir(0, 0).unwrap().unwrap();
         let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
 
-        let (mut machine, mut batch) = s.begin_crossing(floor, 0, 0, hash).unwrap();
+        let (mut machine, mut batch) = s.begin_crossing(0, 0, hash).unwrap();
         let mut accepted = Digest::new(hash);
         for offset in 0..2 {
             accepted = mutate(&mut machine, offset, 0x40 + offset as u8);
@@ -1256,7 +1228,6 @@ mod tests {
     fn abandoned_crossing_leaves_no_trace() {
         let (_handle, mut s) = setup_storage();
         append_inputs(&mut s, 0, 2);
-        let floor = s.snapshot_dir(0, 0).unwrap().unwrap();
         let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
         let listing = |s: &Storage| -> std::collections::BTreeSet<_> {
             std::fs::read_dir(snapshots_path(s.state_dir()))
@@ -1266,7 +1237,7 @@ mod tests {
         };
         let before = listing(&s);
 
-        let (mut machine, mut batch) = s.begin_crossing(floor, 0, 0, hash).unwrap();
+        let (mut machine, mut batch) = s.begin_crossing(0, 0, hash).unwrap();
         let accepted = mutate(&mut machine, 0, 0x40);
         machine.increment_input();
         s.rotate_accepted(&mut batch, &mut machine, accepted.into())
@@ -1524,9 +1495,8 @@ mod tests {
         let (_handle, mut s) = setup_storage();
         append_inputs(&mut s, 0, 1);
         seal_epoch_zero(&mut s);
-        let path = s.snapshot_dir(0, 0).unwrap().unwrap();
         let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
-        s.insert_boundary(0, 1, &hash, &path).unwrap();
+        s.insert_boundary(0, 1, &hash).unwrap();
 
         let _ = s.roll_epoch();
     }
