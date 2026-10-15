@@ -134,12 +134,12 @@ impl StateReader {
                     "StateReader is bound to root {}, not {root}",
                     solid.root
                 );
-                ensure!(
-                    finalized.number >= solid.head.number,
-                    "finalized head {} is behind Solid {}",
-                    finalized.number,
-                    solid.head.number
-                );
+                // A provider's finalized head can lag the one Solid holds
+                // (backends behind a load balancer): Solid is still final, so
+                // keep it, as ingestion treats the same head as nothing new.
+                if finalized.number < solid.head.number {
+                    return Ok(());
+                }
                 if finalized.number == solid.head.number {
                     ensure!(
                         finalized.hash == solid.head.hash,
@@ -212,9 +212,13 @@ async fn extend_tournament(
     }
 
     let address = tournament.address();
-    let logs = chain
-        .raw_logs(address, phase.from, phase.head.number)
-        .await?;
+    // On a cold fold that starts at the root's creation, a child created
+    // weeks later would otherwise be read over the whole dispute.
+    let from = validation
+        .created
+        .get(&address)
+        .map_or(phase.from, |&created| created.max(phase.from));
+    let logs = chain.raw_logs(address, from, phase.head.number).await?;
     let mut tournament = fold_local_logs(tournament, logs, validation)?;
 
     // A child resolved within the range was dropped with its match, so its
@@ -241,6 +245,10 @@ fn fold_local_logs(
         let Some(event) = decode_log(&log)? else {
             continue;
         };
+        if let EventKind::NewInnerTournament { child, .. } = &event {
+            let block = log.block_number.expect("harvest metadata was validated");
+            validation.created.insert(child.address(), block);
+        }
         tournament.apply(event).with_context(|| {
             format!(
                 "tournament {address} log {} at block {} does not fold",
@@ -262,6 +270,9 @@ struct HarvestValidation {
     phase: ReadPhase,
     block_hashes: HashMap<u64, B256>,
     positions: HashSet<LogPosition>,
+    /// The block of each child's creation folded in this harvest: a clone
+    /// has no logs before it, so its stream starts there.
+    created: HashMap<Address, u64>,
 }
 
 impl HarvestValidation {
@@ -270,6 +281,7 @@ impl HarvestValidation {
             phase,
             block_hashes: HashMap::new(),
             positions: HashSet::new(),
+            created: HashMap::new(),
         }
     }
 
@@ -1155,6 +1167,13 @@ mod tests {
         asserter.push_success(&Some(block(second_finalized, discovered.hash)));
         warm.fetch_from_root(root).await.unwrap();
         assert!(asserter.read_q().is_empty());
+        // A provider whose finalized head lags Solid's keeps Solid, reading
+        // no logs.
+        asserter.push_success(&Some(block(first_finalized, B256::repeat_byte(0x40))));
+        asserter.push_success(&Some(block(second_finalized, discovered.hash)));
+        warm.fetch_from_root(root).await.unwrap();
+        assert!(asserter.read_q().is_empty());
+        assert_eq!(warm.solid().unwrap().0, second_finalized);
 
         let (chain, asserter, cold_requests) = recording_chain();
         let mut cold = StateReader::new(chain, 40);
@@ -1192,9 +1211,9 @@ mod tests {
             log_ranges(&cold_requests),
             vec![
                 (serde_json::json!("0x28"), serde_json::json!("0x2b")),
-                (serde_json::json!("0x28"), serde_json::json!("0x2b")),
+                (serde_json::json!("0x2a"), serde_json::json!("0x2b")),
             ],
-            "a restart refolds every stream from the root's creation block"
+            "a restart refolds the root from its creation block, and each child from its own"
         );
         // The root's descriptor is the fold's one point read, pinned to the
         // finalized hash; alloy 2 serializes a `BlockId::Hash` without

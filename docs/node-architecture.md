@@ -480,9 +480,10 @@ unknown match or commitment, a second join, a seal, advance or delegation of a
 match that is no longer clocked, a second deletion). A commitment's standing
 is derived from its latest match rather than tracked. A new reader folds from
 the root tournament's creation block, so a restart is a cold start: it
-refetches the full finalized range of every tournament still live at the
-finalized head once (a child resolved before it costs no read of its own),
-which costs response-clock time on a long dispute, and a bad finalized
+refetches the finalized range of every tournament still live at the
+finalized head once, each from its own creation block (a child resolved
+before it costs no read of its own), which costs response-clock time on a
+long dispute behind a provider that caps log ranges, and a bad finalized
 prefix (a provider fault or a mixed fork) does not survive it. A finalized
 event that does not fold onto Solid (an omitted log surfacing at the match's
 next event) drops Solid in process, and the next tick takes the same cold
