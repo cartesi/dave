@@ -216,8 +216,9 @@ Options:
   status says why it stopped: 0 a requested stop; 1 any other error
   (restart); 2 a usage error; 30 terminal, when a flag, the template, the
   deployment or the settled chain disagrees with the node (do not restart:
-  an operator must act); 40 the data directory belongs to another schema,
-  emulator or deployment (start a fresh one beside it, as above); 101 a
+  an operator must act); 40 the data directory was built under another
+  schema, commitment semantics, emulator, consensus or tournament geometry
+  (start a fresh one beside it, as above); 101 a
   panic (restart with backoff and page, since a loop means a bug or corrupt
   local state). With systemd, `RestartPreventExitStatus=30 40`. An exit by
   SIGKILL (137) is usually the kernel's out-of-memory killer: size memory for

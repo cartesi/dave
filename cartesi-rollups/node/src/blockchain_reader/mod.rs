@@ -252,8 +252,9 @@ impl BlockchainReader {
             {
                 log::error!(
                     "the read endpoint's latest block is {} min old: it is not following the \
-                     chain, so the node sees no new blocks while dispute clocks run; point \
-                     --blockchain-http-endpoint at a synced provider",
+                     chain (or this host's clock is ahead), so the node sees no new blocks \
+                     while dispute clocks run; point --blockchain-http-endpoint at a synced \
+                     provider",
                     age.as_secs() / 60
                 );
             }

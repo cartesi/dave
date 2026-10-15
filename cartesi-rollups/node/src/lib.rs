@@ -139,16 +139,22 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
     // externally requested shutdown is graceful, one before it is not.
     let failure =
         first_exit.and_then(|(name, joined)| worker_failure(name, joined, shutdown.is_requested()));
+    // Logged now, not only at exit: the drain can take an input's run.
+    if let Some(e) = &failure {
+        error!("{e:#}; stopping the other workers");
+    }
 
     shutdown.request();
 
     // A stop signal during the drain (a second one, or the first after a
     // worker exit) exits at once: as crash-safe as SIGKILL, and a person
-    // at a terminal need not find another way to kill the process.
+    // at a terminal need not find another way to kill the process. It keeps
+    // the failure's exit status.
+    let code = failure.as_ref().map_or(1, fatal::exit_code);
     tokio::spawn(async move {
         let name = stop_signals.next().await;
         error!("{name} received during shutdown, exiting without draining");
-        std::process::exit(1);
+        std::process::exit(code.into());
     });
 
     // A failure during the drain is the run's failure too, unless an

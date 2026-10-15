@@ -58,6 +58,8 @@ pub struct MachineRunner {
     /// The pinned root stride: each window is sampled at the level-0
     /// leaf spacing of the deployed tournament.
     log2_run_stride: u64,
+    /// How long the runner has failed without committing a batch or a roll.
+    failing: Persistence,
 }
 
 /// The free space a batch or a roll needs before it starts: about one stored
@@ -94,11 +96,11 @@ impl MachineRunner {
             shutdown,
             structure: config.structure,
             log2_run_stride: config.geometry.root_stride(),
+            failing: Persistence::default(),
         })
     }
 
     pub fn start(&mut self) -> Result<()> {
-        let mut failing = Persistence::default();
         loop {
             // A failed pass is retried, not fatal: the advance batch
             // is one transaction and replay absorbs re-execution, so
@@ -108,12 +110,12 @@ impl MachineRunner {
             // full disk, a permission change) stops every settlement and
             // root join, so it pages.
             match self.process_rollup() {
-                Ok(()) => failing.cleared(),
-                Err(e) => match failing.failed() {
+                Ok(()) => self.failing.cleared(),
+                Err(e) => match self.failing.failed() {
                     Level::Error => log::error!(
                         "machine advance has failed for {} min: {e:#}; the node is not \
                          computing epochs, so it cannot settle or join their disputes",
-                        failing.minutes()
+                        self.failing.minutes()
                     ),
                     level => log::log!(level, "machine advance failed, retrying next tick: {e:#}"),
                 },
@@ -145,11 +147,15 @@ impl MachineRunner {
                     if !self.advance(plan)? {
                         return Ok(());
                     }
+                    // Progress within a long catch-up tick restarts the
+                    // paging clock, not only a whole successful tick.
+                    self.failing.cleared();
                 }
                 PlanAction::Roll => {
                     ensure_free_space(&self.storage)?;
                     let epoch = plan.epoch;
                     self.storage.roll_epoch()?;
+                    self.failing.cleared();
                     log::info!("started new epoch {}", epoch + 1);
                 }
             }
