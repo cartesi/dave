@@ -219,8 +219,8 @@ Options:
   error persists, rebuild the data directory.
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
-  canonical table that allowance is about one week and 135 minutes on
-  mainnets and about 10 hours 15 minutes on testnets.
+  canonical table that allowance is about one week and 140 minutes on
+  mainnets and about 10 hours 20 minutes on testnets.
 - A lost root, a root without a winner, and a won epoch whose final state
   cannot settle (a terminal application) each log an error every tick: they
   are the application guardian's to resolve, by foreclosure if need be
