@@ -161,13 +161,11 @@ regenerated together.
 
 The node database follows the same clean-slate policy: `storage/sql/schema.sql`
 is the only schema definition and has no upgrade steps. An empty database is
-created from that file and atomically stamped with the node package version,
-the Keccak hash of the exact schema bytes, and the commitment semantics version
-(`COMMITMENT_SEMANTICS` in `storage/sql/schema.rs`). An existing database is
-never given DDL at startup; all three identity values must match the running
-binary. A
-mismatch requires deleting the data directory and rebuilding it from the
-chain and machine image.
+created from that file and atomically stamped with the store format and the
+commitment semantics versions (`STORE_FORMAT` and `COMMITMENT_SEMANTICS` in
+`storage/sql/schema.rs`). An existing database is never given DDL at startup;
+both must match the running binary. A mismatch requires deleting the data
+directory and rebuilding it from the chain and machine image.
 
 ## Open design questions
 

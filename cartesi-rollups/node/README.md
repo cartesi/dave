@@ -76,9 +76,9 @@ same unfinished epoch after restart. Other participants may advance meanwhile;
 the operating timing assumption allows a modest delay while refunds finish.
 Changing the signer keeps the data directory: the node recovers the bonds of
 its current signer, and a previous signer's bonds stay recoverable by anyone
-through `tryRecoveringBond`, which pays the recorded claimer. A changed node
-version, schema, or commitment semantics requires a fresh directory under the
-node's rebuild policy. The first
+through `tryRecoveringBond`, which pays the recorded claimer. A changed store
+format or commitment semantics requires a fresh directory under the node's
+rebuild policy. The first
 start pins a directory to its application, chain and template, and every start
 checks the `--template-path` image against the application's on-chain initial
 hash; a mismatch is refused before anything is written, and so is a matching
@@ -217,7 +217,7 @@ Options:
   (restart); 2 a usage error; 30 terminal, when a flag, the template, the
   deployment or the settled chain disagrees with the node (do not restart:
   an operator must act); 40 the data directory was built under another
-  schema, commitment semantics, emulator, consensus or tournament geometry
+  store format, commitment semantics, emulator, consensus or tournament geometry
   (start a fresh one beside it, as above); 101 a
   panic (restart with backoff and page, since a loop means a bug or corrupt
   local state). With systemd, `RestartPreventExitStatus=30 40`. An exit by

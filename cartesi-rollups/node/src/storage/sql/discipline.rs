@@ -34,7 +34,7 @@ fn expect_abort(result: rusqlite::Result<usize>, message_fragment: &str) {
 fn node_metadata_is_write_once() {
     let (_dir, conn) = initialized_conn();
     expect_abort(
-        conn.execute("UPDATE node_metadata SET node_version = 'other'", []),
+        conn.execute("UPDATE node_metadata SET store_format = 9", []),
         "write-once",
     );
     expect_abort(conn.execute("DELETE FROM node_metadata", []), "write-once");
