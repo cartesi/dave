@@ -80,12 +80,15 @@ pub async fn mine_blocks(provider: &impl Provider, count: u64) -> Result<()> {
     Ok(())
 }
 
-/// Anvil over the devnet bundle's state: historical states for pinned
-/// reads, and finality two blocks behind latest.
+/// Anvil over the devnet bundle's state, with finality two blocks behind
+/// latest. Pinned reads are served from the ~500 most recent states, which
+/// anvil keeps in memory. By default it moves older ones to a dir under
+/// ~/.foundry/anvil/tmp and never removes that dir on exit (anvil 1.5).
 pub fn spawn_anvil() -> AnvilInstance {
     Anvil::default()
         .args([
-            "--preserve-historical-states",
+            "--max-persisted-states",
+            "0",
             "--slots-in-an-epoch",
             "1",
             "--load-state",
