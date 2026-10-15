@@ -1,27 +1,21 @@
 //! Keccak256 hash for the Digest Type. It's used to hash the data in the Digest.
 
-use tiny_keccak::{Hasher, Keccak};
+use alloy::primitives::{Keccak256, keccak256};
 
 use super::Digest;
 
 impl Digest {
     /// Computes the Keccak256 hash of the given data and returns a new Digest.
     pub fn from_data(data: &[u8]) -> Digest {
-        let mut keccak = Keccak::v256();
-        keccak.update(data);
-        let mut digest: [u8; 32] = [0; 32];
-        keccak.finalize(&mut digest);
-        Digest::from(digest)
+        Digest::from(keccak256(data))
     }
 
     /// Joins the current Digest with another Digest to create a new Digest.
     pub fn join(&self, digest: &Digest) -> Digest {
-        let mut keccak = Keccak::v256();
-        keccak.update(&self.data);
-        keccak.update(&digest.data);
-        let mut digest: [u8; 32] = [0; 32];
-        keccak.finalize(&mut digest);
-        Digest::from(digest)
+        let mut keccak = Keccak256::new();
+        keccak.update(self.data);
+        keccak.update(digest.data);
+        Digest::from(keccak.finalize())
     }
 }
 

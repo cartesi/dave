@@ -27,10 +27,6 @@ aws-sdk-kms = { version = "1.65", default-features = false, features = [
     "rt-tokio",
 ] }
 
-# the folded-in merkle module (formerly common-rs/merkle)
-ruint = { workspace = true }
-tiny-keccak = { workspace = true }
-
 alloy = { workspace = true, features = ["json-rpc", "signer-aws"] }
 alloy-transport = { workspace = true }
 alloy-chains = { workspace = true }

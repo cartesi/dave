@@ -202,7 +202,7 @@ impl Storage {
             chain_id,
             app: app_address.as_slice().to_vec(),
             consensus: consensus_address.as_slice().to_vec(),
-            template_hash: Digest::from_digest(template.hash()).map_err(anyhow::Error::from)?,
+            template_hash: Digest::from(*template.hash()),
             emulator_version: format_emulator_version(Machine::version()),
             geometry: geometry.clone(),
         };
