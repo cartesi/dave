@@ -257,6 +257,36 @@ async fn a_silent_joiner_loses_by_timeout() -> Result<()> {
     Ok(())
 }
 
+/// A node down through its root's whole allowance loses the root to an
+/// adversary whose commitment ends in a wrong state. Back up, it reports
+/// the divergence and still claims its own state as the sentry, staging
+/// nothing: a sentry votes what it computed, whoever won.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_sentry_that_lost_its_root_still_claims_its_state() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+    for _ in 0..ROUNDS {
+        if !world.calls(1, JOIN).is_empty() {
+            break;
+        }
+        adversary.turn(&mut world).await?;
+    }
+    assert_eq!(world.calls(1, JOIN).len(), 1, "the adversary joined");
+    let close = world.root_closes_at().await?;
+    world.mine_to(close).await?;
+
+    node.run_until(&mut world, ROUNDS, |world, _| {
+        Ok(!world.honest_calls(CLAIM).is_empty())
+    })
+    .await?;
+    assert!(world.honest_calls(JOIN).is_empty(), "the node never joined");
+    assert!(world.honest_calls(STAGE).is_empty());
+    Ok(())
+}
+
 /// A rational adversary disputes down to the leaf, where only the node
 /// can prove the divergent transition, a closing slot (simple): the node
 /// wins the leaf match by STEP, each inner tournament in turn, and

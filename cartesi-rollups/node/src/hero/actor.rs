@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use ::log::{debug, info};
+use ::log::{debug, error, info};
 use anyhow::{Result, ensure};
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
         action::{PreparedArenaAction, prepare},
         context::{EpochAnchors, HeroContext},
         gc_planner::plan_gc,
-        planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, plan_hero},
+        planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, Loss, plan_hero},
     },
     merkle::Digest,
     provider::LaneRequest,
@@ -31,7 +31,7 @@ use alloy::primitives::Address;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TournamentResult {
-    Lost,
+    Lost(Loss),
     Running,
     Won,
     FailedNoWinner,
@@ -274,14 +274,25 @@ impl<AS: ArenaSender> Hero<AS> {
                 wave.push(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
             }
             HeroDecision::Wait(reason) => {
-                debug!("Hero waits: {reason:?}");
+                if reason.missed() {
+                    // Logged every tick, like a lost root: the commitment is
+                    // no longer defended here, though a same-class commitment
+                    // may still win a child.
+                    error!(
+                        "epoch {}: the local commitment missed an obligation and is no \
+                         longer defended there: {reason:?}",
+                        self.epoch
+                    );
+                } else {
+                    debug!("Hero waits: {reason:?}");
+                }
                 report_slow_tick(started, format!("{reason:?}"));
             }
             HeroDecision::Terminal(terminal) => {
                 // The epoch manager logs the result, once per tick.
                 result = match terminal {
                     HeroTerminal::Won => TournamentResult::Won,
-                    HeroTerminal::Lost => TournamentResult::Lost,
+                    HeroTerminal::Lost(loss) => TournamentResult::Lost(loss),
                     HeroTerminal::FailedNoWinner => TournamentResult::FailedNoWinner,
                 };
             }

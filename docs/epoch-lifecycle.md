@@ -141,9 +141,10 @@ Three worker threads share one SQLite database (see
 - epoch-manager (`cartesi-rollups/node/src/epoch_manager`): follows the durable
   `epoch_completion` cursor rather than the latest sealed epoch. Until that
   epoch settles, its Hero uses the locally computed settlement material to
-  choose a dispute action or one cleanup. A won root permits the next
-  settlement step: claim as a sentry, stage the verified result, or accept it
-  after agreement or the staging period. These calls target only the cursor's
+  choose a dispute action or one cleanup. Once the root has a winner, a
+  sentry claims the state it computed, whoever won; a won root also permits
+  the later settlement steps: stage the verified result, or accept it after
+  agreement or the staging period. These calls target only the cursor's
   epoch. Every available refund joins the same batch, even while the root is
   running. Settled historical epochs need no Hero or local execution before
   the manager can finish their refund obligations and advance.
@@ -240,5 +241,10 @@ pinned to the latest block where the Hero observed its win, and the contract
 derives the stageable winner from the same standing the Hero reads, so both
 sides describe one block and a tip reorg cannot fire an assert. A lost root or
 a root without a winner is an error log every tick and is never staged; a
-lost root should page a human. A won root whose final state does not settle
-is held with an error (the terminal case above).
+lost root should page a human. Its error says whether the winner ends in this
+node's final state (the correct state settles, though this node was not
+defended in time) or another (a divergence: the guardian can still foreclose
+during the claim staging period). Either way a sentry claims its own state,
+which is the dissent the guardian reads; once a divergent state settles, the
+node stops with exit 30 when its next epoch starts from it. A won root whose
+final state does not settle is held with an error (the terminal case above).

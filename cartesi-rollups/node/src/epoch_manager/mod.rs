@@ -23,7 +23,8 @@ use crate::storage::{
 };
 use crate::sync::ShutdownSignal;
 use crate::{
-    hero::{Hero, HeroTick, TournamentResult},
+    hero::{Hero, HeroTick, TournamentResult, planner::Loss},
+    merkle::Digest,
     tournament::ArenaSender,
 };
 use cartesi_dave_contracts::dave_consensus::DaveConsensus;
@@ -192,16 +193,24 @@ impl<AS: ArenaSender> EpochManager<AS> {
             if self.storage.settlement_info(epoch.epoch_number)?.is_some() {
                 match self.react_dispute(chain, &epoch).await {
                     Ok(tick) => {
-                        let won = tick.result() == TournamentResult::Won;
+                        let result = tick.result();
                         let head = tick.head();
                         wave.extend(tick.into_wave());
-                        if won {
+                        // A sentry votes the state it computed once the root
+                        // has a winner, its own or not: after a loss its claim
+                        // is the dissent a guardian reads. Staging and
+                        // acceptance follow only its own win.
+                        if matches!(result, TournamentResult::Won | TournamentResult::Lost(_)) {
                             let consensus =
                                 DaveConsensus::new(self.consensus, chain.provider().clone());
-                            match self
-                                .plan_settlement(&consensus, epoch.epoch_number, head)
-                                .await
-                            {
+                            let step = if result == TournamentResult::Won {
+                                self.plan_settlement(&consensus, epoch.epoch_number, head)
+                                    .await
+                            } else {
+                                self.plan_sentry_claim(&consensus, epoch.epoch_number, head)
+                                    .await
+                            };
+                            match step {
                                 Ok(step) => wave.extend(step),
                                 Err(e) => self.stalled(
                                     Level::Warn,
@@ -564,11 +573,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 "local commitment won dispute tournament {} for epoch {}",
                 epoch.root_tournament, epoch.epoch_number
             ),
-            TournamentResult::Lost => log::error!(
-                "local commitment lost dispute tournament {} for epoch {}",
-                epoch.root_tournament,
-                epoch.epoch_number
-            ),
+            TournamentResult::Lost(loss) => self.report_loss(epoch, loss)?,
             TournamentResult::FailedNoWinner => log::error!(
                 "dispute tournament {} for epoch {} finished without a winner",
                 epoch.root_tournament,
@@ -576,6 +581,53 @@ impl<AS: ArenaSender> EpochManager<AS> {
             ),
         }
         Ok(tick)
+    }
+}
+
+impl<AS: ArenaSender> EpochManager<AS> {
+    /// Names how the epoch's dispute was lost, once per tick. Every case
+    /// means the honest commitment was not defended in time; a root won
+    /// with another final state also means the chain will settle a state
+    /// this node did not compute.
+    fn report_loss(&mut self, epoch: &Epoch, loss: Loss) -> Result<()> {
+        let e = epoch.epoch_number;
+        match loss {
+            Loss::Root { final_state } => {
+                let ours = self
+                    .storage
+                    .settlement_info(e)?
+                    .map(|settlement| Digest::from(settlement.final_state));
+                if ours == Some(final_state) {
+                    error!(
+                        "epoch {e}: root tournament {} went to another commitment with this \
+                         node's final state {final_state}: the correct state settles, but this \
+                         node's commitment was not defended in time",
+                        epoch.root_tournament
+                    );
+                } else {
+                    error!(
+                        "epoch {e} DIVERGED: root tournament {} went to a commitment ending in \
+                         {final_state}, but this node computed {}. The application's guardian \
+                         can still foreclose before the staged result is accepted; this node \
+                         votes its own state as a sentry, and stops (exit 30) at the next \
+                         epoch, which starts from the settled state",
+                        epoch.root_tournament,
+                        ours.map_or_else(|| "nothing".to_string(), |ours| ours.to_string()),
+                    );
+                }
+            }
+            Loss::Eliminated { tournament, reason } => error!(
+                "epoch {e}: the local commitment was eliminated in tournament {tournament} \
+                 ({reason:?}); root tournament {}",
+                epoch.root_tournament
+            ),
+            Loss::Child { tournament } => error!(
+                "epoch {e}: another commitment class won child tournament {tournament} of the \
+                 local commitment's match; root tournament {}",
+                epoch.root_tournament
+            ),
+        }
+        Ok(())
     }
 }
 
