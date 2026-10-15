@@ -1,9 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-pub mod error;
-
-use self::error::Result;
+use anyhow::{Result, ensure};
 use std::time::Duration;
 
 use crate::engine::{MachineStf, Ruler, Stf, Structure};
@@ -69,11 +67,11 @@ pub struct MachineRunner {
 /// first, with an error the paging rule reports.
 const FREE_SPACE_FLOOR: u64 = 1 << 30;
 
-fn ensure_free_space(storage: &Storage) -> anyhow::Result<()> {
+fn ensure_free_space(storage: &Storage) -> Result<()> {
     let free = storage
         .free_bytes()
         .map_err(|e| anyhow::anyhow!("could not read the data directory's free space: {e}"))?;
-    anyhow::ensure!(
+    ensure!(
         free >= FREE_SPACE_FLOOR,
         "only {} MiB free on the data directory's filesystem, below the {} MiB a batch needs: \
          free space there",

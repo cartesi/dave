@@ -9,8 +9,8 @@
 
 use super::epoch_data::{EpochData, Leaf};
 use super::instance::MachineInstance;
-use super::machine_error::Result;
 use alloy::primitives::U256;
+use anyhow::Result;
 use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 use cartesi_sling_node::arithmetic::max_uint;
 use cartesi_sling_node::engine::constants::{LOG2_EPOCH_RULER_SPAN, UARCH_MASK_TO_BARCH};

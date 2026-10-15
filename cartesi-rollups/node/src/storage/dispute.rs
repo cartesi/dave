@@ -20,11 +20,9 @@ use rusqlite::{OptionalExtension, params};
 impl Storage {
     /// The pinned engine configuration; initialization writes it once.
     pub fn sling_config(&self) -> Result<crate::engine::EngineConfig> {
-        crate::engine::config::stored(&self.connection)
-            .map_err(StorageError::InnerError)?
-            .ok_or_else(|| StorageError::DataNotFound {
-                description: "engine config row (initialization pins it)".into(),
-            })
+        crate::engine::config::stored(&self.connection)?.ok_or_else(|| StorageError::DataNotFound {
+            description: "engine config row (initialization pins it)".into(),
+        })
     }
 
     pub fn quartet_node(&self, quartet: &Quartet) -> Result<Option<Digest>> {
@@ -41,8 +39,7 @@ impl Storage {
                 ],
                 |row| row.get::<_, Vec<u8>>(0),
             )
-            .optional()
-            .map_err(anyhow::Error::from)?;
+            .optional()?;
         hash.map(blob_to_digest).transpose()
     }
 
@@ -69,20 +66,17 @@ impl Storage {
         height: u64,
         below: u64,
     ) -> Result<u64> {
-        let count: i64 = self
-            .connection
-            .query_row(
-                "SELECT COUNT(*) FROM sling_nodes
+        let count: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM sling_nodes
                  WHERE epoch = ?1 AND log2_stride = ?2 AND height = ?3 AND shift < ?4",
-                params![
-                    u64_to_i64(epoch),
-                    u64_to_i64(log2_stride),
-                    u64_to_i64(height),
-                    shift_blob(&U256::from(below)),
-                ],
-                |row| row.get(0),
-            )
-            .map_err(anyhow::Error::from)?;
+            params![
+                u64_to_i64(epoch),
+                u64_to_i64(log2_stride),
+                u64_to_i64(height),
+                shift_blob(&U256::from(below)),
+            ],
+            |row| row.get(0),
+        )?;
         Ok(i64_to_u64(count))
     }
 
@@ -100,26 +94,22 @@ impl Storage {
         expected: u64,
     ) -> Result<Vec<Digest>> {
         let rows: Vec<(Vec<u8>, Vec<u8>)> = self.read(|tx| {
-            let mut stmt = tx
-                .prepare_cached(
-                    "SELECT shift, hash FROM sling_nodes
+            let mut stmt = tx.prepare_cached(
+                "SELECT shift, hash FROM sling_nodes
                      WHERE epoch = ?1 AND log2_stride = ?2 AND height = ?3 AND shift < ?4
                      ORDER BY shift ASC",
-                )
-                .map_err(anyhow::Error::from)?;
-            let rows = stmt
-                .query_map(
-                    params![
-                        u64_to_i64(epoch),
-                        u64_to_i64(log2_stride),
-                        u64_to_i64(height),
-                        shift_blob(&U256::from(expected)),
-                    ],
-                    |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
-                )
-                .map_err(anyhow::Error::from)?;
+            )?;
+            let rows = stmt.query_map(
+                params![
+                    u64_to_i64(epoch),
+                    u64_to_i64(log2_stride),
+                    u64_to_i64(height),
+                    shift_blob(&U256::from(expected)),
+                ],
+                |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )?;
             rows.collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(|e| anyhow::Error::from(e).into())
+                .map_err(Into::into)
         })?;
 
         // Invariant violations panic (see insert_quartet_nodes_in):
@@ -156,33 +146,29 @@ pub(super) fn insert_quartet_nodes_in(
     rows: &[(Quartet, Digest)],
 ) -> Result<()> {
     for (quartet, hash) in rows {
-        let inserted = tx
-            .execute(
-                "INSERT INTO sling_nodes VALUES (?1, ?2, ?3, ?4, ?5)
+        let inserted = tx.execute(
+            "INSERT INTO sling_nodes VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT DO NOTHING",
+            params![
+                u64_to_i64(quartet.epoch),
+                u64_to_i64(quartet.log2_stride),
+                u64_to_i64(quartet.height),
+                shift_blob(&quartet.shift),
+                hash.slice(),
+            ],
+        )?;
+        if inserted == 0 {
+            let stored: Vec<u8> = tx.query_row(
+                "SELECT hash FROM sling_nodes
+                     WHERE epoch = ?1 AND log2_stride = ?2 AND height = ?3 AND shift = ?4",
                 params![
                     u64_to_i64(quartet.epoch),
                     u64_to_i64(quartet.log2_stride),
                     u64_to_i64(quartet.height),
                     shift_blob(&quartet.shift),
-                    hash.slice(),
                 ],
-            )
-            .map_err(anyhow::Error::from)?;
-        if inserted == 0 {
-            let stored: Vec<u8> = tx
-                .query_row(
-                    "SELECT hash FROM sling_nodes
-                     WHERE epoch = ?1 AND log2_stride = ?2 AND height = ?3 AND shift = ?4",
-                    params![
-                        u64_to_i64(quartet.epoch),
-                        u64_to_i64(quartet.log2_stride),
-                        u64_to_i64(quartet.height),
-                        shift_blob(&quartet.shift),
-                    ],
-                    |row| row.get(0),
-                )
-                .map_err(anyhow::Error::from)?;
+                |row| row.get(0),
+            )?;
             // Invariant violations panic and take the node down (the
             // worker join propagates); an Err here would be swallowed
             // by the tick loops' warn-and-retry, silencing the

@@ -136,13 +136,11 @@ impl AdvanceBatch {
 }
 
 fn input_count_in(tx: &Transaction, epoch: u64) -> Result<u64> {
-    let count: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM inputs WHERE epoch_number = ?1",
-            [u64_to_i64(epoch)],
-            |row| row.get(0),
-        )
-        .map_err(anyhow::Error::from)?;
+    let count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM inputs WHERE epoch_number = ?1",
+        [u64_to_i64(epoch)],
+        |row| row.get(0),
+    )?;
     Ok(i64_to_u64(count))
 }
 
@@ -153,8 +151,7 @@ fn epoch_is_sealed_in(tx: &Transaction, epoch: u64) -> Result<bool> {
             [u64_to_i64(epoch)],
             |_| Ok(()),
         )
-        .optional()
-        .map_err(anyhow::Error::from)?
+        .optional()?
         .is_some())
 }
 
@@ -196,27 +193,21 @@ impl Storage {
                 0
             };
 
-            let mut stmt = tx
-                .prepare_cached(
-                    "SELECT input_index_in_epoch, input FROM inputs
+            let mut stmt = tx.prepare_cached(
+                "SELECT input_index_in_epoch, input FROM inputs
                      WHERE epoch_number = ?1 AND input_index_in_epoch >= ?2
                      ORDER BY input_index_in_epoch ASC
                      LIMIT ?3",
-                )
-                .map_err(anyhow::Error::from)?;
-            let rows = stmt
-                .query_map(
-                    params![
-                        u64_to_i64(epoch),
-                        u64_to_i64(boundary_input),
-                        u64_to_i64(planned)
-                    ],
-                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
-                )
-                .map_err(anyhow::Error::from)?;
-            let rows = rows
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(anyhow::Error::from)?;
+            )?;
+            let rows = stmt.query_map(
+                params![
+                    u64_to_i64(epoch),
+                    u64_to_i64(boundary_input),
+                    u64_to_i64(planned)
+                ],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
+            )?;
+            let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
             assert_eq!(
                 rows.len() as u64,
                 planned,
@@ -310,7 +301,7 @@ impl Storage {
                 // Promote a source that disappeared during checkout
                 // to the fatal invariant; other clone errors retry.
                 super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
-                return Err(anyhow::Error::from(error).into());
+                return Err(error.into());
             }
         };
         // Construct the cleanup guard before loading. On a load or
@@ -390,7 +381,7 @@ impl Storage {
         machine.close();
 
         let checkpoint = batch.working.clone();
-        let next_working = self.checkout(&checkpoint).map_err(anyhow::Error::from)?;
+        let next_working = self.checkout(&checkpoint)?;
         if let Err(error) = machine.reopen_shared(&next_working) {
             let _ = self.discard_clone(&next_working);
             return Err(anyhow::Error::from(error).into());
@@ -461,11 +452,8 @@ impl Storage {
             "records must be contiguous"
         );
         machine.close();
-        self.discard_clone(&batch.working)
-            .map_err(anyhow::Error::from)?;
-        let next_working = self
-            .checkout(&batch.boundary_path)
-            .map_err(anyhow::Error::from)?;
+        self.discard_clone(&batch.working)?;
+        let next_working = self.checkout(&batch.boundary_path)?;
         if let Err(error) = machine.reopen_shared(&next_working) {
             let _ = self.discard_clone(&next_working);
             return Err(anyhow::Error::from(error).into());
@@ -516,9 +504,7 @@ impl Storage {
     /// for retry.
     fn publish_checkpoint(&self, batch: &mut AdvanceBatch) -> Result<()> {
         if batch.boundary_ownership == CheckpointOwnership::Transient {
-            let dest = self
-                .commit_clone(batch.boundary_path.clone(), &batch.boundary_hash)
-                .map_err(anyhow::Error::from)?;
+            let dest = self.commit_clone(batch.boundary_path.clone(), &batch.boundary_hash)?;
             batch.boundary_path = dest;
             batch.boundary_ownership = CheckpointOwnership::Durable;
         }
@@ -636,9 +622,8 @@ pub(super) fn insert_settlement_in(
         panic!("refusing invalid settlement proof for epoch {epoch_number}: {error:#}")
     });
 
-    let mut stmt = tx
-        .prepare_cached(
-            r#"
+    let mut stmt = tx.prepare_cached(
+        r#"
             INSERT INTO settlement_info
             (epoch_number, computation_hash, final_state,
              iflags_y_data_block, iflags_y_siblings,
@@ -647,24 +632,21 @@ pub(super) fn insert_settlement_in(
             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             ON CONFLICT (epoch_number) DO NOTHING
             "#,
-        )
-        .map_err(anyhow::Error::from)?;
+    )?;
 
     let proof = &settlement.machine_validity_proof;
 
-    let count = stmt
-        .execute(params![
-            u64_to_i64(epoch_number),
-            settlement.computation_hash.data(),
-            &settlement.final_state,
-            &proof.iflags_y_proof.data_block,
-            &proof.iflags_y_proof.siblings.flatten(),
-            &proof.htif_tohost_proof.data_block,
-            &proof.htif_tohost_proof.siblings.flatten(),
-            &proof.tx_buffer_proof.data_block,
-            &proof.tx_buffer_proof.siblings.flatten(),
-        ])
-        .map_err(anyhow::Error::from)?;
+    let count = stmt.execute(params![
+        u64_to_i64(epoch_number),
+        settlement.computation_hash.data(),
+        &settlement.final_state,
+        &proof.iflags_y_proof.data_block,
+        &proof.iflags_y_proof.siblings.flatten(),
+        &proof.htif_tohost_proof.data_block,
+        &proof.htif_tohost_proof.siblings.flatten(),
+        &proof.tx_buffer_proof.data_block,
+        &proof.tx_buffer_proof.siblings.flatten(),
+    ])?;
 
     if count == 0 {
         let stored = super::queries::settlement_info_in(tx, epoch_number)?
@@ -696,8 +678,7 @@ fn gc_old_epochs_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<Hash>> {
     tx.execute(
         "DELETE FROM sling_nodes WHERE epoch <= ?1",
         params![u64_to_i64(max_epoch)],
-    )
-    .map_err(anyhow::Error::from)?;
+    )?;
     Ok(orphans)
 }
 

@@ -32,8 +32,7 @@ impl Storage {
                 "UPDATE epoch_completion SET next_epoch = next_epoch + 1
                  WHERE id = 1 AND next_epoch = ?1",
                 [u64_to_i64(epoch_number)],
-            )
-            .map_err(anyhow::Error::from)?;
+            )?;
             Ok(())
         })
     }

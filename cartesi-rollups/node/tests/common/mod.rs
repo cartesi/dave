@@ -9,5 +9,4 @@
 // production; lives on here.
 pub mod epoch_data;
 pub mod instance;
-pub mod machine_error;
 pub mod prototype;
