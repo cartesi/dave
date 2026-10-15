@@ -33,8 +33,8 @@ import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 
 contract CartesiStateTransition is IStateTransition {
     /// @notice Cartesi Machine architecture ID qualified by this transition.
-    /// @dev Pinned to v0.21.0 until a released solidity-step exposes it.
-    uint64 public constant CM_MARCHID = 21;
+    /// @dev solidity-step's, generated from the emulator release it targets.
+    uint64 public constant CM_MARCHID = EmulatorConstants.CM_MARCHID;
 
     /// @notice Hash of the pristine uarch state that every uarch reset
     /// restores in this verifier.

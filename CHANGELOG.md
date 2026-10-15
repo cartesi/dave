@@ -63,6 +63,11 @@ needed.
   agrees.
 - Join bonds at the 50 gwei work-price cap, canonical table: root (height
   54) 0.36115 ETH, leaf (38) 0.51265 ETH.
+- `CartesiStateTransition` qualifies Cartesi Machine v0.22 through
+  solidity-step v0.16: `CM_MARCHID()` is 22, now imported from step instead
+  of a local literal, and every uarch reset restores v0.22's pristine uarch
+  hash. Every machine state hash moves, so templates must be rebuilt with the
+  v0.22 tools.
 
 ### Chains
 
@@ -78,6 +83,9 @@ needed.
 
 ### Node
 
+- Links Cartesi Machine v0.22, which refuses machines stored by v0.21: a
+  node built against v0.21 cannot start against these contracts, and v0.21
+  templates and data directories do not load.
 - Start from a fresh data directory: the schema changed (tournament events
   are no longer stored; the chain id is pinned), and the directory holds a
   `node.lock` that refuses a second process. A fresh directory replays every

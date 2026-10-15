@@ -297,7 +297,7 @@ fn engine_level_root(
 
 fn computation_hash_corpus() -> (PathBuf, Vec<serde_json::Value>) {
     let corpus_path = std::env::var_os("CARTESI_COMPUTATION_HASH_CORPUS_PATH").expect(
-        "CARTESI_COMPUTATION_HASH_CORPUS_PATH must name the extracted v0.21 corpus directory",
+        "CARTESI_COMPUTATION_HASH_CORPUS_PATH must name the extracted v0.22 corpus directory",
     );
     let corpus = PathBuf::from(corpus_path);
     assert!(
@@ -338,8 +338,8 @@ fn assert_corpus_cli_version(cli: &str) {
         version
             .lines()
             .next()
-            .is_some_and(|line| line == "cartesi-machine 0.21.0"),
-        "corpus requires cartesi-machine 0.21.0, found {version:?}"
+            .is_some_and(|line| line == "cartesi-machine 0.22.0"),
+        "corpus requires cartesi-machine 0.22.0, found {version:?}"
     );
 }
 
@@ -392,7 +392,7 @@ fn run_corpus_cli_case(
 /// release-package conformance, not a Dave differential: all mcycle and uarch
 /// cases, including nonzero exits and the no-hash failure, belong here.
 #[test]
-#[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
+#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus"]
 fn computation_hash_corpus_cli_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
     let cli = corpus_cli();
@@ -484,16 +484,13 @@ fn computation_hash_corpus_cli_matches_release_manifest() {
         }
         println!("{id}: {category}");
     }
-    assert_eq!(mcycle_count, 17, "unexpected v0.21 mcycle corpus size");
-    assert_eq!(uarch_count, 18, "unexpected v0.21 uarch corpus size");
+    assert_eq!(mcycle_count, 18, "unexpected v0.22 mcycle corpus size");
+    assert_eq!(uarch_count, 18, "unexpected v0.22 uarch corpus size");
 }
 
-/// The one corpus case outside Dave's model, with the released hash the
-/// exclusion was judged against.
-const UARCH_OUT_OF_MODEL: (&str, &str) = (
-    "uarch-near-limit-tail",
-    "0x8c40a7ed8c6327731bc0444947574e39593c5c1cddcefbeeebdca6461150315b",
-);
+/// The one corpus case outside Dave's model: its template carries custom
+/// uarch code instead of the deployed step's pristine uarch.
+const UARCH_OUT_OF_MODEL: &str = "uarch-near-limit-tail";
 
 /// Whether the node refuses a template at startup for lacking the pristine
 /// uarch every big-cycle boundary must carry.
@@ -506,42 +503,27 @@ fn refused_as_non_pristine(image: &Path) -> bool {
 
 /// Dave against the released answers: every mcycle case as a whole-epoch
 /// root, and every uarch case as a stride-0 leaf of height 29 (period 9,
-/// the big-cycle-root builder). Two uarch cases are not compared:
-/// uarch-overflow-tail has no released hash, and uarch-near-limit-tail is
-/// out of model. Its template carries custom uarch code instead of the
-/// deployed step's pristine uarch, which Dave, the CLI and Lua all assume
-/// at big-cycle boundaries; Solidity, the CLI and Dave give three different
-/// roots there (docs/computation-hash.md). Upstream 22b4431 makes it
-/// error-no-hash; drop the exclusion when the corpus comes from a release
-/// that carries it. The node refuses such a template at startup, and the
-/// exclusion asserts that refusal and the released hash, so a changed
-/// template or answer forces a revisit.
+/// the big-cycle-root builder). The two error-no-hash uarch cases have no
+/// released hash: uarch-overflow-tail, and uarch-near-limit-tail, whose
+/// template is out of model (docs/computation-hash.md). The node refuses
+/// that template at startup, and the test asserts the refusal.
 #[test]
-#[ignore = "requires the pinned Cartesi Machine v0.21 computation-hash corpus"]
+#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus"]
 fn computation_hash_corpus_dave_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
     let structure = Structure::PRODUCTION;
 
-    let (mut mcycle, mut uarch, mut excluded, mut no_hash) = (0, 0, 0, 0);
+    let (mut mcycle, mut uarch, mut no_hash) = (0, 0, 0);
     for case in &cases {
         let id = case["id"].as_str().unwrap();
         let image = corpus.join(case["template"].as_str().unwrap());
         let expected = case["expected"]["computation_hash"].as_str();
-        if id == UARCH_OUT_OF_MODEL.0 {
-            assert!(
-                refused_as_non_pristine(&image),
-                "{id}: the node no longer refuses this template; compare the case"
-            );
-            assert_eq!(
-                expected,
-                Some(UARCH_OUT_OF_MODEL.1),
-                "{id}: the released answer changed; revisit the exclusion"
-            );
-            excluded += 1;
-            continue;
-        }
         let Some(expected) = expected else {
             assert_eq!(case["expected"]["category"], "error-no-hash", "{id}");
+            assert!(
+                id != UARCH_OUT_OF_MODEL || refused_as_non_pristine(&image),
+                "{id}: the node no longer refuses this template; compare the case"
+            );
             no_hash += 1;
             continue;
         };
@@ -581,9 +563,9 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
         println!("{id}: {engine_hash}");
     }
     assert_eq!(
-        (mcycle, uarch, excluded, no_hash),
-        (17, 16, 1, 1),
-        "unexpected v0.21 corpus shape"
+        (mcycle, uarch, no_hash),
+        (18, 16, 2),
+        "unexpected v0.22 corpus shape"
     );
 }
 
@@ -883,7 +865,8 @@ fn reference_cli_key(program: &str, geometry: &TournamentGeometry) -> String {
 }
 
 /// Runs the released CLI over the image's epoch with `options` added to
-/// its advance-state settings, returning its output and its scratch
+/// its advance-state settings and `flags` before them, returning its
+/// output and its scratch
 /// directory (holding `input-<i>.bin`). It runs a clone in stored revert
 /// mode (the default fork mode needs a machine server); outputs, reports
 /// and proofs are off unless `options` names them.
@@ -898,13 +881,17 @@ fn run_reference_cli(
     for (index, input) in inputs.iter().enumerate() {
         std::fs::write(dir.path().join(format!("input-{index}.bin")), input).unwrap();
     }
-    let advance = format!(
-        "input:{},input_index_begin:0,input_index_end:{},output:,rejected_output:,\
+    let mut advance = format!(
+        "input:{},input_file_index_begin:0,input_file_index_end:{},output:,rejected_output:,\
          output_proof:,report:,outputs_merkle_root:,outputs_merkle_root_proof:,\
-         check_outputs_merkle_root:false,{options}",
+         check_outputs_merkle_root:false",
         dir.path().join("input-%i.bin").display(),
         inputs.len(),
     );
+    // The CLI refuses the empty key a trailing comma leaves.
+    if !options.is_empty() {
+        advance = format!("{advance},{options}");
+    }
     let output = Command::new(cli)
         .current_dir(dir.path())
         .args(flags)
@@ -925,7 +912,7 @@ fn run_reference_cli(
     (output, dir)
 }
 
-/// One computation hash: `hash` names the CLI's output key and
+/// One computation hash: `hash` names the CLI's computation-hash flag and
 /// `options` its period settings.
 fn reference_cli_hash(
     cli: &str,
@@ -934,8 +921,8 @@ fn reference_cli_hash(
     hash: &str,
     options: &str,
 ) -> String {
-    let options = format!("{hash}:computation-hash.bin,{options}");
-    let (_, dir) = run_reference_cli(cli, image, inputs, &options, &[]);
+    let flag = format!("--{hash}=filename:computation-hash.bin,{options}");
+    let (_, dir) = run_reference_cli(cli, image, inputs, "", &[&flag]);
     let hash = std::fs::read(dir.path().join("computation-hash.bin"))
         .expect("the reference CLI wrote no computation hash");
     assert_eq!(hash.len(), 32, "malformed reference computation hash");
@@ -977,11 +964,8 @@ fn reference_cli_root(
     inputs: &[Vec<u8>],
     geometry: &TournamentGeometry,
 ) -> String {
-    let options = format!(
-        "log2_mcycle_computation_hash_period:{}",
-        reference_cli_period(geometry)
-    );
-    reference_cli_hash(cli, image, inputs, "mcycle_computation_hash", &options)
+    let options = format!("log2_mcycle_period:{}", reference_cli_period(geometry));
+    reference_cli_hash(cli, image, inputs, "mcycle-computation-hash", &options)
 }
 
 /// A leaf commitment the CLI answers independently: its uarch cycle
@@ -1048,11 +1032,11 @@ fn leaf_cases() -> Vec<LeafCase> {
 
 fn reference_cli_leaf(cli: &str, image: &Path, inputs: &[Vec<u8>], case: LeafCase) -> String {
     let options = format!(
-        "log2_mcycle_computation_hash_period:{},mcycle_period_index:{}",
+        "log2_mcycle_period:{},mcycle_period_index:{}",
         case.log2_period,
         case.epoch_period_index()
     );
-    reference_cli_hash(cli, image, inputs, "uarch_cycle_computation_hash", &options)
+    reference_cli_hash(cli, image, inputs, "uarch-cycle-computation-hash", &options)
 }
 
 /// The answers behind runner_settles_the_reference_root, computed by
@@ -1060,7 +1044,7 @@ fn reference_cli_leaf(cli: &str, image: &Path, inputs: &[Vec<u8>], case: LeafCas
 /// images they answer for. Outside the engine gate because it needs
 /// that exact CLI; CI runs it where the release package is installed.
 #[test]
-#[ignore = "requires the released cartesi-machine 0.21.0 CLI; run `just test-reference-cli-goldens`"]
+#[ignore = "requires the released cartesi-machine 0.22.0 CLI; run `just test-reference-cli-goldens`"]
 fn reference_cli_goldens_hold() {
     let cli = corpus_cli();
     assert_corpus_cli_version(&cli);

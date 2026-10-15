@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! Rust mirror of `cartesi::machine_config` and friends from the v0.21
+//! Rust mirror of `cartesi::machine_config` and friends from the v0.22
 //! cartesi-machine C++ API. The field names and nesting match the JSON
 //! emitted by `cm_get_default_config` / `cm_get_initial_config` and consumed
 //! by `cm_create_new`.
@@ -36,6 +36,7 @@ pub struct BackingStoreConfig {
     pub shared: bool,
     pub create: bool,
     pub truncate: bool,
+    pub mark_pages_dirty: bool,
     pub data_filename: PathBuf,
     pub dht_filename: PathBuf,
     pub dpt_filename: PathBuf,

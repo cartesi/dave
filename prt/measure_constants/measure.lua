@@ -17,9 +17,9 @@ end
 
 local cartesi = require "cartesi"
 assert(
-    cartesi.VERSION_MAJOR == 0 and cartesi.VERSION_MINOR == 21,
+    cartesi.VERSION_MAJOR == 0 and cartesi.VERSION_MINOR == 22,
     string.format(
-        "Cartesi Machine Lua module 0.21 required, got %d.%d.%d",
+        "Cartesi Machine Lua module 0.22 required, got %d.%d.%d",
         cartesi.VERSION_MAJOR,
         cartesi.VERSION_MINOR,
         cartesi.VERSION_PATCH

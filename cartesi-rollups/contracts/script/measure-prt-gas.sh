@@ -7,7 +7,7 @@ set -euo pipefail
 
 readonly EXPECTED_FOUNDRY_VERSION="1.5.1-v1.5.1"
 readonly EXPECTED_DEPENDENCIES_SHA256="5908c611e27574eacfc14cf431a0c77ab096f3b60d9b874ff2306bff08943d90"
-readonly EXPECTED_MACHINE_HASH="9b358eac8ebd2aa2c7ab4c00d098da7fd90906dc571ec83ec16e889fd220e0fb"
+readonly EXPECTED_MACHINE_HASH="922e154dcf332292a7205050ea2da0c3254d5d01187461e73d4c7423b5af0ff0"
 readonly EXPECTED_FOUNDRY_CONFIG='{"solc":"0.8.30","via_ir":true,"optimizer":true,"optimizer_runs":200,"evm_version":"prague"}'
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
