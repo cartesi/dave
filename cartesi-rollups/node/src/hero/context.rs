@@ -277,10 +277,7 @@ mod tests {
     use super::*;
     use crate::tournament::{
         MatchID,
-        domain::{
-            JoinDisposition, LiveMatch, LiveMatchState, MatchSide, TimeoutDisposition,
-            TournamentKind,
-        },
+        domain::{LiveMatch, LiveMatchState, MatchSide, TimeoutDisposition, TournamentKind},
     };
 
     const ROOT: Address = Address::new([0x11; 20]);
@@ -376,7 +373,7 @@ mod tests {
         let root = PathLevel {
             descriptor: root_descriptor,
             standing: TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
+                accepts_joins: false,
             },
             local_commitment: digest(3),
             local_standing: LocalCommitmentStanding::Engaged(engagement),

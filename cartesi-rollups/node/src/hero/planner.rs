@@ -179,10 +179,10 @@ fn plan_engagement(snapshot: &SemanticSnapshot, engagement: Engagement) -> HeroD
     let side = engagement.local_side();
 
     match engagement.live().timeout() {
-        TimeoutDisposition::OneWins { .. } => {
+        TimeoutDisposition::OneWins => {
             return plan_timeout_winner(tournament, side, MatchSide::One);
         }
-        TimeoutDisposition::TwoWins { .. } => {
+        TimeoutDisposition::TwoWins => {
             return plan_timeout_winner(tournament, side, MatchSide::Two);
         }
         TimeoutDisposition::EliminateBoth => {
@@ -193,17 +193,17 @@ fn plan_engagement(snapshot: &SemanticSnapshot, engagement: Engagement) -> HeroD
 
     match engagement.live().state() {
         LiveMatchState::Bisecting(match_state) => plan_responder(
-            match_state.responder(),
+            match_state.responder,
             side,
             HeroIntent::Advance { tournament },
         ),
         LiveMatchState::ReadyToSealLeaf(match_state) => plan_responder(
-            match_state.responder(),
+            match_state.responder,
             side,
             HeroIntent::SealLeaf { tournament },
         ),
         LiveMatchState::ReadyToDelegate(match_state) => plan_responder(
-            match_state.responder(),
+            match_state.responder,
             side,
             HeroIntent::CreateChild { tournament },
         ),
@@ -245,9 +245,8 @@ mod tests {
     use crate::tournament::{
         MatchID,
         domain::{
-            BisectingMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
-            LocalCommitmentStanding, MatchCoordinate, ParentLink, ReadyToSealMatch, RootWinner,
-            SealedDivergence, SealedLeafMatch, TournamentDescriptor, TournamentKind,
+            InnerWinner, LiveMatch, LocalCommitmentStanding, MatchCoordinate, ParentLink,
+            RootWinner, SealedDivergence, TournamentDescriptor, TournamentKind, UnresolvedMatch,
             WaitingChildren,
         },
     };
@@ -294,29 +293,29 @@ mod tests {
         MatchCoordinate::new(U256::from(position), U256::from(position * 8))
     }
 
-    fn bisecting(responder: MatchSide) -> BisectingMatch {
+    fn bisecting(responder: MatchSide) -> UnresolvedMatch {
         // Total height four and remaining height two means commitment one
         // responds again after two advances.
         assert_eq!(responder, MatchSide::One);
-        BisectingMatch::try_new(
-            digest(3),
-            WaitingChildren::new(digest(4), digest(5)),
-            coordinate(0),
-            2,
+        UnresolvedMatch {
+            revealing_parent: digest(3),
+            waiting_children: WaitingChildren::new(digest(4), digest(5)),
+            coordinate: coordinate(0),
+            height: 2,
             responder,
-        )
-        .unwrap()
+        }
     }
 
-    fn ready(responder: MatchSide) -> ReadyToSealMatch {
+    fn ready(responder: MatchSide) -> UnresolvedMatch {
         // Total height four and remaining height one means commitment two.
         assert_eq!(responder, MatchSide::Two);
-        ReadyToSealMatch::new(
-            digest(3),
-            WaitingChildren::new(digest(4), digest(5)),
-            coordinate(0),
+        UnresolvedMatch {
+            revealing_parent: digest(3),
+            waiting_children: WaitingChildren::new(digest(4), digest(5)),
+            coordinate: coordinate(0),
+            height: 1,
             responder,
-        )
+        }
     }
 
     fn divergence() -> SealedDivergence {
@@ -337,7 +336,7 @@ mod tests {
         SemanticSnapshot::new(
             root_descriptor(kind),
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
+                accepts_joins: false,
             },
             local,
             LocalCommitmentStanding::Engaged(engagement),
@@ -398,21 +397,18 @@ mod tests {
     #[test]
     fn current_joinability_selects_join_or_wait() {
         let local = digest(1);
-        for (joins, expected) in [
+        for (accepts_joins, expected) in [
             (
-                JoinDisposition::Open,
+                true,
                 HeroDecision::Act(HeroIntent::Join {
                     tournament: address(10),
                     commitment: local,
                 }),
             ),
-            (
-                JoinDisposition::Closed,
-                HeroDecision::Wait(WaitReason::JoinsClosed),
-            ),
+            (false, HeroDecision::Wait(WaitReason::JoinsClosed)),
         ] {
             let snapshot = root_snapshot(
-                TournamentStanding::MatchesActive { joins },
+                TournamentStanding::MatchesActive { accepts_joins },
                 local,
                 LocalCommitmentStanding::NotJoined,
             );
@@ -435,7 +431,7 @@ mod tests {
         let local = digest(1);
         let blocked = root_snapshot(
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Open,
+                accepts_joins: true,
             },
             local,
             LocalCommitmentStanding::Candidate,
@@ -460,7 +456,7 @@ mod tests {
     fn eliminated_local_commitment_is_terminally_lost() {
         let snapshot = root_snapshot(
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
+                accepts_joins: false,
             },
             digest(1),
             LocalCommitmentStanding::Eliminated {
@@ -478,38 +474,35 @@ mod tests {
 
     #[test]
     fn timeout_disposition_outranks_every_actionable_phase() {
+        // The winner is the side that is not responding; a sealed leaf's
+        // running survivor may be either.
         let phases = [
             (
                 TournamentKind::Leaf,
                 LiveMatchState::Bisecting(bisecting(MatchSide::One)),
+                MatchSide::Two,
             ),
             (
                 TournamentKind::Leaf,
                 LiveMatchState::ReadyToSealLeaf(ready(MatchSide::Two)),
+                MatchSide::One,
             ),
             (
                 TournamentKind::NonLeaf,
                 LiveMatchState::ReadyToDelegate(ready(MatchSide::Two)),
+                MatchSide::One,
             ),
             (
                 TournamentKind::Leaf,
-                LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence())),
+                LiveMatchState::SealedLeaf(divergence()),
+                MatchSide::One,
             ),
         ];
 
-        for (kind, state) in phases {
-            let (winner, loser) = match state.responder() {
-                Some(MatchSide::One) => (MatchSide::Two, MatchSide::One),
-                Some(MatchSide::Two) => (MatchSide::One, MatchSide::Two),
-                None => (MatchSide::One, MatchSide::Two),
-            };
-            let disposition = match winner {
-                MatchSide::One => TimeoutDisposition::OneWins {
-                    deferred_charge: BlockDuration::ZERO,
-                },
-                MatchSide::Two => TimeoutDisposition::TwoWins {
-                    deferred_charge: BlockDuration::ZERO,
-                },
+        for (kind, state, winner) in phases {
+            let (loser, disposition) = match winner {
+                MatchSide::One => (MatchSide::Two, TimeoutDisposition::OneWins),
+                MatchSide::Two => (MatchSide::One, TimeoutDisposition::TwoWins),
             };
 
             let ours_wins = live_snapshot(kind, winner, state, disposition);
@@ -536,24 +529,20 @@ mod tests {
 
     #[test]
     fn authoritative_sealed_leaf_winner_persists_until_eliminate_both() {
-        let state = LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence()));
+        let state = LiveMatchState::SealedLeaf(divergence());
 
         // These are successive contract-authoritative observations: no clock
         // arithmetic or midpoint is reconstructed by the planner.
-        for disposition in [
-            TimeoutDisposition::OneWins {
-                deferred_charge: BlockDuration::ZERO,
-            },
-            TimeoutDisposition::OneWins {
-                deferred_charge: BlockDuration::ZERO,
-            },
-        ] {
-            let snapshot = live_snapshot(TournamentKind::Leaf, MatchSide::One, state, disposition);
-            assert!(matches!(
-                plan_hero(&snapshot),
-                HeroDecision::Act(HeroIntent::ClaimTimeout { .. })
-            ));
-        }
+        let snapshot = live_snapshot(
+            TournamentKind::Leaf,
+            MatchSide::One,
+            state,
+            TimeoutDisposition::OneWins,
+        );
+        assert!(matches!(
+            plan_hero(&snapshot),
+            HeroDecision::Act(HeroIntent::ClaimTimeout { .. })
+        ));
 
         let later = live_snapshot(
             TournamentKind::Leaf,
@@ -637,7 +626,7 @@ mod tests {
             HeroDecision::Wait(WaitReason::OpponentTurn { .. })
         ));
 
-        let sealed = LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence()));
+        let sealed = LiveMatchState::SealedLeaf(divergence());
         for side in [MatchSide::One, MatchSide::Two] {
             assert_eq!(
                 plan_hero(&live_snapshot(
@@ -668,7 +657,7 @@ mod tests {
         let child = SemanticSnapshot::new(
             child_descriptor,
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Open,
+                accepts_joins: true,
             },
             digest(40),
             LocalCommitmentStanding::NotJoined,
@@ -687,7 +676,7 @@ mod tests {
         let parent = SemanticSnapshot::new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
+                accepts_joins: false,
             },
             parent_commitment,
             LocalCommitmentStanding::Engaged(engagement),

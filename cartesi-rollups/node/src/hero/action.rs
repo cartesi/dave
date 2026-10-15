@@ -17,7 +17,7 @@ use crate::{
     tournament::{
         MatchID,
         domain::{
-            BisectingMatch, Engagement, LiveMatchState, LocalCommitmentStanding, SemanticSnapshot,
+            Engagement, LiveMatchState, LocalCommitmentStanding, SemanticSnapshot, UnresolvedMatch,
         },
     },
 };
@@ -278,15 +278,15 @@ fn prepare_seal<F: RulerFactory>(
         unreachable!("a seal is planned only on a match ready to seal");
     };
 
-    let contested = coords.node(1, state.coordinate().leaf_position());
+    let contested = coords.node(1, state.coordinate.leaf_position());
     let observed_parent = source
         .node(&contested)
         .map_err(|source| source_error(action, tournament, source))?;
-    if observed_parent != state.revealing_parent() {
+    if observed_parent != state.revealing_parent {
         return Err(PrepareError::RevealingParentMismatch {
             action,
             tournament,
-            expected: state.revealing_parent(),
+            expected: state.revealing_parent,
             observed: observed_parent,
         });
     }
@@ -295,12 +295,12 @@ fn prepare_seal<F: RulerFactory>(
         .map_err(|source| source_error(action, tournament, source))?;
     require_opening(action, tournament, observed_parent, left_leaf, right_leaf)?;
 
-    let waiting = state.waiting_children();
+    let waiting = state.waiting_children;
     let left_diverges = left_leaf != waiting.left();
     let divergence_position = if left_diverges {
-        state.coordinate().leaf_position()
+        state.coordinate.leaf_position()
     } else if right_leaf != waiting.right() {
-        state.coordinate().leaf_position() + U256::ONE
+        state.coordinate.leaf_position() + U256::ONE
     } else {
         return Err(PrepareError::NoDivergentBranch { action, tournament });
     };
@@ -337,7 +337,7 @@ fn prepare_leaf_proof<F: RulerFactory>(
     const ACTION: &str = "prove leaf";
     let (snapshot, coords) = level(context, tournament);
     let engagement = engagement(snapshot);
-    let LiveMatchState::SealedLeaf(state) = engagement.live().state() else {
+    let LiveMatchState::SealedLeaf(divergence) = engagement.live().state() else {
         unreachable!("a leaf proof is planned only on a sealed leaf match");
     };
 
@@ -348,7 +348,6 @@ fn prepare_leaf_proof<F: RulerFactory>(
         snapshot.local_commitment(),
         source,
     )?;
-    let divergence = state.divergence();
     let proof = source
         .prove_transition(
             divergence.coordinate().cycle(),
@@ -403,21 +402,18 @@ fn unresolved_opening<F: RulerFactory>(
     action: &'static str,
     tournament: Address,
     coords: &LevelCoords,
-    state: BisectingMatch,
+    state: UnresolvedMatch,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<(Digest, Digest, crate::engine::Quartet)> {
-    let contested = coords.node(
-        state.remaining_height().get(),
-        state.coordinate().leaf_position(),
-    );
+    let contested = coords.node(state.height, state.coordinate.leaf_position());
     let observed_parent = source
         .node(&contested)
         .map_err(|source| source_error(action, tournament, source))?;
-    if observed_parent != state.revealing_parent() {
+    if observed_parent != state.revealing_parent {
         return Err(PrepareError::RevealingParentMismatch {
             action,
             tournament,
-            expected: state.revealing_parent(),
+            expected: state.revealing_parent,
             observed: observed_parent,
         });
     }
@@ -426,10 +422,10 @@ fn unresolved_opening<F: RulerFactory>(
         .map_err(|source| source_error(action, tournament, source))?;
     require_opening(action, tournament, observed_parent, left, right)?;
 
-    let waiting = state.waiting_children();
+    let waiting = state.waiting_children;
     let (left_child, right_child) = contested
         .children()
-        .expect("validated bisecting match is above leaf height");
+        .expect("validate_match_geometry keeps a bisecting match above height 1");
     let selected = if left != waiting.left() {
         left_child
     } else if right != waiting.right() {
@@ -476,10 +472,9 @@ mod tests {
             toy::{ToyFactory, ToyInput, ToyOutcome, ToyStf},
         },
         tournament::domain::{
-            BlockDuration, InnerWinner, JoinDisposition, LiveMatch, MatchCoordinate, MatchSide,
-            ParentLink, ReadyToSealMatch, SealedDivergence, SealedLeafMatch, TimeoutDisposition,
-            TournamentDescriptor, TournamentKind, TournamentStanding, WaitingChildren,
-            validate_match_geometry,
+            InnerWinner, LiveMatch, MatchCoordinate, MatchSide, ParentLink, SealedDivergence,
+            TimeoutDisposition, TournamentDescriptor, TournamentKind, TournamentStanding,
+            WaitingChildren, validate_match_geometry,
         },
     };
 
@@ -611,7 +606,7 @@ mod tests {
             coords,
             commitment,
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
+                accepts_joins: false,
             },
             LocalCommitmentStanding::Engaged(engagement),
         );
@@ -680,16 +675,13 @@ mod tests {
             let revealing_parent = source.node(&contested).unwrap();
             let (left, right) = source.children(&contested).unwrap();
             LiveMatch::new(
-                LiveMatchState::Bisecting(
-                    BisectingMatch::try_new(
-                        revealing_parent,
-                        waiting(branch, left, right),
-                        coordinate,
-                        remaining_height,
-                        side,
-                    )
-                    .unwrap(),
-                ),
+                LiveMatchState::Bisecting(UnresolvedMatch {
+                    revealing_parent,
+                    waiting_children: waiting(branch, left, right),
+                    coordinate,
+                    height: remaining_height,
+                    responder: side,
+                }),
                 TimeoutDisposition::None,
             )
         })
@@ -715,12 +707,13 @@ mod tests {
             let contested = coords.node(1, coordinate.leaf_position());
             let revealing_parent = source.node(&contested).unwrap();
             let (left, right) = source.children(&contested).unwrap();
-            let ready = ReadyToSealMatch::new(
+            let ready = UnresolvedMatch {
                 revealing_parent,
-                waiting(branch, left, right),
+                waiting_children: waiting(branch, left, right),
                 coordinate,
-                side,
-            );
+                height: 1,
+                responder: side,
+            };
             let state = if child {
                 LiveMatchState::ReadyToDelegate(ready)
             } else {
@@ -739,23 +732,16 @@ mod tests {
             let contested = coords.node(remaining_height, U256::ZERO);
             let revealing_parent = source.node(&contested).unwrap();
             let (left, right) = source.children(&contested).unwrap();
-            let state = LiveMatchState::Bisecting(
-                BisectingMatch::try_new(
-                    revealing_parent,
-                    waiting(Branch::Left, left, right),
-                    MatchCoordinate::new(U256::ZERO, U256::ZERO),
-                    remaining_height,
-                    responder,
-                )
-                .unwrap(),
-            );
+            let state = LiveMatchState::Bisecting(UnresolvedMatch {
+                revealing_parent,
+                waiting_children: waiting(Branch::Left, left, right),
+                coordinate: MatchCoordinate::new(U256::ZERO, U256::ZERO),
+                height: remaining_height,
+                responder,
+            });
             let timeout = match side {
-                MatchSide::One => TimeoutDisposition::OneWins {
-                    deferred_charge: BlockDuration::from_blocks(4),
-                },
-                MatchSide::Two => TimeoutDisposition::TwoWins {
-                    deferred_charge: BlockDuration::from_blocks(4),
-                },
+                MatchSide::One => TimeoutDisposition::OneWins,
+                MatchSide::Two => TimeoutDisposition::TwoWins,
             };
             LiveMatch::new(state, timeout)
         })
@@ -785,12 +771,12 @@ mod tests {
                 MatchSide::One => (local_final, digest(0xc3)),
                 MatchSide::Two => (digest(0xc4), local_final),
             };
-            let sealed = SealedLeafMatch::new(SealedDivergence::new(
+            let sealed = SealedDivergence::new(
                 agree_state,
                 MatchCoordinate::new(position, position),
                 final_state_one,
                 final_state_two,
-            ));
+            );
             LiveMatch::new(LiveMatchState::SealedLeaf(sealed), TimeoutDisposition::None)
         })
     }
@@ -825,7 +811,7 @@ mod tests {
         let parent_snapshot = SemanticSnapshot::new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
+                accepts_joins: false,
             },
             parent_commitment,
             LocalCommitmentStanding::Engaged(parent_engagement),
@@ -901,7 +887,7 @@ mod tests {
                 let LiveMatchState::Bisecting(state) = live_state(&fixture.context) else {
                     panic!("advance fixture must be bisecting");
                 };
-                let waiting = state.waiting_children();
+                let waiting = state.waiting_children;
                 let PreparedArenaAction::Advance {
                     tournament,
                     match_id,
@@ -927,7 +913,7 @@ mod tests {
                 };
                 assert_eq!(tournament, ROOT);
                 assert_eq!(match_id, fixture.match_id);
-                assert_eq!(left_node.join(&right_node), state.revealing_parent());
+                assert_eq!(left_node.join(&right_node), state.revealing_parent);
                 assert_eq!(new_left_node.join(&new_right_node), selected);
             }
         }
@@ -959,7 +945,7 @@ mod tests {
 
                 assert_eq!(tournament, ROOT);
                 assert_eq!(match_id, fixture.match_id);
-                assert_eq!(left_leaf.join(&right_leaf), state.revealing_parent());
+                assert_eq!(left_leaf.join(&right_leaf), state.revealing_parent);
                 match branch {
                     Branch::Left => {
                         assert_eq!(agree_state_proof.position, U256::ZERO);
@@ -967,10 +953,7 @@ mod tests {
                         assert!(agree_state_proof.siblings.is_empty());
                     }
                     Branch::Right => {
-                        assert_eq!(
-                            agree_state_proof.position,
-                            state.coordinate().leaf_position()
-                        );
+                        assert_eq!(agree_state_proof.position, state.coordinate.leaf_position());
                         assert_eq!(agree_state_proof.node, left_leaf);
                         assert!(agree_state_proof.verify_root(fixture.commitment));
                     }
@@ -1004,11 +987,8 @@ mod tests {
 
         assert_eq!(tournament, ROOT);
         assert_eq!(match_id, fixture.match_id);
-        assert_eq!(left_leaf.join(&right_leaf), state.revealing_parent());
-        assert_eq!(
-            agree_state_proof.position,
-            state.coordinate().leaf_position()
-        );
+        assert_eq!(left_leaf.join(&right_leaf), state.revealing_parent);
+        assert_eq!(agree_state_proof.position, state.coordinate.leaf_position());
         assert!(agree_state_proof.verify_root(fixture.commitment));
     }
 
@@ -1097,16 +1077,13 @@ mod tests {
 
         let mut wrong_parent = engaged_fixture(LEAF, 0, 7, MatchSide::One, |_source, _coords| {
             LiveMatch::new(
-                LiveMatchState::Bisecting(
-                    BisectingMatch::try_new(
-                        digest(0xfb),
-                        WaitingChildren::new(digest(0xfc), digest(0xfd)),
-                        MatchCoordinate::new(U256::ZERO, U256::ZERO),
-                        3,
-                        MatchSide::One,
-                    )
-                    .unwrap(),
-                ),
+                LiveMatchState::Bisecting(UnresolvedMatch {
+                    revealing_parent: digest(0xfb),
+                    waiting_children: WaitingChildren::new(digest(0xfc), digest(0xfd)),
+                    coordinate: MatchCoordinate::new(U256::ZERO, U256::ZERO),
+                    height: 3,
+                    responder: MatchSide::One,
+                }),
                 TimeoutDisposition::None,
             )
         });
