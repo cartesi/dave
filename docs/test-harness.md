@@ -490,7 +490,8 @@ record):
 
 - When independent processes freeze and resume in lockstep, check
   `pmset -g log` before blaming software: an unattended macOS run dies of
-  idle sleep, not bugs. Hold the machine awake (`caffeinate -is`).
+  idle sleep, not bugs. The e2e scenario recipe holds the machine awake on
+  Darwin (`caffeinate -ims`); hold it awake yourself for other long runs.
 - A stale devnet once surfaced as a misleading consensus assert in a new
   environment. The e2e preflight now verifies the recorded inputs, state,
   and deployments before Lua or the node starts; `just doctor-e2e` reports the

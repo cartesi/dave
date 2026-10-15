@@ -171,9 +171,6 @@ carry no backlog (reviews/README.md).
   dependency directories sit beside the pinned ones (copied rollups-contracts
   alpha.6 and alpha.9): name the extra and missing directories, and let doctor
   check them. (runbooks/prt-refund-gas-calibration.md)
-- On macOS the e2e recipes run throttled unless the machine is held awake
-  (smoke `simple`: 121 s under caffeinate, 1,669 s without, so `stf_all` hit
-  its deadline): hold it awake from the recipe on Darwin. (test-harness.md)
 
 ## Decisions
 
