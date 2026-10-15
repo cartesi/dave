@@ -19,6 +19,7 @@ use alloy::{
 };
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use log::debug;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// A block-number/hash pair that identifies one chain observation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,6 +86,21 @@ impl Chain {
     /// the rest of an observation.
     pub async fn latest_head(&self) -> Result<ChainHead> {
         self.tagged_head(Latest, "latest").await
+    }
+
+    /// How long ago the latest block was produced, by its timestamp: a
+    /// provider that stopped following the chain keeps serving an old head
+    /// and answers everything else consistently with it.
+    pub async fn latest_age(&self) -> Result<Duration> {
+        let block = self
+            .provider
+            .get_block(Latest.into())
+            .await?
+            .ok_or_else(|| anyhow!("provider has no latest block"))?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("the system clock is before 1970")?;
+        Ok(now.saturating_sub(Duration::from_secs(block.header.timestamp)))
     }
 
     /// Sample Finalized once, including its hash so logs at the durable
@@ -345,6 +361,25 @@ mod tests {
             .connect_mocked_client(asserter.clone())
             .erased();
         (Chain::new(provider), asserter)
+    }
+
+    #[tokio::test]
+    async fn the_latest_block_ages_with_the_clock() {
+        let (chain, asserter) = mocked_chain();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut block = alloy::rpc::types::Block::<alloy::rpc::types::Transaction>::default();
+        block.header.inner.timestamp = now - 600;
+        asserter.push_success(&Some(block.clone()));
+        let age = chain.latest_age().await.unwrap();
+        assert!((600..610).contains(&age.as_secs()), "{age:?}");
+
+        // A head stamped ahead of this clock is fresh, not negative.
+        block.header.inner.timestamp = now + 60;
+        asserter.push_success(&Some(block));
+        assert_eq!(chain.latest_age().await.unwrap(), std::time::Duration::ZERO);
     }
 
     /// The `[fromBlock, toBlock]` of every get_logs request, in order.

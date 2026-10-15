@@ -183,7 +183,11 @@ it lands, so a call planned for G has not landed (it reverts at estimation,
 with the reason in the error; a relay holds or dropped it; it is outbid; or
 it mines without effect). G is hardcoded, since the node knows no block time
 to convert the table's budgets; revisit it if a deployment's G departs from 5
-minutes. An ingestion check that keeps failing means the provider keeps
+minutes. A read endpoint that stops following the chain fails nothing (it
+answers consistently with its old head), so the reader also logs ERROR on
+every tick whose latest block is older than G; a stalled provider is outside
+the trust model, so it is reported, not worked around. An ingestion check
+that keeps failing means the provider keeps
 omitting logs (point the node at a complete one), or a stored chunk lacks
 one: its page names both remedies. That is the one stall a retry never heals:
 a log missing from the tail of a catch-up chunk (rebuild the data directory).
