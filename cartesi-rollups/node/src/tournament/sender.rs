@@ -2,12 +2,12 @@
 //! specified transaction request for the transaction lane. Building is
 //! pure; submission belongs to the epoch manager's transaction lane.
 
-use crate::hero::error::Result;
 use alloy::{
     eips::BlockId,
     primitives::{Address, B256, Bytes, U256},
     providers::DynProvider,
 };
+use anyhow::Result;
 use async_trait::async_trait;
 use log::trace;
 
