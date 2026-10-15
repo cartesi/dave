@@ -276,8 +276,10 @@ the level below, so the sybil's levels stay mutually coherent.
 `Env.steering_patches` builds the chain from the deployed level table, in
 256-bit arithmetic (window 1 alone starts at 2^68, past a Lua integer),
 and `Env.run_steered_epoch` asserts that the dispute's leaf match sealed
-on exactly the steered transition: it reads each leaf match's divergence
-cycle from `sealedMatch`, pinned at its `LeafMatchSealed` block.
+on exactly the steered transition. Resolving a match zeroes its
+`sealedMatch` view, so the reader derives the divergence cycle as that view
+does, from the `LeafMatchSealed` event's position over the tournament's
+immutable descriptor, with no read pinned below the head.
 
 That assertion exists because hand-written chains drifted twice without
 a trace. Pre-rewrite `stf_all` carried unaligned patches that never
