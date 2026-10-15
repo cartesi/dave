@@ -12,11 +12,6 @@ carry no backlog (reviews/README.md).
   confirmation below. It is a new deployment generation, whose notes are
   CHANGELOG.md's Unreleased section: at the cut, title it with the tag and
   add the generation's addresses. (build-system.md, CHANGELOG.md)
-- Move the emulator and solidity-step pins from v0.22.0-test3 and
-  v0.16.0-test3 to their final tags once promoted, with the shared devshell
-  flake and the sequencer's pin. Both RCs and the finals report 0.22.0, so
-  rebuild the images, regenerate the fixtures and the gas script's yield
-  hash, and wipe any data directory built on the RC. (build-system.md)
 
 ## Before the audited release
 
@@ -98,7 +93,8 @@ carry no backlog (reviews/README.md).
 - Pin the capacity boundaries: the last input slot and the last stride.
   (test-harness.md)
 - Identify the reference CLI by package digest instead of its version
-  string, which cannot tell a v0.22 RC from the final release.
+  string, which cannot tell the release from its pre-releases or from an
+  unreleased upstream build.
   (test-harness.md)
 - Optional: a steered divergence point for the harness's tail adversary, to
   dispute active spans in-process. (test-harness.md)
