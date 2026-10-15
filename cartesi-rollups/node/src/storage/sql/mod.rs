@@ -1,8 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The create-only DDL, its node/schema identity guard, and the discipline
-//! tests that drive every schema trigger to its abort.
+//! The create-only DDL, its store identity guard, and the source-level
+//! discipline tests.
 
 pub mod schema;
 

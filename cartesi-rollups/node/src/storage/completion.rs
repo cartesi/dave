@@ -7,11 +7,13 @@
 use super::Storage;
 use super::convert::u64_to_i64;
 use super::error::{Result, StorageError};
-use super::queries::unfinished_epoch_number_in;
+use super::queries::{epoch_count_in, unfinished_epoch_number_in};
 
 impl Storage {
     /// Releases an epoch after finalized settlement and bond recovery. The
     /// caller must stop using its Hero before making the epoch collectible.
+    /// Epochs complete in order, and only ingested ones: the cursor may
+    /// point just past the ingested prefix, never further.
     pub fn complete_epoch(&mut self, epoch_number: u64) -> Result<()> {
         self.write(|tx| {
             let expected = unfinished_epoch_number_in(tx)?;
@@ -19,6 +21,11 @@ impl Storage {
                 return Err(StorageError::InconsistentEpoch {
                     expected,
                     provided: epoch_number,
+                });
+            }
+            if epoch_number >= epoch_count_in(tx)? {
+                return Err(StorageError::DataNotFound {
+                    description: format!("epoch {epoch_number}, which ingestion has not seen"),
                 });
             }
             tx.execute(

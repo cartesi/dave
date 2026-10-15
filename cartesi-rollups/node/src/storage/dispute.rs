@@ -49,8 +49,7 @@ impl Storage {
     /// Inserts computed quartet nodes. An existing row must agree;
     /// determinism makes concurrent duplicates benign, so a
     /// disagreement is the loudest possible signal (nondeterminism or
-    /// version drift). The schema trigger enforces the same tripwire
-    /// below this check.
+    /// version drift).
     pub fn insert_quartet_nodes(&mut self, rows: &[(Quartet, Digest)]) -> Result<()> {
         self.write(|tx| insert_quartet_nodes_in(tx, rows))
     }

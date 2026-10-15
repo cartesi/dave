@@ -314,20 +314,12 @@ impl Storage {
     /// BEGIN, so a contending writer waits at the boundary of the
     /// domain operation instead of failing mid-transaction. On `Err`
     /// the transaction drops unsent - automatic rollback.
-    ///
-    /// Corruption tripwires escalate to panics here: the schema
-    /// triggers (defense in depth BELOW the Rust-side checks) surface
-    /// as ordinary rusqlite errors, and the workers' tick loops retry
-    /// every error forever - a nondeterminism abort must instead
-    /// reach the node's loud exit path (lib.rs worker_failure). The
-    /// fragments are the triggers' own messages, pinned by the
-    /// discipline tests.
     pub(super) fn write<T>(&mut self, f: impl FnOnce(&Transaction) -> Result<T>) -> Result<T> {
         let tx = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(anyhow::Error::from)?;
-        let out = escalate_tripwires(f(&tx))?;
+        let out = f(&tx)?;
         tx.commit().map_err(anyhow::Error::from)?;
         Ok(out)
     }
@@ -339,35 +331,9 @@ impl Storage {
     }
 }
 
-/// Writer connections: WAL, FULL sync, and a
-/// generous busy timeout (machine work happens between transactions,
-/// never inside one, so writers only contend for row-commit bursts).
-/// Escalates the schema triggers' corruption tripwires into panics.
-/// The Rust-side checks already panic at their sites; the triggers
-/// beneath them (defense in depth, and the only check raw writers
-/// meet) abort with these exact message fragments - pinned by the
-/// discipline tests - and would otherwise flow into the workers'
-/// retry-forever tick loops as ordinary errors. Discipline refusals
-/// that are part of an API's contract (append-only, validate_next)
-/// stay errors: callers legitimately observe those.
-fn escalate_tripwires<T>(result: Result<T>) -> Result<T> {
-    if let Err(e) = &result {
-        let text = format!("{e:#}");
-        for fragment in [
-            "nondeterminism or corruption",
-            "node cache collision",
-            "corruption or version drift",
-            "disagrees with its stored row",
-        ] {
-            assert!(
-                !text.contains(fragment),
-                "storage tripwire fired: {text} (invariant violation, not retryable)"
-            );
-        }
-    }
-    result
-}
-
+/// Writer connections: WAL, FULL sync, and a generous busy timeout
+/// (machine work happens between transactions, never inside one, so
+/// writers only contend for row-commit bursts).
 fn open_writer_connection(db_path: &Path) -> Result<Connection> {
     let connection = Connection::open(db_path).map_err(anyhow::Error::from)?;
     configure_writer_pragmas(&connection)?;

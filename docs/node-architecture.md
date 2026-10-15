@@ -331,9 +331,13 @@ Main schema (`storage/sql/schema.sql`):
 
 Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
-monotonic watermark, prunable derived store - and the schema's
-trigger layer enforces the taxonomy against any writer, including raw
-connections (`sql/schema.sql`, tested by `sql/discipline.rs`).
+monotonic watermark, prunable derived store - and its writer in
+`storage/` keeps the class: the logs check their sequence and return
+typed errors; the write-once rows (settlements, the engine config,
+boundaries, quartet nodes) compare with the stored row and panic on a
+disagreement, so nondeterminism reaches the loud exit instead of a retry
+loop; the watermark only rises; only collection removes rows.
+`sql/discipline.rs` pins where in-place writes and deletes may appear.
 GC releases boundary rows and, in the same transaction, finds the states no
 remaining row names; their directories are removed only AFTER that
 transaction commits: a crash may orphan a directory, never dangle a row.

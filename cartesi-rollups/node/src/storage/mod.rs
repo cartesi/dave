@@ -13,7 +13,9 @@
 //! role-free read surface; `sql` holds the DDL and its discipline
 //! tests. Every table belongs to one of four mutation classes -
 //! append-only log, write-once cell, monotonic watermark, prunable
-//! derived store - enforced by triggers in the schema itself.
+//! derived store - and its writer here keeps it: logs check their
+//! sequence, write-once cells compare and panic on a disagreement,
+//! watermarks only rise, and only collection removes rows.
 
 pub mod error;
 pub mod rollups_machine;
