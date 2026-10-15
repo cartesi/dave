@@ -132,26 +132,16 @@ impl Machine {
 
     /// The linked `libcartesi`'s pristine uarch state hash: the hash of the
     /// uarch state's node in the machine hash tree, which every uarch reset
-    /// restores. Backed by an internal library symbol until the C API's
-    /// `cm_get_uarch_pristine_hash()` ships, which changes only this body.
+    /// restores.
     ///
-    /// Panics on a hash of another length: only a broken library has one.
+    /// Panics if the library reports an error: with no machine it reads a
+    /// static, so only a broken library fails.
     pub fn uarch_pristine_hash() -> Hash {
-        // SAFETY: the linked library defines this immutable `unsigned int`.
-        let len = unsafe { cartesi_machine_sys::uarch_pristine_hash_len };
-        assert_eq!(
-            len,
-            constants::machine::HASH_SIZE,
-            "the linked libcartesi's pristine uarch hash is {len} bytes long, not a machine hash"
-        );
-        // SAFETY: the library defines `uarch_pristine_hash` as an immutable
-        // array of `uarch_pristine_hash_len` bytes, just checked to be a
-        // `Hash`'s length, and a byte array needs no alignment.
-        unsafe {
-            (&raw const cartesi_machine_sys::uarch_pristine_hash)
-                .cast::<Hash>()
-                .read()
-        }
+        let mut hash = Hash::default();
+        let err_code =
+            unsafe { cartesi_machine_sys::cm_get_uarch_pristine_hash(ptr::null(), &mut hash) };
+        check_err!(err_code).expect("the linked libcartesi reads its pristine uarch hash");
+        hash
     }
 
     // -----------------------------------------------------------------------------
@@ -1125,11 +1115,7 @@ mod tests {
         Ok(())
     }
 
-    /// The uarch state's node, which every uarch reset rewrites whole. The C
-    /// API exports neither number yet (the emulator's Lua module and step's
-    /// `EmulatorConstants.sol` do).
-    const UARCH_STATE_START: u64 = 0x40_0000;
-    const UARCH_STATE_LOG2_SIZE: u32 = 22;
+    use constants::ar::{UARCH_STATE_LOG2_SIZE, UARCH_STATE_START};
 
     fn create_tiny_machine() -> Result<Machine> {
         let mut config = Machine::default_config()?;

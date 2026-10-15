@@ -3,10 +3,9 @@
 
 //! Constants definitions from Cartesi Machine.
 //!
-//! The names in this module track the v0.21 emulator naming convention:
-//! `HASH_TREE_LOG2_*` for hash-tree sizes (previously `TREE_LOG2_*`) and the
-//! `ar` module for address ranges (previously `pma`). The numeric values are
-//! unchanged from v0.19.
+//! The names in this module track the emulator's naming convention since
+//! v0.21: `HASH_TREE_LOG2_*` for hash-tree sizes (previously `TREE_LOG2_*`)
+//! and the `ar` module for address ranges (previously `pma`).
 
 pub mod machine {
     use cartesi_machine_sys::*;
@@ -44,6 +43,10 @@ pub mod ar {
     /// from the send and reset primitives; no Dave Solidity file should
     /// reference the raw address.
     pub const SHADOW_REVERT_ROOT_HASH_START: u64 = CM_AR_SHADOW_REVERT_ROOT_HASH_START as u64;
+    /// The uarch state's node in the machine hash tree, which every uarch
+    /// reset rewrites whole to `Machine::uarch_pristine_hash()`.
+    pub const UARCH_STATE_START: u64 = CM_UARCH_STATE_START_ADDRESS as u64;
+    pub const UARCH_STATE_LOG2_SIZE: u32 = CM_UARCH_STATE_LOG2_SIZE;
 }
 
 pub mod break_reason {
