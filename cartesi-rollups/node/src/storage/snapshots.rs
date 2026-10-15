@@ -588,36 +588,6 @@ pub(super) fn insert_template_machine_in(tx: &Transaction, state_hash: &Hash) ->
 // Garbage collection
 //
 
-/// Garbage-collects the epoch's intermediate boundaries, keeping the
-/// epoch start, the anchor (the latest), and every snapshot_gap-th
-/// input boundary - the preemptive material dispute replays resume
-/// from. A gap of 1 keeps
-/// everything. Returns the directories orphaned by the sweep; the
-/// caller removes them after the transaction commits.
-pub(super) fn gc_previous_advances_in(
-    tx: &Transaction,
-    epoch: u64,
-    input_anchor: u64,
-    snapshot_gap: u64,
-) -> Result<Vec<PathBuf>> {
-    assert!(snapshot_gap >= 1, "a zero gap keeps nothing to divide by");
-    tx.execute(
-        r#"
-        DELETE FROM epoch_snapshot_info
-        WHERE epoch_number = ?1 AND (input_number != ?2 AND input_number != 0)
-          AND (input_number % ?3) != 0
-        "#,
-        params![
-            u64_to_i64(epoch),
-            u64_to_i64(input_anchor),
-            u64_to_i64(snapshot_gap)
-        ],
-    )
-    .map_err(anyhow::Error::from)?;
-
-    sweep_unreferenced_snapshots_in(tx)
-}
-
 /// Deletes content-addressed rows nothing references, returning their
 /// directories. The FK RESTRICT on template_machine and
 /// epoch_snapshot_info backs the NOT IN exclusions.
@@ -897,74 +867,6 @@ mod tests {
         assert_eq!(floor, InputBoundary(4));
     }
 
-    #[test]
-    fn gc_previous_advances_keeps_gap_boundaries() {
-        let (_handle, mut s) = setup_storage();
-        let epoch = 5u64;
-
-        let survivors = |s: &mut Storage| -> Vec<u64> {
-            s.epoch_snapshots(epoch)
-                .unwrap()
-                .into_iter()
-                .map(|(boundary, _)| boundary.0)
-                .collect()
-        };
-
-        let dirs: Vec<tempfile::TempDir> =
-            (0..10).map(|_| tempfile::TempDir::new().unwrap()).collect();
-        for (input, dir) in dirs.iter().enumerate() {
-            let hash = [input as u8 + 1; 32];
-            s.insert_boundary(epoch, input as u64, &hash, dir.path())
-                .unwrap();
-        }
-
-        let orphans = s
-            .write(|tx| gc_previous_advances_in(tx, epoch, 9, 4))
-            .unwrap();
-        assert_eq!(survivors(&mut s), vec![0, 4, 8, 9]);
-        assert_eq!(orphans.len(), 6, "six boundaries fell to the gap");
-
-        // A gap larger than any input keeps only the start and anchor.
-        let (_handle2, mut s2) = setup_storage();
-        let dirs2: Vec<tempfile::TempDir> =
-            (0..4).map(|_| tempfile::TempDir::new().unwrap()).collect();
-        for (input, dir) in dirs2.iter().enumerate() {
-            let hash = [input as u8 + 1; 32];
-            s2.insert_boundary(epoch, input as u64, &hash, dir.path())
-                .unwrap();
-        }
-        s2.write(|tx| gc_previous_advances_in(tx, epoch, 2, 1000).map(|_| ()))
-            .unwrap();
-        assert_eq!(
-            s2.epoch_snapshots(epoch)
-                .unwrap()
-                .into_iter()
-                .map(|(b, _)| b.0)
-                .collect::<Vec<_>>(),
-            vec![0, 2]
-        );
-
-        // A gap of 1 keeps every boundary.
-        let (_handle3, mut s3) = setup_storage();
-        let dirs3: Vec<tempfile::TempDir> =
-            (0..5).map(|_| tempfile::TempDir::new().unwrap()).collect();
-        for (input, dir) in dirs3.iter().enumerate() {
-            let hash = [input as u8 + 1; 32];
-            s3.insert_boundary(epoch, input as u64, &hash, dir.path())
-                .unwrap();
-        }
-        s3.write(|tx| gc_previous_advances_in(tx, epoch, 4, 1).map(|_| ()))
-            .unwrap();
-        assert_eq!(
-            s3.epoch_snapshots(epoch)
-                .unwrap()
-                .into_iter()
-                .map(|(b, _)| b.0)
-                .collect::<Vec<_>>(),
-            vec![0, 1, 2, 3, 4]
-        );
-    }
-
     /// Orphaned directories are removed only after the commit; the
     /// returned paths are exactly the swept rows' directories.
     #[test]
@@ -977,7 +879,14 @@ mod tests {
         s.insert_boundary(3, 1, &[2u8; 32], drop_.path()).unwrap();
 
         let orphans = s
-            .write(|tx| gc_previous_advances_in(tx, 3, 2, 1000))
+            .write(|tx| {
+                tx.execute(
+                    "DELETE FROM epoch_snapshot_info WHERE epoch_number = 3 AND input_number = 1",
+                    [],
+                )
+                .map_err(anyhow::Error::from)?;
+                sweep_unreferenced_snapshots_in(tx)
+            })
             .unwrap();
         assert_eq!(orphans, vec![drop_.path().to_path_buf()]);
     }
