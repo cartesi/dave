@@ -128,6 +128,11 @@ impl HeroContext {
                     })?;
 
                     let next = match match_.status() {
+                        // The next level is this match's delegated child, the
+                        // one read_match returned as AwaitingChild, and its
+                        // link names this level's match and commitment. The
+                        // planner and preparation rely on that pairing (a
+                        // propagation's parent and child) without checking it.
                         MatchStatus::Inner { child } => {
                             let link = ParentLink::try_new(address, match_.id(), local_commitment)
                                 .map_err(|source| ContextError::Domain {
@@ -161,9 +166,8 @@ impl HeroContext {
             parent = Some(link);
         }
 
-        let snapshot = assemble_snapshots(path)?;
         Ok(Self {
-            snapshot,
+            snapshot: assemble_snapshots(path),
             coords: levels,
         })
     }
@@ -228,23 +232,19 @@ struct PathLevel {
     parent: Option<ParentLink>,
 }
 
-fn assemble_snapshots(path: Vec<PathLevel>) -> Result<SemanticSnapshot, ContextError> {
+fn assemble_snapshots(path: Vec<PathLevel>) -> SemanticSnapshot {
     let mut child = None;
     for level in path.into_iter().rev() {
-        let tournament = level.descriptor.address();
-        child = Some(
-            SemanticSnapshot::try_new(
-                level.descriptor,
-                level.standing,
-                level.local_commitment,
-                level.local_standing,
-                level.parent,
-                child,
-            )
-            .map_err(|source| ContextError::Domain { tournament, source })?,
-        );
+        child = Some(SemanticSnapshot::new(
+            level.descriptor,
+            level.standing,
+            level.local_commitment,
+            level.local_standing,
+            level.parent,
+            child,
+        ));
     }
-    Ok(child.expect("every Dispute has a root tournament"))
+    child.expect("every Dispute has a root tournament")
 }
 
 /// Every tournament must run its level exactly as the pinned table says:
@@ -455,7 +455,7 @@ mod tests {
             parent: Some(parent),
         };
 
-        let snapshot = assemble_snapshots(vec![root, child]).unwrap();
+        let snapshot = assemble_snapshots(vec![root, child]);
         assert_eq!(snapshot.descriptor().address(), ROOT);
         assert!(snapshot.parent().is_none());
         let child = snapshot.child().unwrap();
