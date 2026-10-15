@@ -14,7 +14,8 @@
 //! tests. Every table belongs to one of four mutation classes -
 //! append-only log, write-once cell, monotonic watermark, prunable
 //! derived store - and its writer here keeps it: logs check their
-//! sequence, write-once cells compare and panic on a disagreement,
+//! sequence, write-once rows written at run time compare and panic on
+//! a disagreement (the identity rows are checked at startup instead),
 //! watermarks only rise, and only collection removes rows.
 
 pub mod error;

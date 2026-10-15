@@ -39,7 +39,6 @@ use super::error::{Result, StorageError};
 use super::open::{Storage, snapshots_path};
 use super::rollups_machine::RollupsMachine;
 use crate::engine::InputBoundary;
-use std::collections::BTreeSet;
 
 use cartesi_machine::error::MachineError;
 use cartesi_machine::machine::Machine;
@@ -143,8 +142,9 @@ impl Storage {
     }
 
     /// Serializes into a unique staging directory before durable CAS
-    /// publication. Staging names are never keyed by hash: the hero
-    /// and the roll may produce an identical state concurrently.
+    /// publication. Staging names are never keyed by hash: the hero's
+    /// write-back and the runner's batch commit may publish an identical
+    /// state concurrently, and publish_staged settles the race.
     fn stage_machine_store(
         &self,
         state_hash: &Hash,
@@ -549,26 +549,24 @@ pub(super) fn insert_snapshot_in(
 /// orphans once this transaction commits. The template needs no row of
 /// its own: epoch 0's start names it while anything can still need it.
 pub(super) fn release_boundaries_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<Hash>> {
-    let released = tx
+    let max_epoch = u64_to_i64(max_epoch);
+    let orphans = tx
         .prepare_cached(
-            "DELETE FROM epoch_snapshot_info WHERE epoch_number <= ?1 RETURNING state_hash",
+            "SELECT state_hash FROM epoch_snapshot_info WHERE epoch_number <= ?1
+             EXCEPT
+             SELECT state_hash FROM epoch_snapshot_info WHERE epoch_number > ?1",
         )
         .map_err(anyhow::Error::from)?
-        .query_map([u64_to_i64(max_epoch)], |row| row.get::<_, Vec<u8>>(0))
+        .query_map([max_epoch], |row| row.get::<_, Vec<u8>>(0))
         .map_err(anyhow::Error::from)?
-        .collect::<rusqlite::Result<BTreeSet<_>>>()
+        .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(anyhow::Error::from)?;
-
-    let mut named = tx
-        .prepare_cached("SELECT 1 FROM epoch_snapshot_info WHERE state_hash = ?1 LIMIT 1")
-        .map_err(anyhow::Error::from)?;
-    let mut orphans = Vec::new();
-    for hash in released {
-        if !named.exists([&hash]).map_err(anyhow::Error::from)? {
-            orphans.push(blob_to_hash(hash)?);
-        }
-    }
-    Ok(orphans)
+    tx.execute(
+        "DELETE FROM epoch_snapshot_info WHERE epoch_number <= ?1",
+        [max_epoch],
+    )
+    .map_err(anyhow::Error::from)?;
+    orphans.into_iter().map(blob_to_hash).collect()
 }
 
 impl Storage {
