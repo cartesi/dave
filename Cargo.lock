@@ -1776,7 +1776,6 @@ dependencies = [
  "alloy-transport",
  "anyhow",
  "async-recursion",
- "async-trait",
  "aws-config",
  "aws-sdk-kms",
  "cartesi-dave-contracts",

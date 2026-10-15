@@ -8,10 +8,7 @@ use alloy::primitives::{Address, B256, TxKind, U256, keccak256};
 use alloy::providers::DynProvider;
 use anyhow::Result;
 use log::{Level, debug, error, info, trace};
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use crate::chain::{Chain, ChainHead};
 use crate::escalation::{PAGE_AFTER, Persistence};
@@ -28,18 +25,16 @@ use crate::{
         planner::{HeroTerminal, Loss},
     },
     merkle::Digest,
-    tournament::ArenaSender,
 };
 use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 
-pub struct EpochManager<AS: ArenaSender> {
-    arena_sender: Arc<AS>,
+pub struct EpochManager {
     transaction_lane: TransactionLane,
     consensus: Address,
     signer_address: Address,
     sleep_duration: Duration,
     storage: Storage,
-    epoch_hero: Option<Hero<AS>>,
+    epoch_hero: Option<Hero>,
     shutdown: ShutdownSignal,
     /// The previous tick's calls, each with the instant it was first
     /// planned on consecutive ticks (`track_planned`).
@@ -77,9 +72,8 @@ pub(crate) struct Ticked {
     pub reports: Vec<SendReport>,
 }
 
-impl<AS: ArenaSender> EpochManager<AS> {
+impl EpochManager {
     pub fn new(
-        arena_sender: Arc<AS>,
         transaction_lane: TransactionLane,
         consensus_address: Address,
         signer_address: Address,
@@ -88,7 +82,6 @@ impl<AS: ArenaSender> EpochManager<AS> {
         shutdown: ShutdownSignal,
     ) -> Self {
         Self {
-            arena_sender,
             transaction_lane,
             consensus: consensus_address,
             signer_address,
@@ -536,7 +529,6 @@ impl<AS: ArenaSender> EpochManager<AS> {
         if self.epoch_hero.is_none() {
             let storage = Storage::new(self.storage.state_dir())?;
             self.epoch_hero = Some(Hero::new(
-                self.arena_sender.clone(),
                 chain.clone(),
                 epoch.root_tournament,
                 epoch.block_created_number,
@@ -670,7 +662,6 @@ mod tests {
     use crate::storage::{
         LeafProof, MACHINE_MEMORY_PROOF_SIBLING_COUNT, MachineValidityProof, Proof,
     };
-    use crate::tournament::EthArenaSender;
     use alloy::{
         network::{EthereumWallet, TransactionBuilder},
         primitives::{Bytes, TxKind},
@@ -818,7 +809,7 @@ mod tests {
         dir
     }
 
-    fn manager(path: &Path) -> (EpochManager<EthArenaSender>, Chain, Asserter) {
+    fn manager(path: &Path) -> (EpochManager, Chain, Asserter) {
         let asserter = Asserter::new();
         let provider = ProviderBuilder::new()
             .connect_mocked_client(asserter.clone())
@@ -827,7 +818,7 @@ mod tests {
         (manager, chain, asserter)
     }
 
-    fn manager_on(path: &Path, provider: DynProvider) -> (EpochManager<EthArenaSender>, Chain) {
+    fn manager_on(path: &Path, provider: DynProvider) -> (EpochManager, Chain) {
         let signer = PrivateKeySigner::from_bytes(&B256::repeat_byte(0x11)).unwrap();
         let address = signer.address();
         let lane = TransactionLane::new(
@@ -837,7 +828,6 @@ mod tests {
             EthereumWallet::from(signer),
         );
         let manager = EpochManager::new(
-            Arc::new(EthArenaSender::new(provider.clone())),
             lane,
             Address::repeat_byte(0xCC),
             address,

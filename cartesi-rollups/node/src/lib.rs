@@ -32,7 +32,6 @@ use args::NodeConfig;
 
 use anyhow::{Context, Result, anyhow};
 use log::{error, info};
-use std::sync::Arc;
 use tokio::task::{JoinError, JoinHandle};
 
 use crate::blockchain_reader::BlockchainReader;
@@ -41,7 +40,6 @@ use crate::epoch_manager::EpochManager;
 use crate::fatal::Panicked;
 use crate::machine_runner::MachineRunner;
 use crate::sync::{ShutdownSignal, StopSignals};
-use crate::tournament::EthArenaSender;
 
 /// Runs the node: one runtime, three workers, explicit spawns and
 /// select arms - deliberately not a Worker abstraction, so each edit
@@ -105,10 +103,8 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
             let storage = params.storage()?;
             let read_provider = params.read_provider().await?;
             let transaction_lane = params.transaction_lane(read_provider.clone()).await?;
-            let chain = Chain::new(read_provider.clone());
-            let arena_sender = EthArenaSender::new(read_provider);
+            let chain = Chain::new(read_provider);
             let epoch_manager = EpochManager::new(
-                Arc::new(arena_sender),
                 transaction_lane,
                 params.address_book.consensus,
                 params.signer_address,

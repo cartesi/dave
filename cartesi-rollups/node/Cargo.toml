@@ -38,7 +38,6 @@ reqwest = { workspace = true }
 
 anyhow = { workspace = true }
 async-recursion = { workspace = true }
-async-trait = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }
