@@ -365,16 +365,18 @@ republished by the next crossing, unless it vanishes between that lookup and
 the crossing's checkout, which panics. Revisit this if GC may ever sweep rows
 of a live epoch, or a second publisher thread appears.
 
-The runner captures all three settlement leaves from one final machine root,
-checks their emulator proof metadata and Keccak openings, and verifies that
-root again when publishing the next epoch's initial boundary. Capture does not
-judge the machine state: a terminal app's epoch is still recorded and
-defended. Only staging asks whether the state settles (a nonzero `iflags_Y`
-and a manual `RX_ACCEPTED` HTIF reason, ignoring the response-length field),
-and holds the epoch when it does not (epoch-lifecycle.md). The boundary row
-and complete settlement row then
-commit in the same SQLite transaction. Reads revalidate every persisted proof
-against its final state so corruption fails before transaction staging.
+The runner loads the epoch's final boundary, its root verified against the
+row, and captures all three settlement leaves from that root, checking their
+emulator proof metadata and Keccak openings. Capture does not judge the
+machine state: a terminal app's epoch is still recorded and defended. Only
+staging asks whether the state settles (a nonzero `iflags_Y` and a manual
+`RX_ACCEPTED` HTIF reason, ignoring the response-length field), and holds the
+epoch when it does not (epoch-lifecycle.md). Finishing an epoch changes no
+machine state, so the next epoch starts from the same snapshot: its `(e+1, 0)`
+row and the settlement row commit in one SQLite transaction, which first
+re-checks that the cursor still ends the sealed epoch. Reads revalidate every
+persisted proof against its final state so corruption fails before
+transaction staging.
 
 One schema note to know about:
 

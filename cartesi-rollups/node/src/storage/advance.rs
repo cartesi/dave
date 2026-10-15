@@ -16,7 +16,6 @@
 
 use super::convert::{i64_to_u64, u64_to_i64};
 use super::error::Result;
-use super::open::create_epoch_dir;
 use super::rollups_machine::RollupsMachine;
 use super::snapshots::{
     insert_snapshot_in, release_boundaries_in, remove_orphan_dirs, snapshot_path,
@@ -26,7 +25,6 @@ use super::{Input, Settlement, Storage, rollups_machine};
 use crate::engine::Run;
 
 use crate::merkle::Digest;
-use alloy::primitives::U256;
 use cartesi_machine::{constants::rollup::LOG2_MAX_ADVANCE_STATES_PER_EPOCH, types::Hash};
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::path::{Path, PathBuf};
@@ -160,59 +158,10 @@ fn epoch_is_sealed_in(tx: &Transaction, epoch: u64) -> Result<bool> {
         .is_some())
 }
 
-/// The pinned root stride, read inside the caller's transaction.
-fn run_stride_in(tx: &Transaction) -> Result<u64> {
-    Ok(crate::engine::config::stored(tx)?
-        .expect("initialization pins the engine config")
-        .geometry
-        .root_stride())
-}
-
-fn assert_complete_window_prefix_in(tx: &Transaction, epoch: u64, input_count: u64) -> Result<()> {
-    let log2_run_stride = run_stride_in(tx)?;
-    let mut stmt = tx
-        .prepare_cached(
-            "SELECT shift FROM sling_nodes
-             WHERE epoch = ?1 AND log2_stride = ?2 AND height = ?3 AND shift < ?4
-             ORDER BY shift ASC",
-        )
-        .map_err(anyhow::Error::from)?;
-    let rows = stmt
-        .query_map(
-            params![
-                u64_to_i64(epoch),
-                u64_to_i64(log2_run_stride),
-                u64_to_i64(rollups_machine::window_height(log2_run_stride)),
-                U256::from(input_count).to_be_bytes::<32>()
-            ],
-            |row| row.get::<_, Vec<u8>>(0),
-        )
-        .map_err(anyhow::Error::from)?;
-    let shifts = rows
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(anyhow::Error::from)?;
-
-    assert_eq!(
-        shifts.len() as u64,
-        input_count,
-        "epoch {epoch} has {} window roots at roll, expected {input_count}",
-        shifts.len()
-    );
-    for (window, shift) in shifts.into_iter().enumerate() {
-        assert_eq!(
-            shift,
-            U256::from(window).to_be_bytes::<32>(),
-            "epoch {epoch}'s window-root prefix has a hole at {window}"
-        );
-    }
-    Ok(())
-}
-
-/// The roll's hard guard, suitable both before expensive machine work
-/// and inside the settlement transaction. It speaks only durable
-/// state: exact sealed epoch, final boundary, and complete root prefix.
-fn roll_ready_in(tx: &Transaction) -> Result<(u64, u64)> {
-    let (epoch, boundary_input, _) = super::snapshots::latest_boundary_in(tx)?;
+/// The roll's guard, run inside the settlement transaction: the durable
+/// cursor sits at the end of a sealed epoch. Returns the cursor row.
+fn roll_ready_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
+    let (epoch, boundary_input, hash) = super::snapshots::latest_boundary_in(tx)?;
     assert!(
         epoch_is_sealed_in(tx, epoch)?,
         "refusing to roll open epoch {epoch}"
@@ -222,8 +171,7 @@ fn roll_ready_in(tx: &Transaction) -> Result<(u64, u64)> {
         boundary_input, input_count,
         "refusing to roll epoch {epoch}: durable boundary {boundary_input}, input count {input_count}"
     );
-    assert_complete_window_prefix_in(tx, epoch, input_count)?;
-    Ok((epoch, boundary_input))
+    Ok((epoch, boundary_input, hash))
 }
 
 impl Storage {
@@ -601,60 +549,46 @@ impl Storage {
         self.insert_boundary(batch.epoch, batch.boundary_input, &batch.boundary_hash)
     }
 
-    /// Closes an exactly sealed and fully published epoch. The hard
-    /// readiness guard runs before machine work and again inside the
-    /// settlement transaction, so an ingest commit cannot make a
-    /// stale plan roll past an input.
+    /// Closes an exactly sealed and fully published epoch. Finishing an
+    /// epoch changes no machine state, so the next epoch starts from the
+    /// final boundary's snapshot, registered again at (e + 1, 0); a closing
+    /// step that changed the machine would have to store it. The readiness
+    /// guard runs inside the settlement transaction, so an ingest commit
+    /// after the runner's plan cannot settle past an input.
     pub fn roll_epoch(&mut self) -> Result<()> {
-        let expected_position = self.read(roll_ready_in)?;
-        let mut machine = self.latest_snapshot()?;
-        let previous_epoch_number = machine.epoch();
-        let recorded = machine.next_input_index_in_epoch();
-        assert_eq!(
-            (previous_epoch_number, recorded),
-            expected_position,
-            "roll machine disagrees with its durable boundary"
-        );
-
-        let computation_hash = self.settlement_root(&mut machine)?;
-        let (proof_root, machine_validity_proof) = machine.machine_validity_proof()?;
-
-        machine.finish_epoch();
-
-        let new_epoch_number = machine.epoch();
-        create_epoch_dir(&self.state_dir, new_epoch_number)?;
-
-        let (_, state_hash) = self
-            .store_boundary(&mut machine)
-            .map_err(anyhow::Error::from)?;
-
-        assert_eq!(
-            state_hash, proof_root,
-            "stored post-epoch boundary differs from the machine validity proof root"
-        );
-
-        // The post-epoch state the settlement protocol claims and
-        // stages is exactly the new epoch's initial boundary.
-        let settlement = Settlement {
-            computation_hash,
-            final_state: state_hash,
-            machine_validity_proof,
+        let (epoch, recorded, root, machine_validity_proof) = {
+            // Its directory and root are verified against the cursor row.
+            let mut machine = self.latest_snapshot()?;
+            let (root, proof) = machine.machine_validity_proof()?;
+            (
+                machine.epoch(),
+                machine.next_input_index_in_epoch(),
+                root,
+                proof,
+            )
         };
+        let computation_hash = self.settlement_root(epoch, recorded, Digest::new(root))?;
 
         self.write(|tx| {
+            let (cursor_epoch, cursor_input, final_state) = roll_ready_in(tx)?;
             assert_eq!(
-                roll_ready_in(tx)?,
-                (previous_epoch_number, recorded),
+                (cursor_epoch, cursor_input),
+                (epoch, recorded),
                 "roll readiness changed before settlement commit"
             );
-            insert_snapshot_in(tx, new_epoch_number, 0, &state_hash)?;
-            insert_settlement_in(tx, &settlement, previous_epoch_number)
+            insert_snapshot_in(tx, epoch + 1, 0, &final_state)?;
+            let settlement = Settlement {
+                computation_hash,
+                final_state,
+                machine_validity_proof,
+            };
+            insert_settlement_in(tx, &settlement, epoch)
         })?;
 
         match self.free_bytes() {
             Ok(free) => log::info!(
-                "rolled to epoch {new_epoch_number}; {:.1} GiB free on the data directory's \
-                 filesystem",
+                "rolled to epoch {}; {:.1} GiB free on the data directory's filesystem",
+                epoch + 1,
                 free as f64 / (1u64 << 30) as f64
             ),
             Err(e) => log::warn!("could not read the data directory's free space: {e}"),
@@ -668,35 +602,9 @@ impl Storage {
     /// and the same fold composition the dispute facade serves, so
     /// the root the node settles on IS the root the hero can defend
     /// from rows. Strict: every recorded window's row was prepaid by
-    /// the advance commit; a hole refuses to settle.
-    ///
-    /// The padding value is the machine's state at the epoch's final
-    /// boundary, whose row must agree - a cheap corruption tripwire
-    /// at every roll (record time already asserted the final run
-    /// against it).
-    fn settlement_root(&mut self, machine: &mut RollupsMachine) -> Result<Digest> {
-        let epoch = machine.epoch();
-        let recorded = machine.next_input_index_in_epoch();
-        let boundary = Digest::new(machine.state_hash()?);
-
-        if recorded > 0 {
-            // Invariant violations panic: the runner's tick loop
-            // retries Err forever, which would silently stall every
-            // roll on a corrupt store.
-            let row = self.snapshot_hash(epoch, recorded)?.unwrap_or_else(|| {
-                panic!(
-                    "final boundary row missing for epoch {epoch} at input {recorded}: \
-                     corruption or version drift"
-                )
-            });
-            assert_eq!(
-                Digest::from_digest(&row).map_err(anyhow::Error::from)?,
-                boundary,
-                "the final boundary row disagrees with the machine: \
-                 the settlement root would diverge from the servable root"
-            );
-        }
-
+    /// the advance commit; a hole refuses to settle. The padding is
+    /// `boundary`, the machine's state at the epoch's final boundary.
+    fn settlement_root(&mut self, epoch: u64, recorded: u64, boundary: Digest) -> Result<Digest> {
         let log2_run_stride = self.sling_config()?.geometry.root_stride();
         let window_height = rollups_machine::window_height(log2_run_stride);
         let mut roots: Vec<(Digest, u64)> = self
@@ -804,7 +712,7 @@ mod tests {
     use crate::merkle::MerkleBuilder;
     use crate::storage::Epoch;
     use crate::storage::open::snapshots_path;
-    use alloy::primitives::Address;
+    use alloy::primitives::{Address, U256};
     use cartesi_machine::machine::Machine;
 
     /// A window's runs for tests: arbitrary interior, tail carrying
@@ -1364,6 +1272,32 @@ mod tests {
         }
     }
 
+    /// Finishing an epoch changes no machine state: the roll stores no
+    /// machine, and the next epoch starts on the final boundary's snapshot.
+    #[test]
+    fn roll_reuses_the_final_boundary_snapshot() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs(&mut s, 0, 2);
+        let (batch, final_hash) = record_mutated_batch(&mut s, 2);
+        s.commit_advances(batch).unwrap();
+        seal_epoch_zero(&mut s);
+        let listing = |s: &Storage| -> std::collections::BTreeSet<_> {
+            std::fs::read_dir(snapshots_path(s.state_dir()))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect()
+        };
+        let before = listing(&s);
+
+        s.roll_epoch().unwrap();
+
+        assert_eq!(listing(&s), before);
+        let start = s.snapshot_hash(1, 0).unwrap().unwrap();
+        assert_eq!(Digest::new(start), final_hash);
+        assert_eq!(s.snapshot_hash(0, 2).unwrap(), Some(start));
+        assert_eq!(s.settlement_info(0).unwrap().unwrap().final_state, start);
+    }
+
     /// A terminal app still rolls: the node needs the epoch's settlement
     /// row to defend its true state in the dispute (defend, never stage:
     /// epoch-lifecycle.md), and only staging
@@ -1490,7 +1424,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "window roots at roll")]
+    #[should_panic(expected = "window-root rows, expected 1")]
     fn roll_refuses_a_missing_window_root_prefix() {
         let (_handle, mut s) = setup_storage();
         append_inputs(&mut s, 0, 1);

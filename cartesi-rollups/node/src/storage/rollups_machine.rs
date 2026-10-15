@@ -311,11 +311,6 @@ impl RollupsMachine {
         self.next_input_index_in_epoch
     }
 
-    pub fn finish_epoch(&mut self) {
-        self.epoch_number += 1;
-        self.next_input_index_in_epoch = 0;
-    }
-
     /// Captures the three data-block proofs consumed by DaveConsensus.
     /// Every proof is checked against the same current machine root.
     pub fn machine_validity_proof(&mut self) -> MachineResult<(Hash, MachineValidityProof)> {
@@ -346,13 +341,6 @@ impl RollupsMachine {
     pub(crate) fn put_machine(&mut self, machine: Machine) {
         assert!(self.machine.is_none(), "put requires a taken machine");
         self.machine = Some(machine);
-    }
-
-    /// Plain machine store into `dir`. The boundary store owns the
-    /// staging discipline and the content-addressed naming
-    /// (storage/snapshots.rs); this is its raw write.
-    pub(super) fn store_dir(&mut self, dir: &Path) -> MachineResult<()> {
-        self.inner().store(dir)
     }
 }
 
