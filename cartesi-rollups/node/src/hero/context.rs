@@ -39,62 +39,26 @@ pub struct EpochAnchors {
     pub geometry: TournamentGeometry,
 }
 
-/// Local engine material for one tournament level.
-///
-/// This stays outside [`SemanticSnapshot`]: coordinates and cached computation
-/// roots belong to action fulfillment, not pure Hero policy.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LevelMaterial {
-    descriptor: TournamentDescriptor,
-    coords: LevelCoords,
-    root: Digest,
-}
-
-impl LevelMaterial {
-    #[cfg(test)]
-    pub(crate) const fn from_parts(
-        descriptor: TournamentDescriptor,
-        coords: LevelCoords,
-        root: Digest,
-    ) -> Self {
-        Self {
-            descriptor,
-            coords,
-            root,
-        }
-    }
-
-    pub const fn descriptor(&self) -> TournamentDescriptor {
-        self.descriptor
-    }
-
-    pub const fn coords(&self) -> &LevelCoords {
-        &self.coords
-    }
-
-    pub const fn root(&self) -> Digest {
-        self.root
-    }
-}
-
-/// The Hero's policy input plus the local material needed to fulfill its intent.
+/// The Hero's policy input plus the engine coordinates of each level on its
+/// path. Coordinates stay outside [`SemanticSnapshot`]: they belong to action
+/// fulfillment, not pure Hero policy. A level's descriptor and local
+/// commitment are its snapshot's.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HeroContext {
     snapshot: SemanticSnapshot,
-    levels: HashMap<Address, LevelMaterial>,
+    coords: HashMap<Address, LevelCoords>,
 }
 
 impl HeroContext {
     #[cfg(test)]
     pub(crate) fn from_parts(
         snapshot: SemanticSnapshot,
-        levels: impl IntoIterator<Item = LevelMaterial>,
+        coords: impl IntoIterator<Item = (Address, LevelCoords)>,
     ) -> Self {
-        let levels = levels
-            .into_iter()
-            .map(|material| (material.descriptor().address(), material))
-            .collect();
-        Self { snapshot, levels }
+        Self {
+            snapshot,
+            coords: coords.into_iter().collect(),
+        }
     }
 
     /// Project the Hero's one local path at a caller-supplied chain head.
@@ -122,8 +86,14 @@ impl HeroContext {
                     tournament: address,
                 })?;
             check_pinned_level(descriptor, &anchors.geometry);
-            let material = super::machine_work(|| level_material(epoch, descriptor, source))?;
-            let local_commitment = material.root();
+            let coords = level_coords(epoch, descriptor)?;
+            let local_commitment =
+                super::machine_work(|| source.node(&coords.root())).map_err(|source| {
+                    ContextError::CommitmentComputation {
+                        tournament: address,
+                        source,
+                    }
+                })?;
 
             let (local_standing, next) = match tournament.position(&local_commitment) {
                 CommitmentPosition::NotJoined => (LocalCommitmentStanding::NotJoined, None),
@@ -175,7 +145,7 @@ impl HeroContext {
                 }
             };
 
-            levels.insert(address, material);
+            levels.insert(address, coords);
             path.push(PathLevel {
                 descriptor,
                 standing,
@@ -192,15 +162,14 @@ impl HeroContext {
         }
 
         let snapshot = assemble_snapshots(path)?;
-        Ok(Self { snapshot, levels })
+        Ok(Self {
+            snapshot,
+            coords: levels,
+        })
     }
 
     pub const fn snapshot(&self) -> &SemanticSnapshot {
         &self.snapshot
-    }
-
-    pub const fn root_tournament(&self) -> Address {
-        self.snapshot.descriptor().address()
     }
 
     /// Find one tournament on the retained local path.
@@ -214,12 +183,8 @@ impl HeroContext {
         }
     }
 
-    pub fn level(&self, tournament: &Address) -> Option<&LevelMaterial> {
-        self.levels.get(tournament)
-    }
-
-    pub fn levels(&self) -> &HashMap<Address, LevelMaterial> {
-        &self.levels
+    pub fn coords(&self, tournament: &Address) -> Option<&LevelCoords> {
+        self.coords.get(tournament)
     }
 }
 
@@ -280,23 +245,6 @@ fn assemble_snapshots(path: Vec<PathLevel>) -> Result<SemanticSnapshot, ContextE
         );
     }
     Ok(child.expect("every Dispute has a root tournament"))
-}
-
-fn level_material(
-    epoch: u64,
-    descriptor: TournamentDescriptor,
-    source: &mut DisputeSource<Positioner>,
-) -> Result<LevelMaterial, ContextError> {
-    let tournament = descriptor.address();
-    let coords = level_coords(epoch, descriptor)?;
-    let root = source
-        .node(&coords.root())
-        .map_err(|source| ContextError::CommitmentComputation { tournament, source })?;
-    Ok(LevelMaterial {
-        descriptor,
-        coords,
-        root,
-    })
 }
 
 /// Every tournament must run its level exactly as the pinned table says:
