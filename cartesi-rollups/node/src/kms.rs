@@ -1,116 +1,55 @@
-use alloy::{
-    primitives::{ChainId, Signature},
-    signers::aws::AwsSigner,
-};
-use anyhow::{self, Context};
+// (c) Cartesi and individual authors (see AUTHORS)
+// SPDX-License-Identifier: Apache-2.0 (see LICENSE)
+
+use alloy::{primitives::ChainId, signers::aws::AwsSigner};
 use aws_config::{BehaviorVersion, timeout::TimeoutConfig};
+use aws_sdk_kms::Client;
 
 use crate::provider::REQUEST_TIMEOUT;
-use aws_sdk_kms::{
-    Client,
-    types::{KeySpec, KeyUsageType},
-};
 
-pub type CommonSignature = dyn alloy::network::TxSigner<Signature> + Send + Sync;
-
-pub struct KmsSignerBuilder {
-    chain_id: ChainId,
-
+/// A signer over an existing KMS key; `Some(chain_id)` makes its
+/// signatures EIP-155.
+pub async fn kms_signer(
     key_id: String,
-    aws_endpoint_url: String,
-    aws_region: aws_config::Region,
+    chain_id: ChainId,
+    region: &str,
+    endpoint_url: &str,
+) -> anyhow::Result<AwsSigner> {
+    let client = client(region, endpoint_url).await;
+    Ok(AwsSigner::new(client, key_id, Some(chain_id)).await?)
 }
 
-type KmsSigner = AwsSigner;
-
-impl KmsSignerBuilder {
-    pub fn new(key_id: &str, chain_id: ChainId) -> Self {
-        let aws_region_str = "us-east-1".to_owned();
-        let aws_region = aws_config::Region::new(aws_region_str.clone());
-        let aws_endpoint_url = format!("https://kms.{}.amazonaws.com", aws_region_str);
-
-        Self {
-            key_id: key_id.to_owned(),
-            chain_id,
-            aws_region,
-            aws_endpoint_url,
-        }
-    }
-
-    pub fn with_key_id(mut self, key_id: String) -> Self {
-        self.key_id = key_id;
-        self
-    }
-
-    pub fn with_chain_id(mut self, chain_id: ChainId) -> Self {
-        self.chain_id = chain_id;
-        self
-    }
-
-    pub fn with_region(mut self, aws_region_str: &str) -> Self {
-        let aws_region = aws_config::Region::new(aws_region_str.to_owned());
-        self.aws_region = aws_region;
-        self
-    }
-
-    pub fn with_endpoint(mut self, aws_endpoint_url: &str) -> Self {
-        self.aws_endpoint_url = aws_endpoint_url.to_owned();
-        self
-    }
-
-    pub async fn create_key_sign_verify(&mut self) -> anyhow::Result<String> {
-        let client = self.new_client().await;
-
-        let result = client
-            .create_key()
-            .key_usage(KeyUsageType::SignVerify)
-            .key_spec(KeySpec::EccSecgP256K1)
-            .send()
-            .await?;
-
-        let metadata = result.key_metadata.context("No metadata")?;
-
-        self.key_id = metadata.key_id;
-        Ok(self.key_id.clone())
-    }
-
-    pub async fn build(self) -> anyhow::Result<KmsSigner> {
-        let client = self.new_client().await;
-        let key_id = self.key_id;
-        let result = KmsSigner::new(client, key_id, Some(self.chain_id)).await?;
-        Ok(result)
-    }
-
-    async fn new_client(&self) -> Client {
-        let config = aws_config::defaults(BehaviorVersion::latest());
-        // LocalStack accepts fake credentials but still requires signed
-        // requests. Production builds retain the default AWS credential chain.
-        #[cfg(test)]
-        let config = config.test_credentials();
-        // The SDK bounds only the connect by default, so a KMS endpoint that
-        // accepts a call and never answers would park the manager's tick in
-        // `sign` with nothing logged. Bounded like one RPC attempt, the tick
-        // fails instead, and the paging rule reports it if it persists.
-        let config = config
-            .endpoint_url(self.aws_endpoint_url.clone())
-            .region(self.aws_region.clone())
-            .timeout_config(
-                TimeoutConfig::builder()
-                    .operation_timeout(REQUEST_TIMEOUT)
-                    .build(),
-            )
-            .load()
-            .await;
-        Client::new(&config)
-    }
+async fn client(region: &str, endpoint_url: &str) -> Client {
+    let config = aws_config::defaults(BehaviorVersion::latest());
+    // LocalStack accepts fake credentials but still requires signed
+    // requests. Production builds retain the default AWS credential chain.
+    #[cfg(test)]
+    let config = config.test_credentials();
+    // The SDK bounds only the connect by default, so a KMS endpoint that
+    // accepts a call and never answers would park the manager's tick in
+    // `sign` with nothing logged. Bounded like one RPC attempt, the tick
+    // fails instead, and the paging rule reports it if it persists.
+    let config = config
+        .endpoint_url(endpoint_url.to_owned())
+        .region(aws_config::Region::new(region.to_owned()))
+        .timeout_config(
+            TimeoutConfig::builder()
+                .operation_timeout(REQUEST_TIMEOUT)
+                .build(),
+        )
+        .load()
+        .await;
+    Client::new(&config)
 }
 
 #[cfg(test)]
 mod tests {
+    use anyhow::Context;
     use futures::FutureExt;
     use std::{
         future::Future,
         panic::{AssertUnwindSafe, resume_unwind},
+        sync::LazyLock,
     };
 
     use alloy::{
@@ -122,7 +61,7 @@ mod tests {
         rpc::types::TransactionRequest,
         signers::Signer,
     };
-    use lazy_static::lazy_static;
+    use aws_sdk_kms::types::{KeySpec, KeyUsageType};
     use testcontainers_modules::{
         localstack::LocalStack,
         testcontainers::{
@@ -133,15 +72,20 @@ mod tests {
 
     use super::*;
 
-    // mutex global
-    lazy_static! {
-        static ref CONTAINER_MUTEX: Mutex<()> = Mutex::new(());
-    }
+    static CONTAINER_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-    fn new_builder() -> KmsSignerBuilder {
-        KmsSignerBuilder::new("", 1)
-            .with_region("us-east-1")
-            .with_endpoint("http://localhost:4566")
+    const LOCALSTACK: &str = "http://localhost:4566";
+
+    /// A fresh signing key in LocalStack's KMS.
+    async fn create_key() -> anyhow::Result<String> {
+        let result = client("us-east-1", LOCALSTACK)
+            .await
+            .create_key()
+            .key_usage(KeyUsageType::SignVerify)
+            .key_spec(KeySpec::EccSecgP256K1)
+            .send()
+            .await?;
+        Ok(result.key_metadata.context("No metadata")?.key_id)
     }
 
     fn create_localstack() -> ContainerRequest<LocalStack> {
@@ -195,13 +139,13 @@ mod tests {
     #[ignore = "needs docker (LocalStack); run `just test-kms`"]
     async fn signer_works() {
         run_test(|| async {
-            let mut kms_signer = new_builder();
-
-            let key_id = kms_signer.create_key_sign_verify().await.unwrap();
+            let key_id = create_key().await.unwrap();
             println!("Key ID: {}", key_id);
             let message = "Hello world!";
 
-            let kms_signer = kms_signer.build().await.unwrap();
+            let kms_signer = kms_signer(key_id, 1, "us-east-1", LOCALSTACK)
+                .await
+                .unwrap();
 
             println!(
                 "Processing message: {}, chain_id: {:?}",
@@ -227,16 +171,12 @@ mod tests {
     async fn wallet_eth() {
         run_test(|| async {
             let chain_id: ChainId = 31337;
-            let mut kms_signer = new_builder().with_chain_id(chain_id);
-
-            let key_id = kms_signer.create_key_sign_verify().await.unwrap();
+            let key_id = create_key().await.unwrap();
             println!("Key ID: {}", key_id);
 
-            let signer: Box<CommonSignature>;
-
-            let kms_signer = kms_signer.build().await.unwrap();
-
-            signer = Box::new(kms_signer);
+            let signer = kms_signer(key_id, chain_id, "us-east-1", LOCALSTACK)
+                .await
+                .unwrap();
 
             let wallet = EthereumWallet::from(signer);
             let wallet_address =
