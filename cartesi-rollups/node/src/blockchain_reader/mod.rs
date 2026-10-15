@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 
 use crate::chain::Chain;
-use crate::escalation::Persistence;
+use crate::escalation::{PAGE_AFTER, Persistence};
 use crate::sync::ShutdownSignal;
 use alloy::{
     eips::BlockId,
@@ -240,6 +240,23 @@ impl BlockchainReader {
                     }
                 },
             };
+
+            // A stuck provider (a node that lost its peers, a dead backend
+            // behind a load balancer) answers every read consistently with
+            // an old head, so nothing else fails: the Hero waits on turns
+            // already taken while clocks run. It is outside the trust model,
+            // so it is only reported.
+            if caught_up
+                && let Ok(age) = chain.latest_age().await
+                && age >= PAGE_AFTER
+            {
+                log::error!(
+                    "the read endpoint's latest block is {} min old: it is not following the \
+                     chain, so the node sees no new blocks while dispute clocks run; point \
+                     --blockchain-http-endpoint at a synced provider",
+                    age.as_secs() / 60
+                );
+            }
 
             // Catch up chunk by chunk without a polling sleep, observing
             // shutdown between chunks.
