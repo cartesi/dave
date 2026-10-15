@@ -2,9 +2,9 @@
 //!
 //! Events own dispute structure and match cleanup schedules. This module reads
 //! only the root tournament's immutable descriptor, current tournament
-//! standings, and the one clocked or sealed-leaf match the Hero engages at a
-//! level. It decodes a child's descriptor from its creation event and bounds
-//! it by its parent's, so a delegated match needs no read.
+//! standings, the one clocked or sealed-leaf match the Hero engages at a
+//! level, and a join's bond. It decodes a child's descriptor from its creation
+//! event and bounds it by its parent's, so a delegated match needs no read.
 
 use std::collections::HashMap;
 

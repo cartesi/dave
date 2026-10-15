@@ -208,8 +208,7 @@ level. Terms marked (code) appear verbatim in identifiers.
   leaf rules a store was built under; bumped on any change to leaf values or
   transition shapes, so an older store is refused, not reused.
 - Storage (code): the SQLite-backed storage layer all node workers
-  share. The older name "state manager" survives only in the
-  `StateManagerError` error variants.
+  share.
 - ShutdownSignal (code): the shutdown broadcast between node threads
   (`src/sync.rs`). Deliberately carries no errors - worker errors return
   through join handles; its retired predecessor (Watch) conflated the

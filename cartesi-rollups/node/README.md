@@ -181,7 +181,7 @@ Options:
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
           execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS] [default: 64]
       --data-dir <DATA_DIR>
-          node data directory (database, snapshots, dispute scratch); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR]
+          node data directory (database and machine snapshots); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR]
   -h, --help
           Print help
 ```

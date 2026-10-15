@@ -246,8 +246,8 @@ data_dir/
 ```
 
 The storage module follows the sequencer's shape: `open.rs` owns connections
-(WAL, `synchronous=FULL`, busy timeout, a
-read-only opener) and the `read`/`write` closure helpers (Deferred vs
+(WAL, `synchronous=FULL`, busy timeout) and the `read`/`write` closure
+helpers (Deferred vs
 Immediate); writer roles live in per-role files - `ingest.rs`
 (blockchain-reader), `advance.rs` (machine-runner), `dispute.rs` (player), and
 `completion.rs` (epoch-manager) - `snapshots.rs` is the boundary store (every

@@ -2,7 +2,8 @@
 //!
 //! Events choose the Hero's local path and own match lifecycle. Pinned point
 //! reads supply only current tournament standings and the action payload for
-//! the one engaged match at each visited level. The resulting semantic path is
+//! the engaged clocked or sealed-leaf match at each visited level; a delegated
+//! level is answered from events. The resulting semantic path is
 //! assembled from the leaf upward and retains local engine coordinates beside
 //! it for later action fulfillment.
 
