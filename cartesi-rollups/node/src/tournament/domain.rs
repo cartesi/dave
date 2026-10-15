@@ -371,36 +371,6 @@ impl SealedLeafMatch {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct AwaitingChildMatch {
-    divergence: SealedDivergence,
-    child_tournament: Address,
-}
-
-impl AwaitingChildMatch {
-    pub fn try_new(
-        divergence: SealedDivergence,
-        child_tournament: Address,
-    ) -> Result<Self, DomainError> {
-        if child_tournament == Address::ZERO {
-            return Err(DomainError::ZeroChildTournament);
-        }
-        Ok(Self {
-            divergence,
-            child_tournament,
-        })
-    }
-
-    pub const fn divergence(self) -> SealedDivergence {
-        self.divergence
-    }
-
-    #[cfg(test)]
-    pub const fn child_tournament(self) -> Address {
-        self.child_tournament
-    }
-}
-
 /// The semantic phase of one live match after Leaf/NonLeaf enrichment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LiveMatchState {
@@ -408,7 +378,8 @@ pub enum LiveMatchState {
     ReadyToSealLeaf(ReadyToSealMatch),
     ReadyToDelegate(ReadyToSealMatch),
     SealedLeaf(SealedLeafMatch),
-    AwaitingChild(AwaitingChildMatch),
+    /// Delegated to the child tournament at this address.
+    AwaitingChild(Address),
 }
 
 impl LiveMatchState {
@@ -713,8 +684,6 @@ pub enum DomainError {
     TournamentCycleRangeOverflow,
     #[error("bisecting height must be at least two, got {0}")]
     InvalidBisectingHeight(u64),
-    #[error("child tournament address must be nonzero")]
-    ZeroChildTournament,
     #[error("match remaining height exceeds the tournament commitment height")]
     MatchHeightOutOfRange,
     #[error("match responder disagrees with commitment-height parity")]
@@ -727,10 +696,8 @@ pub enum DomainError {
     MatchCycleMismatch,
     #[error("recursive child must be exactly one tournament level deeper")]
     ChildLevelMismatch,
-    #[error("recursive child initial hash disagrees with the sealed agree state")]
-    ChildInitialHashMismatch,
-    #[error("recursive child base cycle disagrees with the sealed match cycle")]
-    ChildBaseCycleMismatch,
+    #[error("recursive child base cycle is not on one of its parent's leaves")]
+    ChildOutsideParentLeaf,
 }
 
 pub(crate) fn validate_match_geometry(
@@ -748,7 +715,8 @@ pub(crate) fn validate_match_geometry(
             (value.coordinate(), Some((1, value.responder())))
         }
         LiveMatchState::SealedLeaf(value) => (value.divergence().coordinate(), None),
-        LiveMatchState::AwaitingChild(value) => (value.divergence().coordinate(), None),
+        // No coordinate: the observer bounds the child by this tournament.
+        LiveMatchState::AwaitingChild(_) => return Ok(()),
     };
 
     if let Some((remaining_height, responder)) = unresolved {

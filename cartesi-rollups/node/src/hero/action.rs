@@ -476,10 +476,10 @@ mod tests {
             toy::{ToyFactory, ToyInput, ToyOutcome, ToyStf},
         },
         tournament::domain::{
-            AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
-            MatchCoordinate, MatchSide, ParentLink, ReadyToSealMatch, SealedDivergence,
-            SealedLeafMatch, TimeoutDisposition, TournamentDescriptor, TournamentKind,
-            TournamentStanding, WaitingChildren, validate_match_geometry,
+            BlockDuration, InnerWinner, JoinDisposition, LiveMatch, MatchCoordinate, MatchSide,
+            ParentLink, ReadyToSealMatch, SealedDivergence, SealedLeafMatch, TimeoutDisposition,
+            TournamentDescriptor, TournamentKind, TournamentStanding, WaitingChildren,
+            validate_match_geometry,
         },
     };
 
@@ -804,25 +804,12 @@ mod tests {
         let opponent = digest(0xb0);
         let parent_match = id_for(parent_commitment, opponent, side);
 
-        let agree_state = root_initial;
-        let parent_final = digest(0xb1);
-        let opponent_final = digest(0xb2);
-        let (final_state_one, final_state_two) = match side {
-            MatchSide::One => (parent_final, opponent_final),
-            MatchSide::Two => (opponent_final, parent_final),
-        };
-        let divergence = SealedDivergence::new(
-            agree_state,
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            final_state_one,
-            final_state_two,
-        );
         let parent_live = LiveMatch::new(
-            LiveMatchState::AwaitingChild(AwaitingChildMatch::try_new(divergence, CHILD).unwrap()),
+            LiveMatchState::AwaitingChild(CHILD),
             TimeoutDisposition::None,
         );
 
-        let child_descriptor = descriptor(CHILD, 1, LEAF, agree_state, U256::ZERO, 0, 3);
+        let child_descriptor = descriptor(CHILD, 1, LEAF, root_initial, U256::ZERO, 0, 3);
         let child_coords = LevelCoords::new(0, U256::ZERO, 0, 3);
         let child_winner = source.node(&child_coords.root()).unwrap();
         let parent_link = ParentLink::new(ROOT, parent_match, parent_commitment, side);
