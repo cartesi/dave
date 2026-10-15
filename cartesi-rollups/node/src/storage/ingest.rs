@@ -42,8 +42,7 @@ pub(super) fn raise_watermark_in(tx: &Transaction, block: u64) -> Result<()> {
         ON CONFLICT (id) DO UPDATE SET block = MAX(block, excluded.block)
         "#,
         params![u64_to_i64(block)],
-    )
-    .map_err(anyhow::Error::from)?;
+    )?;
     Ok(())
 }
 
@@ -66,14 +65,12 @@ pub(super) fn insert_inputs_in<'a>(
 
     let mut current_input = super::queries::last_input_in(tx)?;
 
-    let mut stmt = tx
-        .prepare_cached(
-            r#"
+    let mut stmt = tx.prepare_cached(
+        r#"
             INSERT INTO inputs (epoch_number, input_index_in_epoch, input)
             VALUES (?1, ?2, ?3)
             "#,
-        )
-        .map_err(anyhow::Error::from)?;
+    )?;
 
     for input in inputs {
         if !validate_insert(&current_input, &input.id) {
@@ -87,8 +84,7 @@ pub(super) fn insert_inputs_in<'a>(
             u64_to_i64(input.id.epoch_number),
             u64_to_i64(input.id.input_index_in_epoch),
             input.data
-        ])
-        .map_err(anyhow::Error::from)?;
+        ])?;
 
         current_input = Some(input.id.clone());
     }
@@ -105,15 +101,13 @@ pub(super) fn insert_epochs_in<'a>(
         return Ok(());
     }
 
-    let mut stmt = tx
-        .prepare_cached(
-            r#"
+    let mut stmt = tx.prepare_cached(
+        r#"
             INSERT INTO epochs
             (epoch_number, input_index_boundary, root_tournament, block_created_number)
             VALUES (?1, ?2, ?3, ?4)
             "#,
-        )
-        .map_err(anyhow::Error::from)?;
+    )?;
 
     for (next_epoch, epoch) in (super::queries::epoch_count_in(tx)?..).zip(epochs) {
         if epoch.epoch_number != next_epoch {
@@ -128,8 +122,7 @@ pub(super) fn insert_epochs_in<'a>(
             u64_to_i64(epoch.input_index_boundary),
             epoch.root_tournament.encode_hex(),
             u64_to_i64(epoch.block_created_number)
-        ])
-        .map_err(anyhow::Error::from)?;
+        ])?;
     }
     Ok(())
 }

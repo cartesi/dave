@@ -40,28 +40,11 @@ use super::open::{Storage, snapshots_path};
 use super::rollups_machine::RollupsMachine;
 use crate::engine::InputBoundary;
 
-use cartesi_machine::error::MachineError;
 use cartesi_machine::machine::Machine;
 use cartesi_machine::types::Hash;
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum StoreError {
-    #[error(transparent)]
-    Machine(#[from] MachineError),
-
-    #[error("Failed to cleanup partial store {fs_err}, caused by {machine_err}")]
-    Cleanup {
-        machine_err: MachineError,
-        fs_err: std::io::Error,
-    },
-
-    #[error("Failed to stage snapshot store: {0}")]
-    Staging(std::io::Error),
-}
 
 //
 // Stores
@@ -134,9 +117,7 @@ impl Storage {
             actual_hash, *state_hash,
             "dispute boundary CAS key disagrees with the machine root"
         );
-        let dest = self
-            .stage_machine_store(state_hash, |staging| machine.store(staging))
-            .map_err(anyhow::Error::from)?;
+        let dest = self.stage_machine_store(state_hash, |staging| machine.store(staging))?;
         self.insert_boundary(epoch_number, input_number, state_hash)?;
         Ok(dest)
     }
@@ -149,7 +130,7 @@ impl Storage {
         &self,
         state_hash: &Hash,
         store: impl FnOnce(&Path) -> cartesi_machine::error::MachineResult<()>,
-    ) -> std::result::Result<PathBuf, StoreError> {
+    ) -> anyhow::Result<PathBuf> {
         let snapshots = snapshots_path(self.state_dir());
         let dest = snapshot_path(self.state_dir(), state_hash);
 
@@ -166,10 +147,9 @@ impl Storage {
                 let fs_status = std::fs::remove_dir_all(&staging);
 
                 if let Err(fs_err) = fs_status {
-                    return Err(StoreError::Cleanup {
-                        machine_err,
-                        fs_err,
-                    });
+                    anyhow::bail!(
+                        "Failed to cleanup partial store {fs_err}, caused by {machine_err}"
+                    );
                 } else {
                     return Err(machine_err.into());
                 }
@@ -190,11 +170,7 @@ impl Storage {
     /// Only a destination that won the same CAS race makes a failed
     /// rename benign. Database registration always follows this
     /// function at its caller.
-    fn publish_staged(
-        &self,
-        staged: PathBuf,
-        expected_hash: &Hash,
-    ) -> std::result::Result<PathBuf, StoreError> {
+    fn publish_staged(&self, staged: PathBuf, expected_hash: &Hash) -> anyhow::Result<PathBuf> {
         let actual_hash = {
             let mut verifier = Machine::load(
                 &staged,
@@ -236,7 +212,7 @@ impl Storage {
     /// staging namespace: scratch until committed, invisible to rows,
     /// swept at startup if orphaned by a crash. Cheap where the
     /// filesystem reflinks; a sparse copy elsewhere.
-    pub(super) fn checkout(&self, from: &Path) -> std::result::Result<PathBuf, StoreError> {
+    pub(super) fn checkout(&self, from: &Path) -> anyhow::Result<PathBuf> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let working = snapshots_path(self.state_dir()).join(format!(
             ".work-{}-{}",
@@ -254,14 +230,15 @@ impl Storage {
         &self,
         working: PathBuf,
         state_hash: &Hash,
-    ) -> std::result::Result<PathBuf, StoreError> {
+    ) -> anyhow::Result<PathBuf> {
         self.publish_staged(working, state_hash)
     }
 
     /// Removes an abandoned working clone (a poisoned post-reject
     /// state, or the spare clone a finished batch leaves behind).
-    pub(super) fn discard_clone(&self, working: &Path) -> std::result::Result<(), StoreError> {
-        std::fs::remove_dir_all(working).map_err(StoreError::Staging)
+    pub(super) fn discard_clone(&self, working: &Path) -> anyhow::Result<()> {
+        std::fs::remove_dir_all(working)
+            .map_err(|e| anyhow::anyhow!("Failed to stage snapshot store: {e}"))
     }
 
     /// Startup ritual: removes staging leftovers a crash orphaned -
@@ -321,32 +298,26 @@ impl Storage {
         input: u64,
     ) -> Result<(InputBoundary, PathBuf)> {
         let candidates = self.read(|tx| {
-            let mut stmt = tx
-                .prepare_cached(
-                    r#"
+            let mut stmt = tx.prepare_cached(
+                r#"
                     SELECT input_number, state_hash
                     FROM epoch_snapshot_info
                     WHERE epoch_number = ?1 AND input_number <= ?2
                     ORDER BY input_number DESC
                     "#,
-                )
-                .map_err(anyhow::Error::from)?;
+            )?;
 
-            let rows = stmt
-                .query_map(
-                    params![u64_to_i64(epoch_number), u64_to_i64(input)],
-                    |row| {
-                        Ok((
-                            InputBoundary(i64_to_u64(row.get::<_, i64>(0)?)),
-                            row.get::<_, Vec<u8>>(1)?,
-                        ))
-                    },
-                )
-                .map_err(anyhow::Error::from)?;
+            let rows = stmt.query_map(
+                params![u64_to_i64(epoch_number), u64_to_i64(input)],
+                |row| {
+                    Ok((
+                        InputBoundary(i64_to_u64(row.get::<_, i64>(0)?)),
+                        row.get::<_, Vec<u8>>(1)?,
+                    ))
+                },
+            )?;
 
-            Ok(rows
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(anyhow::Error::from)?)
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
         })?;
 
         for (boundary, hash) in candidates {
@@ -409,29 +380,23 @@ impl Storage {
     /// the input window it names.
     pub fn epoch_snapshots(&mut self, epoch_number: u64) -> Result<Vec<(InputBoundary, PathBuf)>> {
         let rows = self.read(|tx| {
-            let mut stmt = tx
-                .prepare_cached(
-                    r#"
+            let mut stmt = tx.prepare_cached(
+                r#"
                     SELECT input_number, state_hash
                     FROM epoch_snapshot_info
                     WHERE epoch_number = ?1
                     ORDER BY input_number ASC
                     "#,
-                )
-                .map_err(anyhow::Error::from)?;
+            )?;
 
-            let rows = stmt
-                .query_map([u64_to_i64(epoch_number)], |row| {
-                    Ok((
-                        InputBoundary(i64_to_u64(row.get::<_, i64>(0)?)),
-                        row.get::<_, Vec<u8>>(1)?,
-                    ))
-                })
-                .map_err(anyhow::Error::from)?;
+            let rows = stmt.query_map([u64_to_i64(epoch_number)], |row| {
+                Ok((
+                    InputBoundary(i64_to_u64(row.get::<_, i64>(0)?)),
+                    row.get::<_, Vec<u8>>(1)?,
+                ))
+            })?;
 
-            Ok(rows
-                .collect::<rusqlite::Result<Vec<_>>>()
-                .map_err(anyhow::Error::from)?)
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
         })?;
         rows.into_iter()
             .map(|(boundary, hash)| {
@@ -457,8 +422,7 @@ pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
             ORDER BY epoch_number DESC, input_number DESC
             LIMIT 1
             "#,
-        )
-        .map_err(anyhow::Error::from)?
+        )?
         .query_row([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -466,8 +430,7 @@ pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
                 row.get::<_, Vec<u8>>(2)?,
             ))
         })
-        .optional()
-        .map_err(anyhow::Error::from)?;
+        .optional()?;
 
     let (epoch, input, hash) = row.ok_or_else(|| StorageError::DataNotFound {
         description: "snapshot boundary (initialization seeds epoch 0)".into(),
@@ -487,14 +450,12 @@ pub(super) fn snapshot_hash_in(
         SELECT state_hash FROM epoch_snapshot_info
         WHERE epoch_number = ?1 AND input_number = ?2
         "#,
-    )
-    .map_err(anyhow::Error::from)?
+    )?
     .query_row(
         params![u64_to_i64(epoch_number), u64_to_i64(input_number)],
         |row| row.get::<_, Vec<u8>>(0),
     )
-    .optional()
-    .map_err(anyhow::Error::from)?
+    .optional()?
     .map(blob_to_hash)
     .transpose()
 }
@@ -519,14 +480,12 @@ pub(super) fn insert_snapshot_in(
         VALUES(?1, ?2, ?3)
         ON CONFLICT(epoch_number, input_number) DO NOTHING
         "#,
-        )
-        .map_err(anyhow::Error::from)?
+        )?
         .execute(params![
             u64_to_i64(epoch_number),
             u64_to_i64(input_number),
             state_hash
-        ])
-        .map_err(anyhow::Error::from)?;
+        ])?;
 
     if inserted == 0 {
         let stored = snapshot_hash_in(tx, epoch_number, input_number)?
@@ -555,17 +514,13 @@ pub(super) fn release_boundaries_in(tx: &Transaction, max_epoch: u64) -> Result<
             "SELECT state_hash FROM epoch_snapshot_info WHERE epoch_number <= ?1
              EXCEPT
              SELECT state_hash FROM epoch_snapshot_info WHERE epoch_number > ?1",
-        )
-        .map_err(anyhow::Error::from)?
-        .query_map([max_epoch], |row| row.get::<_, Vec<u8>>(0))
-        .map_err(anyhow::Error::from)?
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(anyhow::Error::from)?;
+        )?
+        .query_map([max_epoch], |row| row.get::<_, Vec<u8>>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     tx.execute(
         "DELETE FROM epoch_snapshot_info WHERE epoch_number <= ?1",
         [max_epoch],
-    )
-    .map_err(anyhow::Error::from)?;
+    )?;
     orphans.into_iter().map(blob_to_hash).collect()
 }
 

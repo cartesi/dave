@@ -224,11 +224,8 @@ impl Storage {
         // through machine memory. Cross-filesystem imports degrade to a
         // sparse copy inside the clone. A crash before the commit below
         // orphans the directory, which the next seed adopts.
-        let working = self
-            .checkout(template.path())
-            .map_err(anyhow::Error::from)?;
-        self.commit_clone(working, template.hash())
-            .map_err(anyhow::Error::from)?;
+        let working = self.checkout(template.path())?;
+        self.commit_clone(working, template.hash())?;
 
         self.write(|tx| {
             super::ingest::raise_watermark_in(tx, initial_watermark)?;
@@ -289,10 +286,9 @@ impl Storage {
     pub(super) fn read<T>(&mut self, f: impl FnOnce(&Transaction) -> Result<T>) -> Result<T> {
         let tx = self
             .connection
-            .transaction_with_behavior(TransactionBehavior::Deferred)
-            .map_err(anyhow::Error::from)?;
+            .transaction_with_behavior(TransactionBehavior::Deferred)?;
         let out = f(&tx)?;
-        tx.commit().map_err(anyhow::Error::from)?;
+        tx.commit()?;
         Ok(out)
     }
 
@@ -304,10 +300,9 @@ impl Storage {
     pub(super) fn write<T>(&mut self, f: impl FnOnce(&Transaction) -> Result<T>) -> Result<T> {
         let tx = self
             .connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(anyhow::Error::from)?;
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let out = f(&tx)?;
-        tx.commit().map_err(anyhow::Error::from)?;
+        tx.commit()?;
         Ok(out)
     }
 
@@ -322,21 +317,15 @@ impl Storage {
 /// (machine work happens between transactions, never inside one, so
 /// writers only contend for row-commit bursts).
 fn open_writer_connection(db_path: &Path) -> Result<Connection> {
-    let connection = Connection::open(db_path).map_err(anyhow::Error::from)?;
+    let connection = Connection::open(db_path)?;
     configure_writer_pragmas(&connection)?;
     Ok(connection)
 }
 
 fn configure_writer_pragmas(connection: &Connection) -> Result<()> {
-    connection
-        .pragma_update(None, "journal_mode", "WAL")
-        .map_err(anyhow::Error::from)?;
-    connection
-        .pragma_update(None, "synchronous", SYNCHRONOUS_PRAGMA)
-        .map_err(anyhow::Error::from)?;
-    connection
-        .busy_timeout(std::time::Duration::from_secs(10))
-        .map_err(anyhow::Error::from)?;
+    connection.pragma_update(None, "journal_mode", "WAL")?;
+    connection.pragma_update(None, "synchronous", SYNCHRONOUS_PRAGMA)?;
+    connection.busy_timeout(std::time::Duration::from_secs(10))?;
     Ok(())
 }
 

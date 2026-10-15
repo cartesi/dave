@@ -29,6 +29,9 @@ pub enum StorageError {
         source: MachineError,
     },
 
+    #[error(transparent)]
+    Sqlite(#[from] rusqlite::Error),
+
     #[error("Inner error: `{0}`")]
     InnerError(#[from] anyhow::Error),
 }

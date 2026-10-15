@@ -1,5 +1,5 @@
 use super::epoch_data::EpochData;
-use super::machine_error::Result;
+use anyhow::Result;
 use cartesi_machine::{
     config::runtime::RuntimeConfig,
     constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
