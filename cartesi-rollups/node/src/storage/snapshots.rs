@@ -115,18 +115,6 @@ pub(super) fn assert_runner_boundary_root(
 }
 
 impl Storage {
-    /// Stores the machine into the durable content-addressed path.
-    /// Registration in the (epoch, input) map is the caller's
-    /// transaction's business.
-    pub(super) fn store_boundary(
-        &self,
-        machine: &mut RollupsMachine,
-    ) -> std::result::Result<(PathBuf, Hash), StoreError> {
-        let state_hash = machine.state_hash()?;
-        let dest = self.stage_machine_store(&state_hash, |staging| machine.store_dir(staging))?;
-        Ok((dest, state_hash))
-    }
-
     /// The dispute write-back: commits a raw machine sitting at an
     /// input boundary - stored only when the content-addressed
     /// directory is absent, then registered. The row's write-once

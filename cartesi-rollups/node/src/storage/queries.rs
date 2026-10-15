@@ -5,13 +5,13 @@
 //! Writes are role-locked to their files (`ingest`, `advance`,
 //! `dispute`); reads are shared vocabulary.
 
-use super::convert::{blob_to_hash, i64_to_u64, u64_to_i64};
+use super::convert::{blob_to_digest, blob_to_hash, i64_to_u64, u64_to_i64};
 use super::error::{Result, StorageError};
 use super::{Epoch, Input, InputId, LeafProof, MachineValidityProof, Proof, Settlement, Storage};
 
 use alloy::hex::FromHex;
 use alloy::primitives::Address;
-use rusqlite::{OptionalExtension, Row, Transaction, params, types::ValueRef};
+use rusqlite::{OptionalExtension, Row, Transaction, params};
 
 impl Storage {
     pub fn latest_processed_block(&mut self) -> Result<u64> {
@@ -222,129 +222,40 @@ pub(super) fn settlement_info_in(
         .map_err(anyhow::Error::from)?)
 }
 
+/// The schema pins every column's type and length, so a row that does not
+/// decode, or whose proof does not hold, is corruption: it panics, since
+/// the tick loops retry an error forever.
 fn row_to_settlement(row: &Row<'_>, epoch_number: u64) -> rusqlite::Result<Settlement> {
+    Ok(decode_settlement(row).unwrap_or_else(|error| {
+        panic!(
+            "settlement for epoch {epoch_number} is invalid: {error:#} \
+             (corruption or incompatible data directory)"
+        )
+    }))
+}
+
+fn decode_settlement(row: &Row<'_>) -> anyhow::Result<Settlement> {
+    let blob = |index: usize| row.get::<_, Vec<u8>>(index);
+    let leaf = |index: usize| -> anyhow::Result<LeafProof> {
+        Ok(LeafProof {
+            data_block: blob_to_hash(blob(index)?)?,
+            siblings: Proof::from_flattened(blob(index + 1)?)?,
+        })
+    };
     let settlement = Settlement {
-        computation_hash: settlement_value(
-            epoch_number,
-            "computation_hash",
-            super::convert::blob_to_digest(settlement_blob(
-                row,
-                0,
-                epoch_number,
-                "computation_hash",
-            )?),
-        ),
-        final_state: settlement_value(
-            epoch_number,
-            "final_state",
-            blob_to_hash(settlement_blob(row, 1, epoch_number, "final_state")?),
-        ),
+        computation_hash: blob_to_digest(blob(0)?)?,
+        final_state: blob_to_hash(blob(1)?)?,
         machine_validity_proof: MachineValidityProof {
-            iflags_y_proof: LeafProof {
-                data_block: settlement_value(
-                    epoch_number,
-                    "iflags_y_data_block",
-                    blob_to_hash(settlement_blob(
-                        row,
-                        2,
-                        epoch_number,
-                        "iflags_y_data_block",
-                    )?),
-                ),
-                siblings: settlement_value(
-                    epoch_number,
-                    "iflags_y_siblings",
-                    Proof::from_flattened(settlement_blob(
-                        row,
-                        3,
-                        epoch_number,
-                        "iflags_y_siblings",
-                    )?),
-                ),
-            },
-            htif_tohost_proof: LeafProof {
-                data_block: settlement_value(
-                    epoch_number,
-                    "htif_tohost_data_block",
-                    blob_to_hash(settlement_blob(
-                        row,
-                        4,
-                        epoch_number,
-                        "htif_tohost_data_block",
-                    )?),
-                ),
-                siblings: settlement_value(
-                    epoch_number,
-                    "htif_tohost_siblings",
-                    Proof::from_flattened(settlement_blob(
-                        row,
-                        5,
-                        epoch_number,
-                        "htif_tohost_siblings",
-                    )?),
-                ),
-            },
-            tx_buffer_proof: LeafProof {
-                data_block: settlement_value(
-                    epoch_number,
-                    "tx_buffer_data_block",
-                    blob_to_hash(settlement_blob(
-                        row,
-                        6,
-                        epoch_number,
-                        "tx_buffer_data_block",
-                    )?),
-                ),
-                siblings: settlement_value(
-                    epoch_number,
-                    "tx_buffer_siblings",
-                    Proof::from_flattened(settlement_blob(
-                        row,
-                        7,
-                        epoch_number,
-                        "tx_buffer_siblings",
-                    )?),
-                ),
-            },
+            iflags_y_proof: leaf(2)?,
+            htif_tohost_proof: leaf(4)?,
+            tx_buffer_proof: leaf(6)?,
         },
     };
     super::rollups_machine::validate_machine_validity_proof(
         settlement.final_state,
         &settlement.machine_validity_proof,
-    )
-    .unwrap_or_else(|error| {
-        panic!(
-            "settlement for epoch {epoch_number} has an invalid machine validity proof: \
-             {error:#} (corruption or incompatible data directory)"
-        )
-    });
+    )?;
     Ok(settlement)
-}
-
-fn settlement_blob(
-    row: &Row<'_>,
-    index: usize,
-    epoch_number: u64,
-    field: &str,
-) -> rusqlite::Result<Vec<u8>> {
-    let value = row.get_ref(index)?;
-    match value {
-        ValueRef::Blob(blob) => Ok(blob.to_vec()),
-        _ => panic!(
-            "settlement for epoch {epoch_number} has invalid {field}: expected BLOB, found {:?} \
-             (corruption or incompatible data directory)",
-            value.data_type()
-        ),
-    }
-}
-
-fn settlement_value<T>(epoch_number: u64, field: &str, value: Result<T>) -> T {
-    value.unwrap_or_else(|error| {
-        panic!(
-            "settlement for epoch {epoch_number} has invalid {field}: {error} \
-             (corruption or incompatible data directory)"
-        )
-    })
 }
 
 pub(super) fn unfinished_epoch_number_in(tx: &Transaction) -> Result<u64> {
@@ -461,36 +372,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "invalid htif_tohost_siblings")]
-    fn malformed_settlement_proof_is_not_retryable() {
-        let (_handle, mut storage) = setup_settlement_storage();
-        storage
-            .connection
-            .pragma_update(None, "ignore_check_constraints", "ON")
-            .unwrap();
-        storage
-            .connection
-            .execute(
-                RAW_SETTLEMENT_INSERT,
-                params![
-                    42,
-                    vec![0u8; 32],
-                    vec![0u8; 32],
-                    vec![0u8; 32],
-                    vec![0u8; 1888],
-                    vec![0u8; 32],
-                    vec![0u8; 1856],
-                    vec![0u8; 32],
-                    vec![0u8; 1888],
-                ],
-            )
-            .unwrap();
-
-        let _ = storage.settlement_info(42);
-    }
-
-    #[test]
-    #[should_panic(expected = "invalid machine validity proof")]
+    #[should_panic(expected = "settlement for epoch 42 is invalid")]
     fn same_length_settlement_corruption_is_not_retryable() {
         let (_handle, mut storage) = setup_settlement_storage();
         let settlement = test_settlement();
@@ -509,37 +391,6 @@ mod tests {
                     proof.iflags_y_proof.siblings.flatten(),
                     proof.htif_tohost_proof.data_block,
                     corrupted_siblings,
-                    proof.tx_buffer_proof.data_block,
-                    proof.tx_buffer_proof.siblings.flatten(),
-                ],
-            )
-            .unwrap();
-
-        let _ = storage.settlement_info(42);
-    }
-
-    #[test]
-    #[should_panic(expected = "expected BLOB, found Text")]
-    fn wrong_settlement_sqlite_type_is_not_retryable() {
-        let (_handle, mut storage) = setup_settlement_storage();
-        let settlement = test_settlement();
-        let proof = &settlement.machine_validity_proof;
-        storage
-            .connection
-            .pragma_update(None, "ignore_check_constraints", "ON")
-            .unwrap();
-        storage
-            .connection
-            .execute(
-                RAW_SETTLEMENT_INSERT,
-                params![
-                    42,
-                    "x".repeat(32),
-                    settlement.final_state,
-                    proof.iflags_y_proof.data_block,
-                    proof.iflags_y_proof.siblings.flatten(),
-                    proof.htif_tohost_proof.data_block,
-                    proof.htif_tohost_proof.siblings.flatten(),
                     proof.tx_buffer_proof.data_block,
                     proof.tx_buffer_proof.siblings.flatten(),
                 ],

@@ -442,7 +442,7 @@ fn epoch_dir(state_dir: &Path, epoch_number: u64) -> PathBuf {
     state_dir.join(epoch_number.to_string())
 }
 
-pub(super) fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<PathBuf> {
+fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<PathBuf> {
     let path = epoch_dir(state_dir, epoch_number);
     fs::create_dir_all(&path).with_context(|| format!("creating `{}`", path.display()))?;
 
