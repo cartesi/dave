@@ -4,11 +4,12 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use ::log::{debug, info};
-use anyhow::Result;
+use anyhow::{Result, ensure};
 
 use crate::{
     chain::{Chain, ChainHead},
     engine::{DisputeSource, Positioner},
+    fatal::Fatal,
     hero::{
         action::{PreparedArenaAction, prepare},
         context::{EpochAnchors, HeroContext},
@@ -297,6 +298,22 @@ impl<AS: ArenaSender> Hero<AS> {
 
     async fn observe(&mut self) -> Result<Observation> {
         let (head, foam) = self.reader.fetch_from_root(self.root_tournament).await?;
+        // The previous epoch settled a state this node did not compute: a
+        // divergence it lost, or a corrupt data directory. It cannot defend
+        // this epoch, so it stops; it reached here only after the previous
+        // epoch's refunds and sentry vote.
+        let root = foam.root().descriptor();
+        ensure!(
+            root.initial_hash() == self.anchors.initial_hash,
+            Fatal::terminal(format!(
+                "epoch {}'s root tournament {} starts from {}, but this node computed {}: \
+                 the chain settled a state this node did not compute",
+                self.epoch,
+                root.address(),
+                root.initial_hash(),
+                self.anchors.initial_hash,
+            ))
+        );
         let chain = self.reader.chain().clone();
         let standings = read_standings(&chain, &foam, head).await?;
         let context = HeroContext::assemble(

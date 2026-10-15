@@ -11,6 +11,7 @@ use log::{debug, error, info, trace};
 use std::{sync::Arc, time::Duration};
 
 use crate::chain::{Chain, ChainHead};
+use crate::fatal::Fatal;
 use crate::provider::{LaneRequest, SendReport, SendVerdict, TransactionLane};
 use crate::storage::{
     Epoch, LeafProof as StoredLeafProof, MachineValidityProof as StoredMachineValidityProof,
@@ -92,6 +93,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 // Catch up completed historical epochs without a polling sleep.
                 Ok(Ticked { done: true, .. }) => continue,
                 Ok(_) => {}
+                Err(e) if Fatal::of(&e).is_some() => return Err(e),
                 Err(e) => log::warn!("epoch tick failed, retrying next tick: {e:#}"),
             }
             tokio::select! { biased;
@@ -184,6 +186,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     Err(e) if self.shutdown.is_requested() => {
                         info!("dispute planning stopped by shutdown: {e:#}")
                     }
+                    Err(e) if Fatal::of(&e).is_some() => return Err(e),
                     Err(e) => log::warn!("dispute planning failed, retrying next tick: {e:#}"),
                 }
             } else {

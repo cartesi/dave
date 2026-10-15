@@ -4,6 +4,7 @@
 //! Clean-slate schema initialization. The store is rebuildable from the chain
 //! and machine image, so incompatible stores are refused rather than migrated.
 
+use crate::fatal::Fatal;
 use alloy::primitives::{B256, keccak256};
 use anyhow::Context;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -66,7 +67,9 @@ pub fn initialize(conn: &Connection) -> anyhow::Result<()> {
     )?;
     anyhow::ensure!(
         has_metadata_table,
-        "database predates node compatibility metadata; {WIPE_GUIDANCE}"
+        Fatal::rebuild(format!(
+            "database predates node compatibility metadata; {WIPE_GUIDANCE}"
+        ))
     );
 
     let stored = tx
@@ -77,24 +80,32 @@ pub fn initialize(conn: &Connection) -> anyhow::Result<()> {
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?)),
         )
         .optional()
-        .with_context(|| format!("database compatibility metadata is invalid; {WIPE_GUIDANCE}"))?;
+        .map_err(|e| {
+            Fatal::rebuild(format!(
+                "database compatibility metadata is invalid ({e}); {WIPE_GUIDANCE}"
+            ))
+        })?;
     let (stored_version, stored_fingerprint) = stored.ok_or_else(|| {
-        anyhow::anyhow!(
+        Fatal::rebuild(format!(
             "database compatibility metadata is missing; initialization may be incomplete; \
              {WIPE_GUIDANCE}"
-        )
+        ))
     })?;
 
     anyhow::ensure!(
         stored_version == NODE_VERSION,
-        "database belongs to node version {stored_version}, but this node is version \
-         {NODE_VERSION}; {WIPE_GUIDANCE}"
+        Fatal::rebuild(format!(
+            "database belongs to node version {stored_version}, but this node is version \
+             {NODE_VERSION}; {WIPE_GUIDANCE}"
+        ))
     );
     anyhow::ensure!(
         stored_fingerprint.as_slice() == expected_fingerprint.as_slice(),
-        "database schema fingerprint {} does not match this node's {}; {WIPE_GUIDANCE}",
-        hex::encode(stored_fingerprint),
-        hex::encode(expected_fingerprint.as_slice())
+        Fatal::rebuild(format!(
+            "database schema fingerprint {} does not match this node's {}; {WIPE_GUIDANCE}",
+            hex::encode(stored_fingerprint),
+            hex::encode(expected_fingerprint.as_slice())
+        ))
     );
 
     // Read only after the fingerprint matched: that guarantees the column.
@@ -105,8 +116,10 @@ pub fn initialize(conn: &Connection) -> anyhow::Result<()> {
     )?;
     anyhow::ensure!(
         stored_semantics == COMMITMENT_SEMANTICS,
-        "database holds commitments under semantics {stored_semantics}, but this node \
-         uses {COMMITMENT_SEMANTICS}; {WIPE_GUIDANCE}"
+        Fatal::rebuild(format!(
+            "database holds commitments under semantics {stored_semantics}, but this node \
+             uses {COMMITMENT_SEMANTICS}; {WIPE_GUIDANCE}"
+        ))
     );
 
     tx.commit()
@@ -135,6 +148,7 @@ mod tests {
     }
 
     fn assert_wipe_error(error: anyhow::Error, expected: &str) {
+        assert_eq!(crate::fatal::exit_code(&error), 40, "{error:#}");
         let error = format!("{error:#}");
         assert!(
             error.contains(expected) && error.contains(WIPE_GUIDANCE),

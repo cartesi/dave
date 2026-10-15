@@ -132,9 +132,10 @@ safety, not hygiene:
   let a fabricated claim win uncontested.
 
 Apart from the two accepted halts and the trust model below, chain data
-reaches no panic on the dispute path until a wrong epoch has settled: the Hero
-then panics on a root that starts from a state it did not compute, an
-already-defeated protocol. Chain-reported coordinates reach the engine only
+reaches no panic on the dispute path. Once a wrong epoch has settled, the Hero
+stops the node (exit 30) on a root that starts from a state it did not
+compute, an already-defeated protocol; it reaches that root only after the
+settled epoch's refunds and sentry vote. Chain-reported coordinates reach the engine only
 through validators that accept everything the contracts produce. The observer
 checks each match against its tournament's descriptor (height, position,
 alignment, cycle) and the Hero's snapshot checks it again; a bisecting match
@@ -187,6 +188,19 @@ states reachable only through a node bug, corrupt local state, a broken
 trusted assumption, or an already-defeated protocol; there, stopping loudly
 is the alarm. A panic stops every worker, refunds included (`lib.rs`,
 `worker_failure`), and a restart re-plans the same step.
+
+The exit status tells a supervisor which of these happened (`fatal.rs`), with
+the numbers of the sequencer's contract: 0 a requested stop, 1 any other
+error (restart with backoff), 2 a usage error, 30 terminal (a flag, the
+template, the deployment or the settled chain disagrees with the node: do not
+restart, an operator must act), 40 rebuild the data directory (its schema,
+commitment semantics, emulator, consensus or geometry is another). A panic
+exits 101: restart with backoff and page, since a restart cannot make an
+invariant violation worse and may clear a nondeterministic one while a clock
+runs. The sequencer aborts on its panics instead, because its diagnosed
+faults cannot heal. Every exit logs its cause at ERROR, panics included (a
+panic hook), and a failure during a signal-requested drain still fails the
+exit status.
 
 Log levels carry that split. ERROR means an operator must act: a lost or
 winnerless dispute, a won epoch that cannot settle, a rejected submission, a

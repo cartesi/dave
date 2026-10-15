@@ -10,6 +10,7 @@ use super::error::Result;
 use super::sql::schema;
 use crate::engine::constants::{UARCH_STATE_LOG2_SIZE, UARCH_STATE_START};
 use crate::engine::{EngineConfig, Structure, TournamentGeometry, config as sling_config};
+use crate::fatal::Fatal;
 use crate::merkle::Digest;
 use alloy::primitives::Address;
 use anyhow::{Context, ensure};
@@ -398,31 +399,37 @@ fn check_pinned(
     let dir = state_dir.display();
     ensure!(
         pinned.app == given.app,
-        "data directory `{dir}` belongs to application {}, not --app-address {}: restart \
-         with the right --app-address or use another --data-dir",
-        alloy::hex::encode_prefixed(&pinned.app),
-        alloy::hex::encode_prefixed(&given.app),
+        Fatal::terminal(format!(
+            "data directory `{dir}` belongs to application {}, not --app-address {}: restart \
+             with the right --app-address or use another --data-dir",
+            alloy::hex::encode_prefixed(&pinned.app),
+            alloy::hex::encode_prefixed(&given.app),
+        ))
     );
     ensure!(
         pinned.chain_id == given.chain_id,
-        "data directory `{dir}` belongs to chain {}, not --blockchain-id {}: restart with \
-         the right --blockchain-id or use another --data-dir",
-        pinned.chain_id,
-        given.chain_id,
+        Fatal::terminal(format!(
+            "data directory `{dir}` belongs to chain {}, not --blockchain-id {}: restart with \
+             the right --blockchain-id or use another --data-dir",
+            pinned.chain_id, given.chain_id,
+        ))
     );
     ensure!(
         pinned.template_hash == given.template_hash,
-        "data directory `{dir}` was seeded from template {}, but the given template is {}: \
-         the directory belongs to another deployment or is an old one; use another \
-         --data-dir or wipe it",
-        pinned.template_hash,
-        given.template_hash,
+        Fatal::terminal(format!(
+            "data directory `{dir}` was seeded from template {}, but the given template is \
+             {}: the directory belongs to another deployment or is an old one; use another \
+             --data-dir or wipe it",
+            pinned.template_hash, given.template_hash,
+        ))
     );
     ensure!(
         pinned == given,
-        "data directory `{dir}` was built for another consensus, emulator or tournament \
-         geometry: stored {pinned:?}, given {given:?}; {}",
-        schema::WIPE_GUIDANCE
+        Fatal::rebuild(format!(
+            "data directory `{dir}` was built for another consensus, emulator or tournament \
+             geometry: stored {pinned:?}, given {given:?}; {}",
+            schema::WIPE_GUIDANCE
+        ))
     );
     Ok(())
 }
@@ -584,6 +591,7 @@ mod tests {
             format!("{error:#}").contains("--data-dir"),
             "unexpected error: {error:#}"
         );
+        assert_eq!(crate::fatal::exit_code(&error.into()), 30);
         let second_hash = Template::inspect(&second).unwrap().hash;
         let imported = snapshots_path(&state_dir).join(format!("0x{}", hex::encode(second_hash)));
         assert!(
@@ -608,6 +616,7 @@ mod tests {
             format!("{error:#}").contains("--app-address"),
             "unexpected error: {error:#}"
         );
+        assert_eq!(crate::fatal::exit_code(&error.into()), 30);
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
     }
 
