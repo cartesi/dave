@@ -36,12 +36,11 @@ pub use cartesi_machine::constants::ar::SHADOW_REVERT_ROOT_HASH_START as CHECKPO
 
 /// The uarch state's node in the machine hash tree, which every uarch reset
 /// rewrites whole (solidity-step's `EmulatorCompat.resetState`), to the hash
-/// `Machine::uarch_pristine_hash` returns. The emulator's C API exports
-/// neither number yet (its Lua module does);
-/// `tests::linked_emulator_and_step_agree_on_the_pristine_uarch` holds them
-/// to step's `UARCH_STATE_START_ADDRESS` and `UARCH_STATE_LOG2_SIZE`.
-pub const UARCH_STATE_START: u64 = 0x40_0000;
-pub const UARCH_STATE_LOG2_SIZE: u32 = 22;
+/// `Machine::uarch_pristine_hash` returns.
+/// `tests::linked_emulator_and_step_agree_on_the_pristine_uarch` holds the C
+/// API's values to step's `UARCH_STATE_START_ADDRESS` and
+/// `UARCH_STATE_LOG2_SIZE`.
+pub use cartesi_machine::constants::ar::{UARCH_STATE_LOG2_SIZE, UARCH_STATE_START};
 
 #[cfg(test)]
 mod tests {
@@ -52,7 +51,8 @@ mod tests {
         cartesi_machine_sys::{
             CM_HTIF_CMD_MASK, CM_HTIF_CMD_SHIFT, CM_HTIF_DEV_MASK, CM_HTIF_DEV_SHIFT,
             CM_HTIF_DEV_YIELD, CM_HTIF_REASON_MASK, CM_HTIF_REASON_SHIFT, CM_HTIF_YIELD_CMD_MANUAL,
-            CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED, CM_REG_HTIF_TOHOST, CM_REG_IFLAGS_Y,
+            CM_HTIF_YIELD_MANUAL_REASON_RX_ACCEPTED, CM_MARCHID, CM_REG_HTIF_TOHOST,
+            CM_REG_IFLAGS_Y,
         },
         constants::{
             ar::TX_START,
@@ -124,11 +124,11 @@ mod tests {
     /// Guardrail: every uarch reset the on-chain step verifies writes step's
     /// `UARCH_PRISTINE_STATE_HASH` over the uarch region, while every reset
     /// the node runs or logs restores the linked emulator's. Startup refuses
-    /// a deployment or a template whose hash differs from the linked
-    /// emulator's; this holds the step submodule to the same value, and the
-    /// pinned coordinates to step's, so a mismatched emulator or step bump
-    /// fails here, not at startup. The hash moves only in a coordinated
-    /// generation (docs/build-system.md): bump both together.
+    /// a deployment or a template whose hash or `CM_MARCHID` differs from the
+    /// linked emulator's; this holds the step submodule to the same values,
+    /// and the C API's uarch coordinates to step's, so a mismatched emulator
+    /// or step bump fails here, not at startup. They move only in a
+    /// coordinated generation (docs/build-system.md): bump both together.
     #[test]
     fn linked_emulator_and_step_agree_on_the_pristine_uarch() {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -148,6 +148,11 @@ mod tests {
             u64::from(UARCH_STATE_LOG2_SIZE),
             solidity_constant(&source, "UARCH_STATE_LOG2_SIZE"),
             "uarch state size disagrees with EmulatorConstants.sol"
+        );
+        assert_eq!(
+            u64::from(CM_MARCHID),
+            solidity_constant(&source, "CM_MARCHID"),
+            "the linked emulator's CM_MARCHID disagrees with EmulatorConstants.sol"
         );
         let linked = B256::from(Machine::uarch_pristine_hash());
         let step = solidity_bytes32(&source, "UARCH_PRISTINE_STATE_HASH");
