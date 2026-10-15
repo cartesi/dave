@@ -32,6 +32,7 @@ use crate::{
             InnerWinner, JoinDisposition, LiveMatch, LiveMatchState, MatchCoordinate, MatchSide,
             ReadyToSealMatch, RootWinner, SealedDivergence, SealedLeafMatch, TimeoutDisposition,
             TournamentDescriptor, TournamentKind, TournamentStanding, WaitingChildren,
+            validate_match_geometry,
         },
     },
 };
@@ -299,7 +300,8 @@ pub async fn read_match(
         }
     };
 
-    Ok(LiveMatch::try_new(state, disposition)?.validate_in(descriptor)?)
+    validate_match_geometry(descriptor, state)?;
+    Ok(LiveMatch::new(state, disposition))
 }
 
 #[derive(Clone, Copy)]
@@ -608,7 +610,10 @@ mod tests {
     use alloy::primitives::B256;
 
     use super::*;
-    use crate::tournament::dispute::{Event, EventKind, MatchDeletionReason, WinnerCommitment};
+    use crate::tournament::{
+        dispute::{Event, EventKind, WinnerCommitment},
+        domain::MatchDeletionReason,
+    };
 
     fn digest(byte: u8) -> Digest {
         Digest::new([byte; 32])

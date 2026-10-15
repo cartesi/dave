@@ -9,7 +9,7 @@ use alloy::primitives::Address;
 use crate::{
     merkle::Digest,
     tournament::domain::{
-        EliminationReason, Engagement, InnerEliminationReason, LiveMatchState, MatchSide,
+        Engagement, InnerEliminationReason, LiveMatchState, MatchDeletionReason, MatchSide,
         SemanticSnapshot, TimeoutDisposition, TournamentStanding,
     },
 };
@@ -37,7 +37,7 @@ pub enum Loss {
     /// The local commitment was eliminated in `tournament`.
     Eliminated {
         tournament: Address,
-        reason: EliminationReason,
+        reason: MatchDeletionReason,
     },
     /// Another commitment class won the local match's child `tournament`.
     Child { tournament: Address },
@@ -162,10 +162,10 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
                 _ => unreachable!("terminal standings returned before local planning"),
             }
         }
-        crate::tournament::domain::LocalCommitmentStanding::Eliminated(record) => {
+        crate::tournament::domain::LocalCommitmentStanding::Eliminated { reason } => {
             HeroDecision::Terminal(HeroTerminal::Lost(Loss::Eliminated {
                 tournament: snapshot.descriptor().address(),
-                reason: record.reason(),
+                reason,
             }))
         }
         crate::tournament::domain::LocalCommitmentStanding::Engaged(engagement) => {
@@ -245,10 +245,10 @@ mod tests {
     use crate::tournament::{
         MatchID,
         domain::{
-            AwaitingChildMatch, BisectingMatch, BlockDuration, EliminationReason,
-            EliminationRecord, InnerWinner, JoinDisposition, LocalCommitmentStanding,
-            MatchCoordinate, ParentLink, ReadyToSealMatch, RootWinner, SealedDivergence,
-            SealedLeafMatch, TournamentDescriptor, TournamentKind, WaitingChildren,
+            AwaitingChildMatch, BisectingMatch, BlockDuration, InnerWinner, JoinDisposition,
+            LiveMatch, LocalCommitmentStanding, MatchCoordinate, ParentLink, ReadyToSealMatch,
+            RootWinner, SealedDivergence, SealedLeafMatch, TournamentDescriptor, TournamentKind,
+            WaitingChildren,
         },
     };
 
@@ -333,7 +333,7 @@ mod tests {
             MatchSide::One => match_id().commitment_one,
             MatchSide::Two => match_id().commitment_two,
         };
-        let engagement = Engagement::try_new(local, match_id(), state, timeout).unwrap();
+        let engagement = Engagement::new(match_id(), local_side, LiveMatch::new(state, timeout));
         SemanticSnapshot::new(
             root_descriptor(kind),
             TournamentStanding::MatchesActive {
@@ -458,22 +458,22 @@ mod tests {
 
     #[test]
     fn eliminated_local_commitment_is_terminally_lost() {
-        let local = digest(1);
-        let record =
-            EliminationRecord::try_new(local, match_id(), EliminationReason::Timeout, None)
-                .unwrap();
         let snapshot = root_snapshot(
             TournamentStanding::MatchesActive {
                 joins: JoinDisposition::Closed,
             },
-            local,
-            LocalCommitmentStanding::Eliminated(record),
+            digest(1),
+            LocalCommitmentStanding::Eliminated {
+                reason: MatchDeletionReason::Timeout,
+            },
         );
-        assert!(matches!(
+        assert_eq!(
             plan_hero(&snapshot),
-            HeroDecision::Terminal(HeroTerminal::Lost(Loss::Eliminated { reason, .. }))
-                if reason == record.reason()
-        ));
+            HeroDecision::Terminal(HeroTerminal::Lost(Loss::Eliminated {
+                tournament: address(10),
+                reason: MatchDeletionReason::Timeout,
+            }))
+        );
     }
 
     #[test]
@@ -658,9 +658,12 @@ mod tests {
         let parent_descriptor = root_descriptor(TournamentKind::NonLeaf);
         let parent_commitment = digest(1);
         let parent_match = match_id();
-        let parent_link =
-            ParentLink::try_new(parent_descriptor.address(), parent_match, parent_commitment)
-                .unwrap();
+        let parent_link = ParentLink::new(
+            parent_descriptor.address(),
+            parent_match,
+            parent_commitment,
+            MatchSide::One,
+        );
         let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
         let child = SemanticSnapshot::new(
             child_descriptor,
@@ -675,13 +678,14 @@ mod tests {
 
         let awaiting =
             AwaitingChildMatch::try_new(divergence(), child_descriptor.address()).unwrap();
-        let engagement = Engagement::try_new(
-            parent_commitment,
+        let engagement = Engagement::new(
             parent_match,
-            LiveMatchState::AwaitingChild(awaiting),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
+            MatchSide::One,
+            LiveMatch::new(
+                LiveMatchState::AwaitingChild(awaiting),
+                TimeoutDisposition::None,
+            ),
+        );
         let parent = SemanticSnapshot::new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
@@ -709,7 +713,7 @@ mod tests {
         let parent_match = match_id();
         let parent_commitment = digest(1);
         let parent_link =
-            ParentLink::try_new(address(10), parent_match, parent_commitment).unwrap();
+            ParentLink::new(address(10), parent_match, parent_commitment, MatchSide::One);
         let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
         let child_winner = digest(40);
 
@@ -748,7 +752,7 @@ mod tests {
 
     #[test]
     fn child_elimination_never_becomes_a_hero_action() {
-        let parent_link = ParentLink::try_new(address(10), match_id(), digest(1)).unwrap();
+        let parent_link = ParentLink::new(address(10), match_id(), digest(1), MatchSide::One);
         for (reason, local, local_standing) in [
             (
                 InnerEliminationReason::NoCandidate,

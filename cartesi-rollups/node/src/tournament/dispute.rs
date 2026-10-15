@@ -20,16 +20,8 @@ use crate::merkle::Digest;
 
 use super::{
     MatchID,
-    domain::{MatchSide, TournamentDescriptor},
+    domain::{MatchDeletionReason, MatchSide, TournamentDescriptor},
 };
-
-/// Why a match was resolved.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MatchDeletionReason {
-    Step,
-    Timeout,
-    ChildTournament,
-}
 
 /// Which commitment survived a resolved match.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
