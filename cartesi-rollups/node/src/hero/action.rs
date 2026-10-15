@@ -12,7 +12,7 @@ use alloy::primitives::{Address, U256};
 use thiserror::Error;
 
 use crate::{
-    engine::{DisputeSource, RulerFactory},
+    engine::{DisputeSource, LevelCoords, RulerFactory},
     merkle::{Digest, MerkleProof},
     tournament::{
         MatchID,
@@ -22,10 +22,7 @@ use crate::{
     },
 };
 
-use super::{
-    context::{HeroContext, LevelMaterial},
-    planner::HeroIntent,
-};
+use super::{context::HeroContext, planner::HeroIntent};
 
 /// One completely local, owned action ready for the sender boundary.
 ///
@@ -161,9 +158,14 @@ pub fn prepare<F: RulerFactory>(
             parent_tournament,
             child_tournament,
         } => {
-            let (_, material) = level(context, parent_tournament);
-            let (left_node, right_node) =
-                root_children("propagate child", parent_tournament, material, source)?;
+            let (snapshot, coords) = level(context, parent_tournament);
+            let (left_node, right_node) = root_children(
+                "propagate child",
+                parent_tournament,
+                coords,
+                snapshot.local_commitment(),
+                source,
+            )?;
             Ok(PreparedArenaAction::PropagateChild {
                 parent_tournament,
                 child_tournament,
@@ -180,13 +182,14 @@ fn prepare_join<F: RulerFactory>(
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "join";
-    let (_, material) = level(context, tournament);
-    let (left_child, right_child) = root_children(ACTION, tournament, material, source)?;
+    let (snapshot, coords) = level(context, tournament);
+    let root = snapshot.local_commitment();
+    let (left_child, right_child) = root_children(ACTION, tournament, coords, root, source)?;
     let proof_last = source
-        .prove_last(material.coords())
+        .prove_last(coords)
         .map_err(|source| source_error(ACTION, tournament, source))?;
-    let expected_position = (U256::from(1) << material.descriptor().height().get()) - U256::ONE;
-    if proof_last.position != expected_position || !proof_last.verify_root(material.root()) {
+    let expected_position = (U256::from(1) << snapshot.descriptor().height().get()) - U256::ONE;
+    if proof_last.position != expected_position || !proof_last.verify_root(root) {
         return Err(PrepareError::ProofRootMismatch {
             action: ACTION,
             tournament,
@@ -206,8 +209,14 @@ fn prepare_timeout<F: RulerFactory>(
     context: &HeroContext,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
-    let (snapshot, material) = level(context, tournament);
-    let (left_node, right_node) = root_children("claim timeout", tournament, material, source)?;
+    let (snapshot, coords) = level(context, tournament);
+    let (left_node, right_node) = root_children(
+        "claim timeout",
+        tournament,
+        coords,
+        snapshot.local_commitment(),
+        source,
+    )?;
     Ok(PreparedArenaAction::ClaimTimeout {
         tournament,
         match_id: engagement(snapshot).match_id(),
@@ -222,14 +231,14 @@ fn prepare_advance<F: RulerFactory>(
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "advance";
-    let (snapshot, material) = level(context, tournament);
+    let (snapshot, coords) = level(context, tournament);
     let engagement = engagement(snapshot);
     let LiveMatchState::Bisecting(state) = engagement.live().state() else {
         unreachable!("an advance is planned only on a bisecting match");
     };
 
     let (left_node, right_node, selected) =
-        unresolved_opening(ACTION, tournament, material, state, source)?;
+        unresolved_opening(ACTION, tournament, coords, state, source)?;
     let (new_left_node, new_right_node) = source
         .children(&selected)
         .map_err(|source| source_error(ACTION, tournament, source))?;
@@ -261,7 +270,7 @@ fn prepare_seal<F: RulerFactory>(
     context: &HeroContext,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<(MatchID, Digest, Digest, MerkleProof)> {
-    let (snapshot, material) = level(context, tournament);
+    let (snapshot, coords) = level(context, tournament);
     let engagement = engagement(snapshot);
     let (LiveMatchState::ReadyToSealLeaf(state) | LiveMatchState::ReadyToDelegate(state)) =
         engagement.live().state()
@@ -269,9 +278,7 @@ fn prepare_seal<F: RulerFactory>(
         unreachable!("a seal is planned only on a match ready to seal");
     };
 
-    let contested = material
-        .coords()
-        .node(1, state.coordinate().leaf_position());
+    let contested = coords.node(1, state.coordinate().leaf_position());
     let observed_parent = source
         .node(&contested)
         .map_err(|source| source_error(action, tournament, source))?;
@@ -299,14 +306,14 @@ fn prepare_seal<F: RulerFactory>(
     };
 
     let agree_state_proof = if divergence_position.is_zero() {
-        MerkleProof::leaf(material.descriptor().initial_hash(), U256::ZERO)
+        MerkleProof::leaf(snapshot.descriptor().initial_hash(), U256::ZERO)
     } else {
         let agree_position = divergence_position - U256::ONE;
         let proof = source
-            .prove_leaf(material.coords(), agree_position)
+            .prove_leaf(coords, agree_position)
             .map_err(|source| source_error(action, tournament, source))?;
         let proof_mismatch =
-            proof.position != agree_position || !proof.verify_root(material.root());
+            proof.position != agree_position || !proof.verify_root(snapshot.local_commitment());
         let right_branch_mismatch = !left_diverges && proof.node != left_leaf;
         if proof_mismatch || right_branch_mismatch {
             return Err(PrepareError::ProofRootMismatch { action, tournament });
@@ -328,13 +335,19 @@ fn prepare_leaf_proof<F: RulerFactory>(
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "prove leaf";
-    let (snapshot, material) = level(context, tournament);
+    let (snapshot, coords) = level(context, tournament);
     let engagement = engagement(snapshot);
     let LiveMatchState::SealedLeaf(state) = engagement.live().state() else {
         unreachable!("a leaf proof is planned only on a sealed leaf match");
     };
 
-    let (left_node, right_node) = root_children(ACTION, tournament, material, source)?;
+    let (left_node, right_node) = root_children(
+        ACTION,
+        tournament,
+        coords,
+        snapshot.local_commitment(),
+        source,
+    )?;
     let divergence = state.divergence();
     let proof = source
         .prove_transition(
@@ -353,16 +366,16 @@ fn prepare_leaf_proof<F: RulerFactory>(
     })
 }
 
-/// The planned level. Assembly builds a snapshot and its material from one
+/// The planned level. Assembly builds a snapshot and its coordinates from one
 /// descriptor for every tournament on the path, and the intent names one.
-fn level(context: &HeroContext, tournament: Address) -> (&SemanticSnapshot, &LevelMaterial) {
+fn level(context: &HeroContext, tournament: Address) -> (&SemanticSnapshot, &LevelCoords) {
     let snapshot = context
         .snapshot_at(tournament)
         .expect("an intent names a tournament on the planned path");
-    let material = context
-        .level(&tournament)
-        .expect("assembly builds material for every level on the path");
-    (snapshot, material)
+    let coords = context
+        .coords(&tournament)
+        .expect("assembly builds coordinates for every level on the path");
+    (snapshot, coords)
 }
 
 fn engagement(snapshot: &SemanticSnapshot) -> Engagement {
@@ -375,24 +388,25 @@ fn engagement(snapshot: &SemanticSnapshot) -> Engagement {
 fn root_children<F: RulerFactory>(
     action: &'static str,
     tournament: Address,
-    material: &LevelMaterial,
+    coords: &LevelCoords,
+    root: Digest,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<(Digest, Digest)> {
     let (left, right) = source
-        .children(&material.coords().root())
+        .children(&coords.root())
         .map_err(|source| source_error(action, tournament, source))?;
-    require_opening(action, tournament, material.root(), left, right)?;
+    require_opening(action, tournament, root, left, right)?;
     Ok((left, right))
 }
 
 fn unresolved_opening<F: RulerFactory>(
     action: &'static str,
     tournament: Address,
-    material: &LevelMaterial,
+    coords: &LevelCoords,
     state: BisectingMatch,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<(Digest, Digest, crate::engine::Quartet)> {
-    let contested = material.coords().node(
+    let contested = coords.node(
         state.remaining_height().get(),
         state.coordinate().leaf_position(),
     );
@@ -458,7 +472,6 @@ fn source_error(action: &'static str, tournament: Address, source: anyhow::Error
 mod tests {
     use crate::{
         engine::{
-            LevelCoords,
             spec::{S_SMALL, toy_source},
             toy::{ToyFactory, ToyInput, ToyOutcome, ToyStf},
         },
@@ -552,8 +565,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let material = LevelMaterial::from_parts(descriptor, coords, local_commitment);
-        HeroContext::from_parts(snapshot, [material])
+        HeroContext::from_parts(snapshot, [(descriptor.address(), coords)])
     }
 
     fn id_for(local: Digest, opponent: Digest, side: MatchSide) -> MatchID {
@@ -869,10 +881,7 @@ mod tests {
         .unwrap();
         let context = HeroContext::from_parts(
             parent_snapshot,
-            [
-                LevelMaterial::from_parts(parent_descriptor, parent_coords, parent_commitment),
-                LevelMaterial::from_parts(child_descriptor, child_coords, child_winner),
-            ],
+            [(ROOT, parent_coords), (CHILD, child_coords)],
         );
 
         Fixture {
