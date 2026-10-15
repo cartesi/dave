@@ -5,14 +5,16 @@
 //! deliberately do not carry.
 //!
 //! This is initialization-time state: the node's schema owns the DDL
-//! (storage/sql/schema.sql) and `pin` writes the row exactly once
-//! at database creation; the dispute module only reads and asserts
-//! (`assert_compatible`).
+//! (storage/sql/schema.sql) and `pin` writes the row once, when
+//! initialization seeds the database. Every later startup compares the
+//! whole row with the running node's (`check_pinned` in
+//! storage/open.rs), the one compatibility gate; the dispute module
+//! only reads it.
 
 use super::geometry::TournamentGeometry;
 use super::structure::Structure;
 use crate::merkle::Digest;
-use anyhow::{Result, ensure};
+use anyhow::Result;
 use rusqlite::{Connection, OptionalExtension, params};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,60 +34,23 @@ pub struct EngineConfig {
 }
 
 /// Pins the configuration, once per database; the schema comes from
-/// node initialization. Idempotent for an identical configuration; any
-/// drift is refused.
+/// node initialization. A second pin fails on the row's primary key.
 pub fn pin(connection: &Connection, config: &EngineConfig) -> Result<()> {
     config.structure.assert_valid();
-
-    match stored(connection)? {
-        Some(existing) => ensure!(
-            existing == *config,
-            "engine database configuration mismatch: stored {:?}, given {:?}",
-            existing,
-            config
-        ),
-        None => {
-            connection.execute(
-                "INSERT INTO sling_config VALUES (0, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    config.structure.log2_input_span,
-                    config.structure.log2_barch_span,
-                    config.structure.log2_uarch_span,
-                    config.chain_id,
-                    config.app,
-                    config.consensus,
-                    config.template_hash.slice(),
-                    config.emulator_version,
-                    config.geometry.encode(),
-                ],
-            )?;
-        }
-    }
-    Ok(())
-}
-
-/// The dispute module's startup check: the stored pins must match the
-/// running engine. Structure and emulator version only - the app and
-/// template-hash pins are node-level facts the dispute side cannot
-/// derive independently (the epoch snapshot hash differs from the
-/// template hash past epoch zero).
-pub fn assert_compatible(
-    stored: &EngineConfig,
-    structure: &Structure,
-    emulator_version: &str,
-) -> Result<()> {
-    ensure!(
-        stored.structure == *structure,
-        "engine structure mismatch: stored {:?}, running {:?}",
-        stored.structure,
-        structure
-    );
-    ensure!(
-        stored.emulator_version == emulator_version,
-        "emulator version drift: database pinned {}, running {}",
-        stored.emulator_version,
-        emulator_version
-    );
+    connection.execute(
+        "INSERT INTO sling_config VALUES (0, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            config.structure.log2_input_span,
+            config.structure.log2_barch_span,
+            config.structure.log2_uarch_span,
+            config.chain_id,
+            config.app,
+            config.consensus,
+            config.template_hash.slice(),
+            config.emulator_version,
+            config.geometry.encode(),
+        ],
+    )?;
     Ok(())
 }
 
@@ -148,16 +113,12 @@ mod tests {
             log2_barch_span: 1,
             log2_uarch_span: 2,
         };
-        let toy_table = |pairs: &[(u64, u64)]| {
-            let levels = pairs
-                .iter()
-                .map(|&(log2_stride, height)| Level {
-                    log2_stride,
-                    height,
-                })
-                .collect();
-            TournamentGeometry::new(levels, &structure)
-        };
+        let levels = [(2, 2), (0, 2)]
+            .map(|(log2_stride, height)| Level {
+                log2_stride,
+                height,
+            })
+            .to_vec();
         let config = EngineConfig {
             structure,
             chain_id: 1,
@@ -165,27 +126,15 @@ mod tests {
             consensus: vec![0xcc; 20],
             template_hash: Digest::from_digest(&[1u8; 32])?,
             emulator_version: "0.21.0".into(),
-            geometry: toy_table(&[(2, 2), (0, 2)])?,
+            geometry: TournamentGeometry::new(levels, &structure)?,
         };
-        pin(&Connection::open(&path)?, &config)?;
-
-        // Same config pins again fine (idempotent).
         pin(&Connection::open(&path)?, &config)?;
         assert_eq!(stored(&Connection::open(&path)?)?, Some(config.clone()));
 
-        // Any drift is refused.
-        let mut drifted = config.clone();
-        drifted.emulator_version = "0.22.0".into();
-        assert!(pin(&Connection::open(&path)?, &drifted).is_err());
-        let mut drifted = config.clone();
-        drifted.chain_id = 11155111;
-        assert!(pin(&Connection::open(&path)?, &drifted).is_err());
-        let mut drifted = config.clone();
-        drifted.consensus = vec![0xdd; 20];
-        assert!(pin(&Connection::open(&path)?, &drifted).is_err());
-        let mut drifted = config.clone();
-        drifted.geometry = toy_table(&[(3, 1), (0, 3)])?;
-        assert!(pin(&Connection::open(&path)?, &drifted).is_err());
+        // The primary key refuses even an identical second pin; drift is
+        // startup's check_pinned (storage/open.rs).
+        assert!(pin(&Connection::open(&path)?, &config).is_err());
+        assert_eq!(stored(&Connection::open(&path)?)?, Some(config));
         Ok(())
     }
 }

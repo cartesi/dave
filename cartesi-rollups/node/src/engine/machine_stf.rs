@@ -28,7 +28,6 @@ use cartesi_machine::{
         cmio::tohost::manual::{RX_ACCEPTED, RX_REJECTED},
         rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
     },
-    format_emulator_version,
     machine::Machine,
     types::{
         Hash, LogType,
@@ -635,15 +634,8 @@ impl DisputeSource<Positioner> {
         work_dir: PathBuf,
         collector: Collector,
     ) -> Result<Self> {
-        // Initialization pinned the config; assert engine
-        // compatibility before serving any quartet.
         let structure = Structure::PRODUCTION;
         let config = storage.sling_config()?;
-        super::config::assert_compatible(
-            &config,
-            &structure,
-            &format_emulator_version(Machine::version()),
-        )?;
 
         let fed_windows = storage.input_count(epoch)?;
 
