@@ -876,8 +876,9 @@ mod tests {
         overflow_config.uarch.processor.registers.cycle = UARCH_MASK_TO_BARCH;
         overflow_config.uarch.processor.registers.halt = 0;
 
-        // This is the closing source state exercised by the v0.21
-        // uarch-overflow-tail case: the counter is maxed but halt is clear.
+        // This is the closing source state of the computation-hash
+        // corpus's uarch-overflow-tail case: the counter is maxed but halt
+        // is clear.
         let mut oracle = Machine::create(&overflow_config, &RuntimeConfig::quiet_console())?;
         assert_eq!(oracle.ucycle()?, UARCH_MASK_TO_BARCH);
         assert!(!oracle.uarch_halt_flag()?);
@@ -1123,8 +1124,7 @@ mod tests {
     /// The input budget's seams as chain witnesses for the Solidity step,
     /// which NodeWitnessesTest (cartesi-rollups/contracts) replays: RX_ACCEPTED
     /// openings on the budget's last cycle and on a halted machine (seam 2),
-    /// and an RX_REJECTED closing on the budget's last cycle (seam 1), the
-    /// boundaries where the v0.21 CLI departs from the step. No input can
+    /// and an RX_REJECTED closing on the budget's last cycle (seam 1). No input can
     /// reach seam 1 by execution (it would run 2^48 - 1 cycles), so, as in
     /// the Lua vectors, the budget shrinks after a physical delivery.
     /// UPDATE_FIXTURES=1 regenerates tests/fixtures/node_seam_witnesses.json.
@@ -1247,12 +1247,11 @@ mod tests {
         Ok(())
     }
 
-    /// Seam 1 on the bulk path: v0.21.0's collector reports the physical
-    /// root for a rejection on the input budget's last cycle, where the step
-    /// reverts, so bulk collection declines that cycle and the ruler steps
-    /// it (seam_witness_vectors_hold pins the stepped answer). The control
-    /// pins the collector's answer: once an emulator reports the revert
-    /// root there, the guard in big_cycle_roots can go.
+    /// Seam 1 on the bulk path: bulk collection declines a rejection on the
+    /// input budget's last cycle and the ruler steps it
+    /// (seam_witness_vectors_hold pins the stepped answer). The control pins
+    /// the collector's answer there, now the revert root as the step's reset
+    /// writes, so the guard in big_cycle_roots can go.
     #[test]
     fn bulk_collection_leaves_the_budgets_last_cycle_to_stepping() -> Result<()> {
         use cartesi_machine::cartesi_machine_sys::{CM_REG_IMCYCLEMAX, CM_REG_X20};
@@ -1302,11 +1301,7 @@ mod tests {
         let (mut machine, revert_root, _, tail) = delivered(work.path())?;
         let collected = machine.collect_uarch_cycle_root_hashes(mcycle + 1, 0, Some(&tail))?;
         let reset = *collected.periods().next().unwrap().last().unwrap();
-        assert_ne!(
-            reset, revert_root,
-            "the collector now reverts on the budget's last cycle: drop the guard"
-        );
-        assert_eq!(reset, machine.root_hash()?, "the physical root");
+        assert_eq!(reset, revert_root, "the reset entry is the revert root");
         Ok(())
     }
 

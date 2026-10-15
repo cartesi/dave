@@ -725,7 +725,9 @@ impl Machine {
         Ok(CmioRequest::new(cmd, reason, buffer))
     }
 
-    /// Sends a cmio response.
+    /// Sends a cmio response. A response the machine cannot take (no manual
+    /// yield pending, a payload larger than the rx buffer, or an advance
+    /// response at a yield other than rx-accepted) is a no-op, as in the step.
     pub fn send_cmio_response(
         &mut self,
         reason: CmioResponseReason,
@@ -737,7 +739,7 @@ impl Machine {
                 self.machine,
                 reason.into(),
                 data.as_ptr(),
-                data.len() as u64,
+                cmio_length(data)?,
                 optional_hash_ptr(revert_root_hash),
             )
         };
@@ -816,7 +818,7 @@ impl Machine {
                 self.machine,
                 reason.into(),
                 data.as_ptr(),
-                data.len() as u64,
+                cmio_length(data)?,
                 revert_root_hash,
                 log_type.to_bitflag(),
                 &mut log_ptr,
@@ -913,7 +915,7 @@ impl Machine {
                 ptr::null(),
                 reason.into(),
                 data.as_ptr(),
-                data.len() as u64,
+                cmio_length(data)?,
                 root_hash_before,
                 log_cstr.as_ptr(),
                 revert_root_hash,
@@ -926,13 +928,23 @@ impl Machine {
     }
 }
 
+/// The C API takes CMIO response lengths as `uint32_t`. A longer payload is
+/// refused rather than truncated, which would deliver a prefix of it.
+fn cmio_length(data: &[u8]) -> Result<u32> {
+    u32::try_from(data.len()).map_err(|_| MachineError {
+        code: constants::error_code::OUT_OF_RANGE,
+        message: format!("cmio response of {} bytes exceeds u32", data.len()),
+    })
+}
+
 fn optional_hash_ptr(hash: Option<&Hash>) -> *const Hash {
     hash.map_or(ptr::null(), |hash| hash as *const Hash)
 }
 
-/// The C API takes bundle sizes as int32_t, and v0.21.0 computes with them
-/// before validating (a uarch bundle above 2^20 makes a negative shift, which
-/// is undefined behavior), so sizes past `max` are refused before the call.
+/// The C API takes bundle sizes as int32_t, and its root-hash collectors
+/// compute with them before validating (a uarch bundle above 2^20 makes a
+/// negative shift, which is undefined behavior), so sizes past `max` are
+/// refused before the call.
 fn bundle_log2(log2: u32, max: u32) -> Result<i32> {
     if log2 > max {
         return Err(MachineError {

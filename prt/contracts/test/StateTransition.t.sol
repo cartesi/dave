@@ -65,8 +65,9 @@ contract StateTransitionTest is Util {
         STATE_TRANSITION_HARNESS = new CartesiStateTransitionHarness();
     }
 
-    function testCmMarchIdMatchesPinnedEmulator() public view {
-        assertEq(STATE_TRANSITION.CM_MARCHID(), 21);
+    function testCmMarchIdIsTheStepConstant() public view {
+        assertEq(STATE_TRANSITION.CM_MARCHID(), EmulatorConstants.CM_MARCHID);
+        assertEq(STATE_TRANSITION.CM_MARCHID(), 22);
     }
 
     function testUarchPristineStateHashIsTheResetConstant() public view {

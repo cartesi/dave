@@ -28,9 +28,6 @@ jobs:
 
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
-        with:
-          version: 0.21.0
-          suffix-version: ""
 
       # The state-transition suites need the PRT dependencies and the real
       # yield image used by their Lua proof generator; the full-stack leaf-proof
@@ -89,8 +86,6 @@ jobs:
         uses: ./.github/actions/setup-tools
       - name: Install Cartesi Machine
         uses: ./.github/actions/cartesi-machine
-        with:
-          version: 0.21.0
       - name: Download PRT contracts
         run: |
           just prt-contracts::install-deps
