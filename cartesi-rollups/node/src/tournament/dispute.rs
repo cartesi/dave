@@ -98,12 +98,6 @@ pub struct Commitment {
     latest_match: Option<Digest>,
 }
 
-impl Commitment {
-    pub const fn root(&self) -> Digest {
-        self.root
-    }
-}
-
 /// The event-derived lifecycle of one match.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MatchStatus {
@@ -215,6 +209,7 @@ impl Tournament {
         self.descriptor.address()
     }
 
+    #[cfg(test)]
     pub fn commitment(&self, root: &Digest) -> Option<&Commitment> {
         self.commitments.get(root)
     }

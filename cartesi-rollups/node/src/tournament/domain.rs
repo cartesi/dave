@@ -38,14 +38,11 @@ impl From<MatchID> for cartesi_prt_contracts::tournament::Match::Id {
 pub struct BlockDuration(u64);
 
 impl BlockDuration {
+    #[cfg(test)]
     pub const ZERO: Self = Self(0);
 
     pub const fn from_blocks(blocks: u64) -> Self {
         Self(blocks)
-    }
-
-    pub const fn blocks(self) -> u64 {
-        self.0
     }
 }
 
@@ -57,6 +54,10 @@ pub enum MatchSide {
 }
 
 impl MatchSide {
+    #[expect(
+        dead_code,
+        reason = "no caller; whether the domain keeps it is undecided"
+    )]
     pub const fn opposite(self) -> Self {
         match self {
             Self::One => Self::Two,
@@ -354,14 +355,6 @@ impl SealedDivergence {
         self.coordinate
     }
 
-    pub const fn final_state_one(self) -> Digest {
-        self.final_state_one
-    }
-
-    pub const fn final_state_two(self) -> Digest {
-        self.final_state_two
-    }
-
     pub const fn final_state(self, side: MatchSide) -> Digest {
         match side {
             MatchSide::One => self.final_state_one,
@@ -425,6 +418,7 @@ pub enum LiveMatchState {
 }
 
 impl LiveMatchState {
+    #[cfg(test)]
     pub const fn responder(self) -> Option<MatchSide> {
         match self {
             Self::Bisecting(value) => Some(value.responder()),
@@ -444,6 +438,10 @@ pub enum TimeoutDisposition {
 }
 
 impl TimeoutDisposition {
+    #[expect(
+        dead_code,
+        reason = "no caller; whether the domain keeps it is undecided"
+    )]
     pub const fn winner(self) -> Option<(MatchSide, BlockDuration)> {
         match self {
             Self::OneWins { deferred_charge } => Some((MatchSide::One, deferred_charge)),
@@ -575,6 +573,7 @@ impl EliminationRecord {
         self.reason
     }
 
+    #[cfg(test)]
     pub const fn survivor(self) -> Option<MatchSide> {
         self.survivor
     }
@@ -637,10 +636,6 @@ impl InnerWinner {
 
     pub const fn parent_commitment(self) -> Digest {
         self.parent_commitment
-    }
-
-    pub const fn child_commitment(self) -> Digest {
-        self.child_commitment
     }
 }
 
@@ -713,10 +708,6 @@ impl ParentLink {
 
     pub const fn parent_commitment(self) -> Digest {
         self.parent_commitment
-    }
-
-    pub const fn parent_side(self) -> MatchSide {
-        self.parent_side
     }
 }
 
