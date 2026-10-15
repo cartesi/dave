@@ -12,9 +12,9 @@ use crate::{
     tournament::{
         MatchID,
         domain::{
-            BlockDuration, Engagement, InnerEliminationReason, LiveMatchState, MatchSide,
-            ParentLink, ReadyToSealMatch, SealedLeafMatch, SemanticSnapshot, TimeoutDisposition,
-            TournamentStanding,
+            BlockDuration, EliminationReason, Engagement, InnerEliminationReason, LiveMatchState,
+            MatchSide, ParentLink, ReadyToSealMatch, SealedLeafMatch, SemanticSnapshot,
+            TimeoutDisposition, TournamentStanding,
         },
     },
 };
@@ -33,8 +33,22 @@ pub enum HeroDecision {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HeroTerminal {
     Won,
-    Lost,
+    Lost(Loss),
     FailedNoWinner,
+}
+
+/// How the local commitment lost, for the operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Loss {
+    /// Another commitment won the root, ending in `final_state`.
+    Root { final_state: Digest },
+    /// The local commitment was eliminated in `tournament`.
+    Eliminated {
+        tournament: Address,
+        reason: EliminationReason,
+    },
+    /// Another commitment class won the local match's child `tournament`.
+    Child { tournament: Address },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +60,22 @@ pub enum WaitReason {
     OpponentWinsByTimeout { winner: MatchSide },
     MatchEliminable,
     ChildEliminable { reason: InnerEliminationReason },
+}
+
+impl WaitReason {
+    /// The local commitment already missed an obligation: it never joined
+    /// before joins closed, its clock expired, both clocks of its match
+    /// expired, or its match's child has no winner to propagate. Each means
+    /// the node failed to take part, which is never in the plan.
+    pub const fn missed(self) -> bool {
+        matches!(
+            self,
+            Self::JoinsClosed
+                | Self::OpponentWinsByTimeout { .. }
+                | Self::MatchEliminable
+                | Self::ChildEliminable { .. }
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,7 +157,9 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
             if winner.commitment() == snapshot.local_commitment() {
                 return HeroDecision::Terminal(HeroTerminal::Won);
             }
-            return HeroDecision::Terminal(HeroTerminal::Lost);
+            return HeroDecision::Terminal(HeroTerminal::Lost(Loss::Root {
+                final_state: winner.final_state(),
+            }));
         }
         TournamentStanding::RootFailed => {
             return HeroDecision::Terminal(HeroTerminal::FailedNoWinner);
@@ -137,7 +169,9 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
                 .parent()
                 .expect("validated inner snapshots carry a parent link");
             if winner.parent_commitment() != parent.parent_commitment() {
-                return HeroDecision::Terminal(HeroTerminal::Lost);
+                return HeroDecision::Terminal(HeroTerminal::Lost(Loss::Child {
+                    tournament: snapshot.descriptor().address(),
+                }));
             }
             return HeroDecision::Act(HeroIntent::PropagateChild(propagation_intent(
                 snapshot,
@@ -173,8 +207,11 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
                 _ => unreachable!("terminal standings returned before local planning"),
             }
         }
-        crate::tournament::domain::LocalCommitmentStanding::Eliminated(_) => {
-            HeroDecision::Terminal(HeroTerminal::Lost)
+        crate::tournament::domain::LocalCommitmentStanding::Eliminated(record) => {
+            HeroDecision::Terminal(HeroTerminal::Lost(Loss::Eliminated {
+                tournament: snapshot.descriptor().address(),
+                reason: record.reason(),
+            }))
         }
         crate::tournament::domain::LocalCommitmentStanding::Engaged(engagement) => {
             plan_engagement(snapshot, engagement)
@@ -428,7 +465,12 @@ mod tests {
             ours,
             LocalCommitmentStanding::NotJoined,
         );
-        assert_eq!(plan_hero(&lost), HeroDecision::Terminal(HeroTerminal::Lost));
+        assert_eq!(
+            plan_hero(&lost),
+            HeroDecision::Terminal(HeroTerminal::Lost(Loss::Root {
+                final_state: digest(31)
+            }))
+        );
 
         let failed = root_snapshot(
             TournamentStanding::RootFailed,
@@ -515,10 +557,11 @@ mod tests {
             local,
             LocalCommitmentStanding::Eliminated(record),
         );
-        assert_eq!(
+        assert!(matches!(
             plan_hero(&snapshot),
-            HeroDecision::Terminal(HeroTerminal::Lost)
-        );
+            HeroDecision::Terminal(HeroTerminal::Lost(Loss::Eliminated { reason, .. }))
+                if reason == record.reason()
+        ));
     }
 
     #[test]
@@ -864,7 +907,12 @@ mod tests {
             None,
         )
         .unwrap();
-        assert_eq!(plan_hero(&lost), HeroDecision::Terminal(HeroTerminal::Lost));
+        assert_eq!(
+            plan_hero(&lost),
+            HeroDecision::Terminal(HeroTerminal::Lost(Loss::Child {
+                tournament: child_descriptor.address()
+            }))
+        );
     }
 
     #[test]

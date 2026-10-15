@@ -211,7 +211,11 @@ panic hook), and a failure during a signal-requested drain still fails the
 exit status.
 
 Log levels carry that split. ERROR means an operator must act: a lost or
-winnerless dispute, a won epoch that cannot settle, a rejected submission, a
+winnerless dispute (a loss names its case: elimination, another class's child
+win, a root won with this node's final state, or a divergence), an obligation
+the local commitment already missed (joins closed before it joined, its clock
+expired, its match or its match's child is eliminable), a won epoch that
+cannot settle, a rejected submission, a
 batch the signer cannot cover, a failure or a planned call that persists past
 G (the paging rule above), a torn snapshot, a worker
 exit, or a contract answer the node does not know (an unknown bond
@@ -573,7 +577,8 @@ the runtime worker off, so the reader and runner keep running, and nothing
 deadline-bearing waits on the manager meanwhile. That rests on the
 single-path Hero, not on a test: it has one engaged match per level, and a
 cold build starts only after the seal that created its level mined, so none
-of its own actions is pending; settlement is planned only after a win; and
+of its own actions is pending; settlement is planned only once the root has a
+winner; and
 refunds have no deadline (`tryRecoveringBond` has no time arm). A tick whose
 assembly ran machine work observes the chain again before planning, once,
 and that assembly reuses the build: the action, its head, the join's Solid

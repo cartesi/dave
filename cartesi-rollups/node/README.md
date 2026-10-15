@@ -227,5 +227,8 @@ Options:
   cannot settle (a terminal application) each log an error every tick: they
   are the application guardian's to resolve, by foreclosure if need be
   ([epoch-lifecycle.md](../../docs/epoch-lifecycle.md#consensus-layer-staging-sentries-and-foreclosure)).
+  A lost root's error says whether the winner ends in this node's final state
+  or diverges from it; a sentry node claims its own state either way. After a
+  divergent state settles, the node stops with exit 30 at the next epoch.
   A foreclosed application settles nothing more: let the node finish
   recovering its winning bonds, then stop it.
