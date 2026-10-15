@@ -29,11 +29,10 @@ use crate::{
         MatchID,
         dispute::{Dispute, Match, MatchStatus, Tournament},
         domain::{
-            BisectingMatch, BlockDuration, DomainError, InnerEliminationReason, InnerWinner,
-            JoinDisposition, LiveMatch, LiveMatchState, MatchCoordinate, MatchSide,
-            ReadyToSealMatch, RootWinner, SealedDivergence, SealedLeafMatch, TimeoutDisposition,
-            TournamentDescriptor, TournamentKind, TournamentStanding, WaitingChildren,
-            validate_match_geometry,
+            DomainError, InnerEliminationReason, InnerWinner, LiveMatch, LiveMatchState,
+            MatchCoordinate, MatchSide, RootWinner, SealedDivergence, TimeoutDisposition,
+            TournamentDescriptor, TournamentKind, TournamentStanding, UnresolvedMatch,
+            WaitingChildren, validate_match_geometry,
         },
     },
 };
@@ -220,11 +219,7 @@ pub async fn read_match(
                         descriptor.address()
                     )
                 })?;
-            let timeout = decode_timeout(
-                timeout_wire.actualPhase,
-                timeout_wire.outcome,
-                timeout_wire.deferredCharge,
-            )?;
+            let timeout = decode_timeout(timeout_wire.actualPhase, timeout_wire.outcome)?;
             validate_event_phase(match_id_hash, match_.status(), timeout.phase)?;
 
             let state = match timeout.phase {
@@ -336,11 +331,7 @@ fn decode_standing(
 
     let standing = match wire.standing {
         0 => TournamentStanding::MatchesActive {
-            joins: if wire.acceptsJoins {
-                JoinDisposition::Open
-            } else {
-                JoinDisposition::Closed
-            },
+            accepts_joins: wire.acceptsJoins,
         },
         1 => TournamentStanding::AwaitingClosure,
         2 => {
@@ -400,16 +391,13 @@ fn decode_standing(
     Ok(standing)
 }
 
-fn decode_timeout(phase: u8, outcome: u8, deferred_charge: u64) -> ObserverResult<TimeoutRead> {
+/// The deferred charge is not decoded: winning by timeout sends no charge.
+fn decode_timeout(phase: u8, outcome: u8) -> ObserverResult<TimeoutRead> {
     let phase = decode_match_phase(phase)?;
     let disposition = match outcome {
         0 => TimeoutDisposition::None,
-        1 => TimeoutDisposition::OneWins {
-            deferred_charge: BlockDuration::from_blocks(deferred_charge),
-        },
-        2 => TimeoutDisposition::TwoWins {
-            deferred_charge: BlockDuration::from_blocks(deferred_charge),
-        },
+        1 => TimeoutDisposition::OneWins,
+        2 => TimeoutDisposition::TwoWins,
         3 => TimeoutDisposition::EliminateBoth,
         other => return Err(ObserverError::UnknownTimeoutOutcome(other)),
     };
@@ -488,13 +476,13 @@ fn decode_bisecting(
         });
     }
 
-    Ok(LiveMatchState::Bisecting(BisectingMatch::try_new(
-        wire.revealingParent.into(),
-        WaitingChildren::new(wire.waitingLeft.into(), wire.waitingRight.into()),
-        MatchCoordinate::new(wire.segmentStartPosition, wire.segmentStartCycle),
-        wire.currentHeight,
-        decode_side(wire.responder)?,
-    )?))
+    Ok(LiveMatchState::Bisecting(UnresolvedMatch {
+        revealing_parent: wire.revealingParent.into(),
+        waiting_children: WaitingChildren::new(wire.waitingLeft.into(), wire.waitingRight.into()),
+        coordinate: MatchCoordinate::new(wire.segmentStartPosition, wire.segmentStartCycle),
+        height: wire.currentHeight,
+        responder: decode_side(wire.responder)?,
+    }))
 }
 
 fn decode_ready(
@@ -511,12 +499,13 @@ fn decode_ready(
         });
     }
 
-    let value = ReadyToSealMatch::new(
-        wire.revealingParent.into(),
-        WaitingChildren::new(wire.waitingLeft.into(), wire.waitingRight.into()),
-        MatchCoordinate::new(wire.segmentStartPosition, wire.segmentStartCycle),
-        decode_side(wire.responder)?,
-    );
+    let value = UnresolvedMatch {
+        revealing_parent: wire.revealingParent.into(),
+        waiting_children: WaitingChildren::new(wire.waitingLeft.into(), wire.waitingRight.into()),
+        coordinate: MatchCoordinate::new(wire.segmentStartPosition, wire.segmentStartCycle),
+        height: 1,
+        responder: decode_side(wire.responder)?,
+    };
     Ok(match kind {
         TournamentKind::Leaf => LiveMatchState::ReadyToSealLeaf(value),
         TournamentKind::NonLeaf => LiveMatchState::ReadyToDelegate(value),
@@ -545,7 +534,7 @@ fn decode_sealed(
         wire.finalStateTwo.into(),
     );
     match kind {
-        TournamentKind::Leaf => Ok(LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence))),
+        TournamentKind::Leaf => Ok(LiveMatchState::SealedLeaf(divergence)),
         TournamentKind::NonLeaf => Err(ObserverError::MatchChildTopology { match_id_hash }),
     }
 }
@@ -835,7 +824,7 @@ mod tests {
         assert_eq!(
             decode_standing(root, None, standing_wire(0, false, Some(digest(66))),).unwrap(),
             TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
+                accepts_joins: false,
             }
         );
     }
@@ -961,18 +950,16 @@ mod tests {
     #[test]
     fn timeout_decode_rejects_unknown_discriminants() {
         assert_eq!(
-            decode_timeout(4, 0, 0),
+            decode_timeout(4, 0),
             Err(ObserverError::UnknownMatchPhase(4))
         );
         assert_eq!(
-            decode_timeout(1, 4, 0),
+            decode_timeout(1, 4),
             Err(ObserverError::UnknownTimeoutOutcome(4))
         );
         assert_eq!(
-            decode_timeout(1, 2, 7).unwrap().disposition,
-            TimeoutDisposition::TwoWins {
-                deferred_charge: BlockDuration::from_blocks(7),
-            }
+            decode_timeout(1, 2).unwrap().disposition,
+            TimeoutDisposition::TwoWins
         );
     }
 

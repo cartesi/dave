@@ -33,37 +33,11 @@ impl From<MatchID> for cartesi_prt_contracts::tournament::Match::Id {
     }
 }
 
-/// A duration in the tournament's block-number time coordinate.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct BlockDuration(u64);
-
-impl BlockDuration {
-    #[cfg(test)]
-    pub const ZERO: Self = Self(0);
-
-    pub const fn from_blocks(blocks: u64) -> Self {
-        Self(blocks)
-    }
-}
-
 /// One side of the contract's ordered match identity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatchSide {
     One,
     Two,
-}
-
-impl MatchSide {
-    #[expect(
-        dead_code,
-        reason = "no caller; whether the domain keeps it is undecided"
-    )]
-    pub const fn opposite(self) -> Self {
-        match self {
-            Self::One => Self::Two,
-            Self::Two => Self::One,
-        }
-    }
 }
 
 /// Whether matches in a tournament terminate locally or delegate to a child.
@@ -201,119 +175,16 @@ impl WaitingChildren {
     }
 }
 
+/// A match still being bisected: what the waiting commitment revealed and
+/// where. A bisecting match stands above height 1 (`validate_match_geometry`
+/// holds it there); one ready to seal stands at height 1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct UnresolvedMatch {
-    revealing_parent: Digest,
-    waiting_children: WaitingChildren,
-    coordinate: MatchCoordinate,
-    remaining_height: NonZeroU64,
-    responder: MatchSide,
-}
-
-impl UnresolvedMatch {
-    fn new(
-        revealing_parent: Digest,
-        waiting_children: WaitingChildren,
-        coordinate: MatchCoordinate,
-        remaining_height: NonZeroU64,
-        responder: MatchSide,
-    ) -> Self {
-        Self {
-            revealing_parent,
-            waiting_children,
-            coordinate,
-            remaining_height,
-            responder,
-        }
-    }
-}
-
-/// A match whose next response advances the bisection.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BisectingMatch(UnresolvedMatch);
-
-impl BisectingMatch {
-    pub fn try_new(
-        revealing_parent: Digest,
-        waiting_children: WaitingChildren,
-        coordinate: MatchCoordinate,
-        remaining_height: u64,
-        responder: MatchSide,
-    ) -> Result<Self, DomainError> {
-        // The contracts bisect only above height 1. Advancing opens the
-        // children of the node one below the contested one (hero/action.rs,
-        // prepare_advance), so height 1 would reach the `children` expect in
-        // engine/dispute.rs: nonzero is not enough.
-        if remaining_height < 2 {
-            return Err(DomainError::InvalidBisectingHeight(remaining_height));
-        }
-        let remaining_height =
-            NonZeroU64::new(remaining_height).expect("height was checked as positive");
-        Ok(Self(UnresolvedMatch::new(
-            revealing_parent,
-            waiting_children,
-            coordinate,
-            remaining_height,
-            responder,
-        )))
-    }
-
-    pub const fn revealing_parent(self) -> Digest {
-        self.0.revealing_parent
-    }
-
-    pub const fn waiting_children(self) -> WaitingChildren {
-        self.0.waiting_children
-    }
-
-    pub const fn coordinate(self) -> MatchCoordinate {
-        self.0.coordinate
-    }
-
-    pub const fn remaining_height(self) -> NonZeroU64 {
-        self.0.remaining_height
-    }
-
-    pub const fn responder(self) -> MatchSide {
-        self.0.responder
-    }
-}
-
-/// A height-one match whose responder must seal its first divergent leaf.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ReadyToSealMatch(UnresolvedMatch);
-
-impl ReadyToSealMatch {
-    pub fn new(
-        revealing_parent: Digest,
-        waiting_children: WaitingChildren,
-        coordinate: MatchCoordinate,
-        responder: MatchSide,
-    ) -> Self {
-        Self(UnresolvedMatch::new(
-            revealing_parent,
-            waiting_children,
-            coordinate,
-            NonZeroU64::new(1).expect("one is nonzero"),
-            responder,
-        ))
-    }
-
-    pub const fn revealing_parent(self) -> Digest {
-        self.0.revealing_parent
-    }
-
-    pub const fn waiting_children(self) -> WaitingChildren {
-        self.0.waiting_children
-    }
-
-    pub const fn coordinate(self) -> MatchCoordinate {
-        self.0.coordinate
-    }
-
-    pub const fn responder(self) -> MatchSide {
-        self.0.responder
-    }
+pub struct UnresolvedMatch {
+    pub revealing_parent: Digest,
+    pub waiting_children: WaitingChildren,
+    pub coordinate: MatchCoordinate,
+    pub height: u64,
+    pub responder: MatchSide,
 }
 
 /// A sealed first divergence, oriented to the ordered match identity.
@@ -356,64 +227,24 @@ impl SealedDivergence {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SealedLeafMatch {
-    divergence: SealedDivergence,
-}
-
-impl SealedLeafMatch {
-    pub const fn new(divergence: SealedDivergence) -> Self {
-        Self { divergence }
-    }
-
-    pub const fn divergence(self) -> SealedDivergence {
-        self.divergence
-    }
-}
-
 /// The semantic phase of one live match after Leaf/NonLeaf enrichment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LiveMatchState {
-    Bisecting(BisectingMatch),
-    ReadyToSealLeaf(ReadyToSealMatch),
-    ReadyToDelegate(ReadyToSealMatch),
-    SealedLeaf(SealedLeafMatch),
+    Bisecting(UnresolvedMatch),
+    ReadyToSealLeaf(UnresolvedMatch),
+    ReadyToDelegate(UnresolvedMatch),
+    SealedLeaf(SealedDivergence),
     /// Delegated to the child tournament at this address.
     AwaitingChild(Address),
-}
-
-impl LiveMatchState {
-    #[cfg(test)]
-    pub const fn responder(self) -> Option<MatchSide> {
-        match self {
-            Self::Bisecting(value) => Some(value.responder()),
-            Self::ReadyToSealLeaf(value) | Self::ReadyToDelegate(value) => Some(value.responder()),
-            Self::SealedLeaf(_) | Self::AwaitingChild(_) => None,
-        }
-    }
 }
 
 /// Contract-authoritative timeout resolution in ordered match orientation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimeoutDisposition {
     None,
-    OneWins { deferred_charge: BlockDuration },
-    TwoWins { deferred_charge: BlockDuration },
+    OneWins,
+    TwoWins,
     EliminateBoth,
-}
-
-impl TimeoutDisposition {
-    #[expect(
-        dead_code,
-        reason = "no caller; whether the domain keeps it is undecided"
-    )]
-    pub const fn winner(self) -> Option<(MatchSide, BlockDuration)> {
-        match self {
-            Self::OneWins { deferred_charge } => Some((MatchSide::One, deferred_charge)),
-            Self::TwoWins { deferred_charge } => Some((MatchSide::Two, deferred_charge)),
-            Self::None | Self::EliminateBoth => None,
-        }
-    }
 }
 
 /// A validated live phase together with its current timeout disposition.
@@ -488,12 +319,6 @@ pub enum LocalCommitmentStanding {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum JoinDisposition {
-    Open,
-    Closed,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RootWinner {
     commitment: Digest,
     final_state: Digest,
@@ -544,7 +369,7 @@ pub enum InnerEliminationReason {
 /// Current-only tournament result and closure disposition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TournamentStanding {
-    MatchesActive { joins: JoinDisposition },
+    MatchesActive { accepts_joins: bool },
     AwaitingClosure,
     RootWinner(RootWinner),
     RootFailed,
@@ -554,19 +379,12 @@ pub enum TournamentStanding {
 
 impl TournamentStanding {
     pub const fn accepts_joins(self) -> bool {
-        match self {
+        matches!(
+            self,
             Self::MatchesActive {
-                joins: JoinDisposition::Open,
-            }
-            | Self::AwaitingClosure => true,
-            Self::MatchesActive {
-                joins: JoinDisposition::Closed,
-            }
-            | Self::RootWinner(_)
-            | Self::RootFailed
-            | Self::InnerWinner(_)
-            | Self::InnerEliminable { .. } => false,
-        }
+                accepts_joins: true
+            } | Self::AwaitingClosure
+        )
     }
 }
 
@@ -707,14 +525,19 @@ pub(crate) fn validate_match_geometry(
     let total_height = descriptor.height().get();
 
     let (coordinate, unresolved) = match state {
-        LiveMatchState::Bisecting(value) => (
-            value.coordinate(),
-            Some((value.remaining_height().get(), value.responder())),
-        ),
-        LiveMatchState::ReadyToSealLeaf(value) | LiveMatchState::ReadyToDelegate(value) => {
-            (value.coordinate(), Some((1, value.responder())))
+        // The contracts bisect only above height 1. Advancing opens the
+        // children of the node one below the contested one (hero/action.rs,
+        // prepare_advance), so height 1 would reach the `children` expect in
+        // engine/dispute.rs: nonzero is not enough.
+        LiveMatchState::Bisecting(value) if value.height < 2 => {
+            return Err(DomainError::InvalidBisectingHeight(value.height));
         }
-        LiveMatchState::SealedLeaf(value) => (value.divergence().coordinate(), None),
+        LiveMatchState::Bisecting(value)
+        | LiveMatchState::ReadyToSealLeaf(value)
+        | LiveMatchState::ReadyToDelegate(value) => {
+            (value.coordinate, Some((value.height, value.responder)))
+        }
+        LiveMatchState::SealedLeaf(value) => (value.coordinate(), None),
         // No coordinate: the observer bounds the child by this tournament.
         LiveMatchState::AwaitingChild(_) => return Ok(()),
     };
@@ -868,91 +691,55 @@ mod tests {
     }
 
     #[test]
-    fn bisecting_height_must_exceed_one() {
-        // Advancing opens the children of the node below the contested one,
-        // so this bound, not nonzero, fronts the engine's `children` expect.
-        let bisecting = |height| {
-            BisectingMatch::try_new(
-                digest(3),
-                WaitingChildren::new(digest(4), digest(5)),
-                MatchCoordinate::new(U256::ZERO, U256::ZERO),
-                height,
-                MatchSide::One,
-            )
-        };
-        assert_eq!(bisecting(0), Err(DomainError::InvalidBisectingHeight(0)));
-        assert_eq!(bisecting(1), Err(DomainError::InvalidBisectingHeight(1)));
-        assert!(bisecting(2).is_ok());
-    }
-
-    #[test]
     fn match_geometry_validates_height_responder_position_and_cycle() {
         let leaf = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
-        let waiting = WaitingChildren::new(digest(4), digest(5));
         let validate = |state| validate_match_geometry(leaf, state);
+        let bisecting = |position: u64, cycle: u64, height, responder| {
+            LiveMatchState::Bisecting(UnresolvedMatch {
+                revealing_parent: digest(3),
+                waiting_children: WaitingChildren::new(digest(4), digest(5)),
+                coordinate: MatchCoordinate::new(U256::from(position), U256::from(cycle)),
+                height,
+                responder,
+            })
+        };
+        let sealed = |position: u64, cycle: u64| {
+            LiveMatchState::SealedLeaf(SealedDivergence::new(
+                digest(10),
+                MatchCoordinate::new(U256::from(position), U256::from(cycle)),
+                digest(11),
+                digest(12),
+            ))
+        };
 
-        let too_tall = BisectingMatch::try_new(
-            digest(3),
-            waiting,
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            5,
-            MatchSide::One,
-        )
-        .unwrap();
+        // Advancing opens the children of the node below the contested one,
+        // so this bound, not nonzero, fronts the engine's `children` expect.
+        for height in [0, 1] {
+            assert_eq!(
+                validate(bisecting(0, 0, height, MatchSide::One)),
+                Err(DomainError::InvalidBisectingHeight(height))
+            );
+        }
+        assert_eq!(validate(bisecting(0, 0, 2, MatchSide::One)), Ok(()));
+
         assert_eq!(
-            validate(LiveMatchState::Bisecting(too_tall)),
+            validate(bisecting(0, 0, 5, MatchSide::One)),
             Err(DomainError::MatchHeightOutOfRange)
         );
-
-        let wrong_responder = BisectingMatch::try_new(
-            digest(3),
-            waiting,
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            3,
-            MatchSide::One,
-        )
-        .unwrap();
         assert_eq!(
-            validate(LiveMatchState::Bisecting(wrong_responder)),
+            validate(bisecting(0, 0, 3, MatchSide::One)),
             Err(DomainError::ResponderParityMismatch)
         );
-
-        let misaligned = BisectingMatch::try_new(
-            digest(3),
-            waiting,
-            MatchCoordinate::new(U256::from(1), U256::from(8)),
-            2,
-            MatchSide::One,
-        )
-        .unwrap();
         assert_eq!(
-            validate(LiveMatchState::Bisecting(misaligned)),
+            validate(bisecting(1, 8, 2, MatchSide::One)),
             Err(DomainError::MatchPositionMisaligned)
         );
-
-        let out_of_range = SealedDivergence::new(
-            digest(10),
-            MatchCoordinate::new(U256::from(16), U256::from(128)),
-            digest(11),
-            digest(12),
-        );
         assert_eq!(
-            validate(LiveMatchState::SealedLeaf(SealedLeafMatch::new(
-                out_of_range
-            ))),
+            validate(sealed(16, 128)),
             Err(DomainError::MatchPositionOutOfRange)
         );
-
-        let wrong_cycle = SealedDivergence::new(
-            digest(10),
-            MatchCoordinate::new(U256::from(3), U256::from(25)),
-            digest(11),
-            digest(12),
-        );
         assert_eq!(
-            validate(LiveMatchState::SealedLeaf(SealedLeafMatch::new(
-                wrong_cycle
-            ))),
+            validate(sealed(3, 25)),
             Err(DomainError::MatchCycleMismatch)
         );
     }

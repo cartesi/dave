@@ -127,9 +127,7 @@ mod tests {
         tournament::{
             MatchID,
             dispute::{Event, EventKind},
-            domain::{
-                InnerEliminationReason, JoinDisposition, TournamentDescriptor, TournamentKind,
-            },
+            domain::{InnerEliminationReason, TournamentDescriptor, TournamentKind},
         },
     };
 
@@ -180,7 +178,7 @@ mod tests {
 
     fn active() -> TournamentStanding {
         TournamentStanding::MatchesActive {
-            joins: JoinDisposition::Open,
+            accepts_joins: true,
         }
     }
 
