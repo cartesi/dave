@@ -64,13 +64,6 @@ impl MatchSide {
             Self::Two => Self::One,
         }
     }
-
-    pub const fn commitment(self, match_id: MatchID) -> Digest {
-        match self {
-            Self::One => match_id.commitment_one,
-            Self::Two => match_id.commitment_two,
-        }
-    }
 }
 
 /// Whether matches in a tournament terminate locally or delegate to a child.
@@ -402,6 +395,7 @@ impl AwaitingChildMatch {
         self.divergence
     }
 
+    #[cfg(test)]
     pub const fn child_tournament(self) -> Address {
         self.child_tournament
     }
@@ -561,10 +555,12 @@ impl EliminationRecord {
         })
     }
 
+    #[cfg(test)]
     pub const fn match_id(self) -> MatchID {
         self.match_id
     }
 
+    #[cfg(test)]
     pub const fn local_side(self) -> MatchSide {
         self.local_side
     }
@@ -702,10 +698,6 @@ impl ParentLink {
         self.parent_tournament
     }
 
-    pub const fn parent_match(self) -> MatchID {
-        self.parent_match
-    }
-
     pub const fn parent_commitment(self) -> Digest {
         self.parent_commitment
     }
@@ -724,69 +716,22 @@ pub struct SemanticSnapshot {
 }
 
 impl SemanticSnapshot {
-    pub fn try_new(
+    pub fn new(
         descriptor: TournamentDescriptor,
         standing: TournamentStanding,
         local_commitment: Digest,
         local_standing: LocalCommitmentStanding,
         parent: Option<ParentLink>,
         child: Option<Self>,
-    ) -> Result<Self, DomainError> {
-        validate_standing_kind(descriptor, standing)?;
-
-        match (descriptor.is_root(), parent.is_some()) {
-            (true, true) => return Err(DomainError::RootHasParent),
-            (false, false) => return Err(DomainError::InnerMissingParent),
-            _ => {}
-        }
-
-        if let (TournamentStanding::InnerWinner(winner), Some(parent)) = (standing, parent) {
-            let parent_match = parent.parent_match();
-            if winner.parent_commitment() != parent_match.commitment_one
-                && winner.parent_commitment() != parent_match.commitment_two
-            {
-                return Err(DomainError::InnerWinnerOutsideParentMatch);
-            }
-        }
-
-        if let LocalCommitmentStanding::Eliminated(record) = local_standing
-            && record.local_side().commitment(record.match_id()) != local_commitment
-        {
-            return Err(DomainError::EliminationCommitmentMismatch);
-        }
-
-        let awaiting_child = match local_standing {
-            LocalCommitmentStanding::Engaged(engagement) => {
-                if engagement.local_side().commitment(engagement.match_id()) != local_commitment {
-                    return Err(DomainError::EngagementCommitmentMismatch);
-                }
-                validate_match_kind(descriptor.kind(), engagement.live().state())?;
-                validate_match_geometry(descriptor, engagement.live().state())?;
-                match engagement.live().state() {
-                    LiveMatchState::AwaitingChild(value) => Some((engagement, value)),
-                    _ => None,
-                }
-            }
-            _ => None,
-        };
-
-        match (awaiting_child, child.as_ref()) {
-            (None, None) => {}
-            (None, Some(_)) => return Err(DomainError::UnexpectedChildSnapshot),
-            (Some(_), None) => return Err(DomainError::MissingChildSnapshot),
-            (Some((engagement, awaiting)), Some(child)) => {
-                validate_child(descriptor, local_commitment, engagement, awaiting, child)?;
-            }
-        }
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             descriptor,
             standing,
             local_commitment,
             local_standing,
             parent,
             child: child.map(Box::new),
-        })
+        }
     }
 
     pub const fn descriptor(&self) -> TournamentDescriptor {
@@ -851,20 +796,6 @@ pub enum DomainError {
     StepDeletionMissingSurvivor,
     #[error("child tournament address must be nonzero")]
     ZeroChildTournament,
-    #[error("root tournament snapshot cannot carry a parent link")]
-    RootHasParent,
-    #[error("non-root tournament snapshot requires a parent link")]
-    InnerMissingParent,
-    #[error("root-only standing used for a non-root tournament")]
-    RootStandingForInner,
-    #[error("inner-only standing used for a root tournament")]
-    InnerStandingForRoot,
-    #[error("inner winner does not map to either side of the recorded parent match")]
-    InnerWinnerOutsideParentMatch,
-    #[error("local engagement identity disagrees with the snapshot commitment")]
-    EngagementCommitmentMismatch,
-    #[error("local elimination identity disagrees with the snapshot commitment")]
-    EliminationCommitmentMismatch,
     #[error("match state does not agree with the immutable tournament kind")]
     MatchKindMismatch,
     #[error("match remaining height exceeds the tournament commitment height")]
@@ -877,14 +808,6 @@ pub enum DomainError {
     MatchPositionMisaligned,
     #[error("match cycle does not agree with descriptor base cycle and stride")]
     MatchCycleMismatch,
-    #[error("snapshot carries a child outside an awaiting-child engagement")]
-    UnexpectedChildSnapshot,
-    #[error("awaiting-child engagement is missing its recursive child snapshot")]
-    MissingChildSnapshot,
-    #[error("recursive child address disagrees with the parent match")]
-    ChildAddressMismatch,
-    #[error("recursive child provenance disagrees with the parent snapshot")]
-    ChildProvenanceMismatch,
     #[error("recursive child must be exactly one tournament level deeper")]
     ChildLevelMismatch,
     #[error("recursive child initial hash disagrees with the sealed agree state")]
@@ -903,25 +826,6 @@ fn side_for(commitment: Digest, match_id: MatchID) -> Result<MatchSide, DomainEr
         Ok(MatchSide::Two)
     } else {
         Err(DomainError::CommitmentNotInMatch { commitment })
-    }
-}
-
-fn validate_standing_kind(
-    descriptor: TournamentDescriptor,
-    standing: TournamentStanding,
-) -> Result<(), DomainError> {
-    match standing {
-        TournamentStanding::RootWinner(_) | TournamentStanding::RootFailed
-            if !descriptor.is_root() =>
-        {
-            Err(DomainError::RootStandingForInner)
-        }
-        TournamentStanding::InnerWinner(_) | TournamentStanding::InnerEliminable { .. }
-            if descriptor.is_root() =>
-        {
-            Err(DomainError::InnerStandingForRoot)
-        }
-        _ => Ok(()),
     }
 }
 
@@ -999,41 +903,6 @@ fn validate_match_geometry(
     Ok(())
 }
 
-fn validate_child(
-    descriptor: TournamentDescriptor,
-    local_commitment: Digest,
-    engagement: Engagement,
-    awaiting: AwaitingChildMatch,
-    child: &SemanticSnapshot,
-) -> Result<(), DomainError> {
-    if child.descriptor.address() != awaiting.child_tournament() {
-        return Err(DomainError::ChildAddressMismatch);
-    }
-
-    let expected_parent = ParentLink::try_new(
-        descriptor.address(),
-        engagement.match_id(),
-        local_commitment,
-    )
-    .expect("the validated engagement contains the local commitment");
-    if child.parent != Some(expected_parent) {
-        return Err(DomainError::ChildProvenanceMismatch);
-    }
-
-    if child.descriptor.level() != descriptor.level() + 1 {
-        return Err(DomainError::ChildLevelMismatch);
-    }
-    let divergence = awaiting.divergence();
-    if child.descriptor.initial_hash() != divergence.agree_state() {
-        return Err(DomainError::ChildInitialHashMismatch);
-    }
-    if child.descriptor.base_cycle() != divergence.coordinate().cycle() {
-        return Err(DomainError::ChildBaseCycleMismatch);
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1078,24 +947,6 @@ mod tests {
             MatchCoordinate::new(U256::from(3), U256::from(24)),
             digest(11),
             digest(12),
-        )
-    }
-
-    fn snapshot_with_engagement(
-        descriptor: TournamentDescriptor,
-        state: LiveMatchState,
-        timeout: TimeoutDisposition,
-    ) -> Result<SemanticSnapshot, DomainError> {
-        let engagement = Engagement::try_new(digest(1), match_id(), state, timeout)?;
-        SemanticSnapshot::try_new(
-            descriptor,
-            TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
-            },
-            digest(1),
-            LocalCommitmentStanding::Engaged(engagement),
-            None,
-            None,
         )
     }
 
@@ -1213,173 +1064,6 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_validates_leaf_enrichment_and_local_identity() {
-        let root = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
-        let ready = ReadyToSealMatch::new(
-            digest(3),
-            WaitingChildren::new(digest(4), digest(5)),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            MatchSide::Two,
-        );
-        let engagement = Engagement::try_new(
-            digest(1),
-            match_id(),
-            LiveMatchState::ReadyToDelegate(ready),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-        assert_eq!(
-            SemanticSnapshot::try_new(
-                root,
-                TournamentStanding::MatchesActive {
-                    joins: JoinDisposition::Open,
-                },
-                digest(1),
-                LocalCommitmentStanding::Engaged(engagement),
-                None,
-                None,
-            ),
-            Err(DomainError::MatchKindMismatch)
-        );
-
-        assert!(
-            SemanticSnapshot::try_new(
-                root,
-                TournamentStanding::AwaitingClosure,
-                digest(1),
-                LocalCommitmentStanding::NotJoined,
-                None,
-                None,
-            )
-            .is_ok(),
-            "standing and event placement are independent production authorities"
-        );
-
-        let ready = ReadyToSealMatch::new(
-            digest(3),
-            WaitingChildren::new(digest(4), digest(5)),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            MatchSide::Two,
-        );
-        let engagement = Engagement::try_new(
-            digest(1),
-            match_id(),
-            LiveMatchState::ReadyToSealLeaf(ready),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-        assert!(
-            SemanticSnapshot::try_new(
-                root,
-                TournamentStanding::AwaitingClosure,
-                digest(1),
-                LocalCommitmentStanding::Engaged(engagement),
-                None,
-                None,
-            )
-            .is_ok(),
-            "aggregate standing is not reconciled with event engagement"
-        );
-        assert_eq!(
-            SemanticSnapshot::try_new(
-                root,
-                TournamentStanding::MatchesActive {
-                    joins: JoinDisposition::Open,
-                },
-                digest(2),
-                LocalCommitmentStanding::Engaged(engagement),
-                None,
-                None,
-            ),
-            Err(DomainError::EngagementCommitmentMismatch)
-        );
-
-        let elimination = EliminationRecord::try_new(
-            digest(1),
-            match_id(),
-            EliminationReason::Timeout,
-            Some(MatchSide::Two),
-        )
-        .unwrap();
-        assert_eq!(
-            SemanticSnapshot::try_new(
-                root,
-                TournamentStanding::MatchesActive {
-                    joins: JoinDisposition::Open,
-                },
-                digest(2),
-                LocalCommitmentStanding::Eliminated(elimination),
-                None,
-                None,
-            ),
-            Err(DomainError::EliminationCommitmentMismatch)
-        );
-    }
-
-    #[test]
-    fn snapshot_validates_recursive_child_seam() {
-        let parent_descriptor = descriptor(address(1), 0, TournamentKind::NonLeaf, digest(9), 0);
-        let child_descriptor = descriptor(address(2), 1, TournamentKind::Leaf, digest(10), 24);
-        let parent_link =
-            ParentLink::try_new(address(1), match_id(), digest(1)).expect("commitment one");
-        let child = SemanticSnapshot::try_new(
-            child_descriptor,
-            TournamentStanding::AwaitingClosure,
-            digest(20),
-            LocalCommitmentStanding::Candidate,
-            Some(parent_link),
-            None,
-        )
-        .unwrap();
-
-        let awaiting = AwaitingChildMatch::try_new(divergence(), address(2)).unwrap();
-        let engagement = Engagement::try_new(
-            digest(1),
-            match_id(),
-            LiveMatchState::AwaitingChild(awaiting),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-        let parent = SemanticSnapshot::try_new(
-            parent_descriptor,
-            TournamentStanding::MatchesActive {
-                joins: JoinDisposition::Closed,
-            },
-            digest(1),
-            LocalCommitmentStanding::Engaged(engagement),
-            None,
-            Some(child),
-        )
-        .unwrap();
-
-        assert_eq!(
-            parent.child().unwrap().descriptor().base_cycle(),
-            U256::from(24)
-        );
-        assert_eq!(
-            parent.child().unwrap().parent().unwrap().parent_match(),
-            match_id()
-        );
-    }
-
-    #[test]
-    fn snapshot_rejects_inner_winner_outside_parent_match() {
-        let parent_link =
-            ParentLink::try_new(address(1), match_id(), digest(1)).expect("commitment one");
-        assert_eq!(
-            SemanticSnapshot::try_new(
-                descriptor(address(2), 1, TournamentKind::Leaf, digest(10), 24),
-                TournamentStanding::InnerWinner(InnerWinner::new(digest(99), digest(20))),
-                digest(20),
-                LocalCommitmentStanding::Candidate,
-                Some(parent_link),
-                None,
-            ),
-            Err(DomainError::InnerWinnerOutsideParentMatch)
-        );
-    }
-
-    #[test]
     fn elimination_record_consumes_survivor_evidence() {
         assert_eq!(
             EliminationRecord::try_new(
@@ -1456,9 +1140,32 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_validates_match_height_responder_position_and_cycle() {
+    fn bisecting_height_must_exceed_one() {
+        // Advancing opens the children of the node below the contested one,
+        // so this bound, not nonzero, fronts the engine's `children` expect.
+        let bisecting = |height| {
+            BisectingMatch::try_new(
+                digest(3),
+                WaitingChildren::new(digest(4), digest(5)),
+                MatchCoordinate::new(U256::ZERO, U256::ZERO),
+                height,
+                MatchSide::One,
+            )
+        };
+        assert_eq!(bisecting(0), Err(DomainError::InvalidBisectingHeight(0)));
+        assert_eq!(bisecting(1), Err(DomainError::InvalidBisectingHeight(1)));
+        assert!(bisecting(2).is_ok());
+    }
+
+    #[test]
+    fn match_geometry_validates_height_responder_position_and_cycle() {
         let leaf = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
         let waiting = WaitingChildren::new(digest(4), digest(5));
+        let validate = |state| {
+            LiveMatch::try_new(state, TimeoutDisposition::None)
+                .unwrap()
+                .validate_in(leaf)
+        };
 
         let too_tall = BisectingMatch::try_new(
             digest(3),
@@ -1469,11 +1176,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            snapshot_with_engagement(
-                leaf,
-                LiveMatchState::Bisecting(too_tall),
-                TimeoutDisposition::None,
-            ),
+            validate(LiveMatchState::Bisecting(too_tall)),
             Err(DomainError::MatchHeightOutOfRange)
         );
 
@@ -1486,11 +1189,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            snapshot_with_engagement(
-                leaf,
-                LiveMatchState::Bisecting(wrong_responder),
-                TimeoutDisposition::None,
-            ),
+            validate(LiveMatchState::Bisecting(wrong_responder)),
             Err(DomainError::ResponderParityMismatch)
         );
 
@@ -1503,11 +1202,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            snapshot_with_engagement(
-                leaf,
-                LiveMatchState::Bisecting(misaligned),
-                TimeoutDisposition::None,
-            ),
+            validate(LiveMatchState::Bisecting(misaligned)),
             Err(DomainError::MatchPositionMisaligned)
         );
 
@@ -1518,11 +1213,9 @@ mod tests {
             digest(12),
         );
         assert_eq!(
-            snapshot_with_engagement(
-                leaf,
-                LiveMatchState::SealedLeaf(SealedLeafMatch::new(out_of_range)),
-                TimeoutDisposition::None,
-            ),
+            validate(LiveMatchState::SealedLeaf(SealedLeafMatch::new(
+                out_of_range
+            ))),
             Err(DomainError::MatchPositionOutOfRange)
         );
 
@@ -1533,62 +1226,10 @@ mod tests {
             digest(12),
         );
         assert_eq!(
-            snapshot_with_engagement(
-                leaf,
-                LiveMatchState::SealedLeaf(SealedLeafMatch::new(wrong_cycle)),
-                TimeoutDisposition::None,
-            ),
+            validate(LiveMatchState::SealedLeaf(SealedLeafMatch::new(
+                wrong_cycle
+            ))),
             Err(DomainError::MatchCycleMismatch)
         );
-    }
-
-    #[test]
-    fn recursive_child_rejects_wrong_initial_hash_and_base_cycle() {
-        let parent_descriptor = descriptor(address(1), 0, TournamentKind::NonLeaf, digest(9), 0);
-        let parent_link =
-            ParentLink::try_new(address(1), match_id(), digest(1)).expect("commitment one");
-        let awaiting =
-            AwaitingChildMatch::try_new(divergence(), address(2)).expect("nonzero child");
-        let engagement = Engagement::try_new(
-            digest(1),
-            match_id(),
-            LiveMatchState::AwaitingChild(awaiting),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
-
-        for (child_descriptor, expected) in [
-            (
-                descriptor(address(2), 1, TournamentKind::Leaf, digest(77), 24),
-                DomainError::ChildInitialHashMismatch,
-            ),
-            (
-                descriptor(address(2), 1, TournamentKind::Leaf, digest(10), 25),
-                DomainError::ChildBaseCycleMismatch,
-            ),
-        ] {
-            let child = SemanticSnapshot::try_new(
-                child_descriptor,
-                TournamentStanding::AwaitingClosure,
-                digest(20),
-                LocalCommitmentStanding::Candidate,
-                Some(parent_link),
-                None,
-            )
-            .unwrap();
-            assert_eq!(
-                SemanticSnapshot::try_new(
-                    parent_descriptor,
-                    TournamentStanding::MatchesActive {
-                        joins: JoinDisposition::Closed,
-                    },
-                    digest(1),
-                    LocalCommitmentStanding::Engaged(engagement),
-                    None,
-                    Some(child),
-                ),
-                Err(expected)
-            );
-        }
     }
 }

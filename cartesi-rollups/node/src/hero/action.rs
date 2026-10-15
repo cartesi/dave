@@ -556,15 +556,14 @@ mod tests {
         standing: TournamentStanding,
         local_standing: LocalCommitmentStanding,
     ) -> HeroContext {
-        let snapshot = SemanticSnapshot::try_new(
+        let snapshot = SemanticSnapshot::new(
             descriptor,
             standing,
             local_commitment,
             local_standing,
             None,
             None,
-        )
-        .unwrap();
+        );
         HeroContext::from_parts(snapshot, [(descriptor.address(), coords)])
     }
 
@@ -852,15 +851,14 @@ mod tests {
         let child_coords = LevelCoords::new(0, U256::ZERO, 0, 3);
         let child_winner = source.node(&child_coords.root()).unwrap();
         let parent_link = ParentLink::try_new(ROOT, parent_match, parent_commitment).unwrap();
-        let child_snapshot = SemanticSnapshot::try_new(
+        let child_snapshot = SemanticSnapshot::new(
             child_descriptor,
             TournamentStanding::InnerWinner(InnerWinner::new(parent_commitment, child_winner)),
             child_winner,
             LocalCommitmentStanding::Candidate,
             Some(parent_link),
             None,
-        )
-        .unwrap();
+        );
         let parent_engagement = Engagement::try_new(
             parent_commitment,
             parent_match,
@@ -868,7 +866,7 @@ mod tests {
             parent_live.timeout(),
         )
         .unwrap();
-        let parent_snapshot = SemanticSnapshot::try_new(
+        let parent_snapshot = SemanticSnapshot::new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
                 joins: JoinDisposition::Closed,
@@ -877,8 +875,7 @@ mod tests {
             LocalCommitmentStanding::Engaged(parent_engagement),
             None,
             Some(child_snapshot),
-        )
-        .unwrap();
+        );
         let context = HeroContext::from_parts(
             parent_snapshot,
             [(ROOT, parent_coords), (CHILD, child_coords)],

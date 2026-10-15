@@ -2,8 +2,7 @@
 //!
 //! Planning chooses one terminal, wait, or action decision. It performs no
 //! provider calls, constructs no Merkle material, and owns no transaction
-//! sender. The production actor invokes it only after assembling a validated
-//! snapshot.
+//! sender. The production actor invokes it only on an assembled snapshot.
 
 use alloy::primitives::Address;
 
@@ -124,7 +123,7 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
         TournamentStanding::InnerWinner(winner) => {
             let parent = snapshot
                 .parent()
-                .expect("validated inner snapshots carry a parent link");
+                .expect("assembly links every inner level to its parent");
             if winner.parent_commitment() != parent.parent_commitment() {
                 return HeroDecision::Terminal(HeroTerminal::Lost(Loss::Child {
                     tournament: snapshot.descriptor().address(),
@@ -212,7 +211,7 @@ fn plan_engagement(snapshot: &SemanticSnapshot, engagement: Engagement) -> HeroD
         LiveMatchState::AwaitingChild(_) => {
             let child = snapshot
                 .child()
-                .expect("validated awaiting-child snapshots carry their child");
+                .expect("assembly descends into every delegated match's child");
             plan_hero(child)
         }
     }
@@ -330,9 +329,12 @@ mod tests {
         state: LiveMatchState,
         timeout: TimeoutDisposition,
     ) -> SemanticSnapshot {
-        let local = local_side.commitment(match_id());
+        let local = match local_side {
+            MatchSide::One => match_id().commitment_one,
+            MatchSide::Two => match_id().commitment_two,
+        };
         let engagement = Engagement::try_new(local, match_id(), state, timeout).unwrap();
-        SemanticSnapshot::try_new(
+        SemanticSnapshot::new(
             root_descriptor(kind),
             TournamentStanding::MatchesActive {
                 joins: JoinDisposition::Closed,
@@ -342,7 +344,6 @@ mod tests {
             None,
             None,
         )
-        .unwrap()
     }
 
     fn root_snapshot(
@@ -350,7 +351,7 @@ mod tests {
         local: Digest,
         local_standing: LocalCommitmentStanding,
     ) -> SemanticSnapshot {
-        SemanticSnapshot::try_new(
+        SemanticSnapshot::new(
             root_descriptor(TournamentKind::Leaf),
             standing,
             local,
@@ -358,7 +359,6 @@ mod tests {
             None,
             None,
         )
-        .unwrap()
     }
 
     #[test]
@@ -662,7 +662,7 @@ mod tests {
             ParentLink::try_new(parent_descriptor.address(), parent_match, parent_commitment)
                 .unwrap();
         let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
-        let child = SemanticSnapshot::try_new(
+        let child = SemanticSnapshot::new(
             child_descriptor,
             TournamentStanding::MatchesActive {
                 joins: JoinDisposition::Open,
@@ -671,8 +671,7 @@ mod tests {
             LocalCommitmentStanding::NotJoined,
             Some(parent_link),
             None,
-        )
-        .unwrap();
+        );
 
         let awaiting =
             AwaitingChildMatch::try_new(divergence(), child_descriptor.address()).unwrap();
@@ -683,7 +682,7 @@ mod tests {
             TimeoutDisposition::None,
         )
         .unwrap();
-        let parent = SemanticSnapshot::try_new(
+        let parent = SemanticSnapshot::new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
                 joins: JoinDisposition::Closed,
@@ -692,8 +691,7 @@ mod tests {
             LocalCommitmentStanding::Engaged(engagement),
             None,
             Some(child),
-        )
-        .unwrap();
+        );
 
         let decision = plan_hero(&parent);
         assert_eq!(
@@ -715,15 +713,14 @@ mod tests {
         let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
         let child_winner = digest(40);
 
-        let ours = SemanticSnapshot::try_new(
+        let ours = SemanticSnapshot::new(
             child_descriptor,
             TournamentStanding::InnerWinner(InnerWinner::new(parent_commitment, child_winner)),
             child_winner,
             LocalCommitmentStanding::Candidate,
             Some(parent_link),
             None,
-        )
-        .unwrap();
+        );
         assert_eq!(
             plan_hero(&ours),
             HeroDecision::Act(HeroIntent::PropagateChild {
@@ -733,15 +730,14 @@ mod tests {
         );
 
         let other_parent = digest(2);
-        let lost = SemanticSnapshot::try_new(
+        let lost = SemanticSnapshot::new(
             child_descriptor,
             TournamentStanding::InnerWinner(InnerWinner::new(other_parent, child_winner)),
             child_winner,
             LocalCommitmentStanding::Candidate,
             Some(parent_link),
             None,
-        )
-        .unwrap();
+        );
         assert_eq!(
             plan_hero(&lost),
             HeroDecision::Terminal(HeroTerminal::Lost(Loss::Child {
@@ -767,15 +763,14 @@ mod tests {
                 LocalCommitmentStanding::Candidate,
             ),
         ] {
-            let child = SemanticSnapshot::try_new(
+            let child = SemanticSnapshot::new(
                 descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24),
                 TournamentStanding::InnerEliminable { reason },
                 local,
                 local_standing,
                 Some(parent_link),
                 None,
-            )
-            .unwrap();
+            );
             assert_eq!(
                 plan_hero(&child),
                 HeroDecision::Wait(WaitReason::ChildEliminable { reason })
