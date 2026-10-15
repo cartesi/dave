@@ -128,7 +128,7 @@ return {
         )
         local canonical_post = physical:get_root_hash()
 
-        -- Exact source state from v0.21's uarch-overflow-tail boundary:
+        -- Exact source state of the corpus's uarch-overflow-tail boundary:
         -- maximum counter with the halt flag still clear.
         physical:write_reg("uarch_cycle", cartesi.UARCH_CYCLE_MAX)
         Test.equal(physical:read_reg("uarch_halt"), 0)

@@ -12,11 +12,17 @@ carry no backlog (reviews/README.md).
   confirmation below. It is a new deployment generation, whose notes are
   CHANGELOG.md's Unreleased section: at the cut, title it with the tag and
   add the generation's addresses. (build-system.md, CHANGELOG.md)
+- Move the emulator and solidity-step pins from v0.22.0-test3 and
+  v0.16.0-test3 to their final tags once promoted, with the shared devshell
+  flake and the sequencer's pin. Both RCs and the finals report 0.22.0, so
+  rebuild the images, regenerate the fixtures and the gas script's yield
+  hash, and wipe any data directory built on the RC. (build-system.md)
 
 ## Before the audited release
 
 - Confirm `[38, 0]` / `[54, 38]` at `T = 120` on validator-grade hardware
-  (measured on one M5 Max laptop, v0.21.0); the per-input compute contract
+  (measured on one M5 Max laptop, v0.21.0; re-measure on v0.22, whose uarch
+  changed); the per-input compute contract
   and the worst-case leaf proof plus fallback latency (CF-01, one shared
   `G` for both landings) follow from it, and re-measure the heaviest
   instruction's usteps while there.
@@ -35,25 +41,11 @@ carry no backlog (reviews/README.md).
 
 ## Upstream (Cartesi Machine, arm's length: nothing waits on it)
 
-- Ask for a v0.21.1 with c1280ed4's collector, break-precedence and host-send
-  no-op hunks (not its cmio length-width break) and 22b4431's CLI boundary
-  capture; close-on-exec on the files os-filesystem.cpp creates and flocks; a
-  hash-tree parallelism threshold based on work, not core count; corpus vectors
-  at both seams with later inputs; a collector assert for a non-pristine uarch.
-  On release, drop the seam-1 guard and its control test, the CLI exclusions,
-  and the serial anvil-test workaround. (computation-hash.md)
-- Ask for a solidity-step release that exports `CM_MARCHID`.
+- Ask for a hash-tree parallelism threshold based on work, not core count;
+  corpus vectors at both input-budget seams with later inputs; a collector
+  assert for a non-pristine uarch; and a CLI that delivers to a halted
+  template with an input yield pending, as the step does (a lead).
   (computation-hash.md)
-- Back `Machine::uarch_pristine_hash()` by libcartesi's
-  `cm_get_uarch_pristine_hash()` once `cm.h` exports it (agreed with the
-  machine team), and drop the sys crate's hand-written declarations of the
-  internal symbols and the provider requirement they add. (machine/README.md)
-- Take the uarch state's start address and log2 size from the C API once it
-  exports them (suggested to the machine team; the Lua module exports both):
-  drop the pins in `engine/constants.rs` and in the bindings tests
-  (`cartesi-machine/src/machine.rs`), and have
-  `linked_emulator_and_step_agree_on_the_pristine_uarch` hold step's values to
-  the API's. (computation-hash.md)
 - Track upstream PR #390 (new pristine uarch hash and proof format) as its own
   coordinated generation. (build-system.md)
 
@@ -95,10 +87,6 @@ carry no backlog (reviews/README.md).
   the pre-audit items below, freeze and audit identity:
   [plans/audit-readiness.md](plans/audit-readiness.md).
   (prt/contracts/AGENTS.md)
-- Replace the local `CM_MARCHID = 21` in `CartesiStateTransition` with
-  solidity-step's constant once a release exports it; it moves deployed
-  addresses, so it rides the next deployment bundle (normally the next
-  generation). (computation-hash.md)
 - Review contract code shaped for tests (`Deployment.s.sol`'s
   `commitmentBudget` parameter, which only the devnet script uses), and say
   that on-chain geometry validation is test-only. (prt-contract-testing.md)
@@ -115,10 +103,8 @@ carry no backlog (reviews/README.md).
 
 - Pin the capacity boundaries: the last input slot and the last stride.
   (test-harness.md)
-- When the development emulator pin leaves v0.21.0, check the linked
-  library's marchid against solidity-step (a unit test already holds its
-  pristine uarch hash to step's), and identify the reference CLI by package
-  digest instead of its version string.
+- Identify the reference CLI by package digest instead of its version
+  string, which cannot tell a v0.22 RC from the final release.
   (test-harness.md)
 - Optional: a steered divergence point for the harness's tail adversary, to
   dispute active spans in-process. (test-harness.md)

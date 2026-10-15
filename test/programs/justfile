@@ -36,7 +36,7 @@ build-echo: (clean "echo")
 
 # The honeypot is an opt-in e2e fixture, built from source so that any
 # honeypot commit, released or not, can be tested. Its released snapshots
-# (v3.0.1) predate Cartesi Machine v0.21 and do not load; once a compatible
+# (v3.0.1) predate the pinned Cartesi Machine and do not load; once a compatible
 # release ships, a sha-pinned snapshot download can replace this build and its
 # docker dependency. The image fingerprint records this pin but not a REF
 # passed at build time: rebuild by hand after building another commit.

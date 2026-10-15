@@ -69,9 +69,9 @@ level. Terms marked (code) appear verbatim in identifiers.
 - seam 1, seam 2: the input budget's last cycle (mcycle == imcyclemax). At
   seam 1 an `RX_REJECTED` yield still reverts at the closing reset; at seam
   2 an `RX_ACCEPTED` yield still takes the next input, because the step
-  reads only the pending yield. Dave follows the step at both; the v0.21.0
-  collector diverges at seam 1 and the v0.21.0 CLI at both
-  (computation-hash.md, the CLI exclusions).
+  reads only the pending yield. Dave, the emulator's collector and its CLI
+  follow the step at both since v0.22 (computation-hash.md, the CLI
+  exclusions).
 - collect API, bulk collector (code: `Collector::Bulk`): the emulator's
   `cm_collect_uarch_cycle_root_hashes` and `cm_collect_mcycle_root_hashes`,
   which run a span and return its sampled roots in one call (wrapped in
@@ -81,11 +81,6 @@ level. Terms marked (code) appear verbatim in identifiers.
   three-level leaf included, is stepped. `Collector::Stepped` steps tall
   leaves too, as the collector's test reference. The release CLI is
   built on the same collectors, so it is not an independent oracle.
-- seam-1 guard: bulk collection stops before the budget's last cycle and the
-  ruler steps it (`MachineStf::big_cycle_roots`), because the v0.21.0
-  collector keeps the physical root there. A control test
-  (`bulk_collection_leaves_the_budgets_last_cycle_to_stepping`) fails once
-  an emulator fixes it; the guard goes then.
 - per-input compute contract: how many big cycles one input may run, a
   trusted-developer promise the clocks are priced against
   (docs/dimensioning.md).

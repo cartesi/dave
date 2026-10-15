@@ -111,8 +111,8 @@ adversary will find it.
 | positioning through an input's prefix | aggregate | trusted app (the per-input compute contract, below) | app profile |
 | which gap / which leaf gets disputed | - | dispute adversary | worst location |
 
-The halt/exception protocol gap found on 2026-07-15 is closed by the
-v0.21 emulator and v0.15 solidity-step boundary. SendCmioResponse is total:
+The halt/exception protocol gap found on 2026-07-15 is closed at the
+emulator and solidity-step boundary since v0.21 and v0.15. SendCmioResponse is total:
 an advance response to a machine that is not waiting on an RX_ACCEPTED manual
 yield is a provable no-op. The step reads only the pending yield, never the
 halt flag or the input budget, so exception and unexpected manual yields are
@@ -517,7 +517,7 @@ measured validly:
   docs/measurements/constants.md; docs/measurements/measurements*.md).
 
 The emulator reference harness starts each selected stress-ng worker, reaches a
-post-boot RX-accepted readiness marker, releases it through the v0.21 CMIO API,
+post-boot RX-accepted readiness marker, releases it through the CMIO API,
 and runs a fixed untimed warmup before storing the active machine used by every
 timed phase. Linux boot, process startup, input injection, and warmup are
 excluded. Every timed span rejects halt, yield, early breaks, and non-pristine

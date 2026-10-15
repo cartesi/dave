@@ -181,7 +181,7 @@ contract StfStatusDiscardTest is Test {
     /// The halting ECALL as the 2^20 - 1st instruction: overflow takes
     /// precedence in the status, the halt write stays in the root. Off the
     /// honest path with the pristine ROM (the heaviest instruction measured
-    /// on v0.21, sfence.vma, takes 17,595 usteps); pinned because the v0.21
+    /// on v0.21, sfence.vma, takes 17,595 usteps); pinned because the release
     /// CLI throws here (computation-hash.md).
     function testRefutedHaltAtCycleMaxReportsOverflowAndChangesRoot() public {
         _uarch(0, MAX - 1, UARCH_RAM);

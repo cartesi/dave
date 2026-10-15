@@ -195,7 +195,7 @@ Considered alternatives:
 
 The stamp approach forecloses none of these.
 
-### The emulator dependency (resolved for v0.21)
+### The emulator dependency
 
 The provider policy has two paths and no implicit acquisition inside Cargo:
 
@@ -207,8 +207,8 @@ The provider policy has two paths and no implicit acquisition inside Cargo:
   development instance of this path and remains the immutable owner of its
   package.
 - Source: with `LIBCARTESI_PATH` unset, `just machine::setup` initializes the
-  emulator submodule, verifies and publishes the pinned v0.21 generated-file
-  artifact and Boost headers, and performs one native incremental Make build.
+  emulator submodule, verifies and publishes the pinned release's
+  generated-file artifact and Boost headers, and performs one native incremental Make build.
   This tagged fallback needs no Docker. An intermediary commit instead runs
   `just machine::generate-sources`, normally through the upstream Docker
   toolchain, followed by `prepare-boost` and `build`.
@@ -256,7 +256,7 @@ bump but a coordinated upgrade of the emulator, solidity-step,
 `CartesiStateTransition` and both clients, in a new deployment generation.
 
 `just test-computation-hash-corpus` is the explicit emulator release gate. It
-downloads the pinned v0.21 corpus and checks its SHA-256. One test replays the
+downloads the pinned release's corpus and checks its SHA-256. One test replays the
 complete mcycle and uarch manifest through the release CLI; a separate test
 compares every case that Dave supports directly with the published answer,
 building each dense leaf with both the bulk collector and the stepped
@@ -372,7 +372,7 @@ contracts, the e2e smoke (`just e2e-smoke`, one step over the list in
 `test/e2e/rollups/justfile`), a Rust workspace job (fmt, clippy, Lua lint and
 unit tests, Rust tests, the KMS signer tests, explicit image-backed machine
 differentials, the node's half of the computation-hash release corpus, and the
-serial anvil harness), and the release pipeline (node binaries per arch,
+anvil harness), and the release pipeline (node binaries per arch,
 contract artifacts, deployment simulations, and the devnet state on the
 canonical geometry). The e2e and Rust workspace jobs, the only others that
 build a devnet, deploy the three-level test table. The e2e lane, which has
