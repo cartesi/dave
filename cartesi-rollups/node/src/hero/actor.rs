@@ -4,6 +4,7 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use ::log::{debug, info};
+use anyhow::Result;
 
 use crate::{
     chain::{Chain, ChainHead},
@@ -11,7 +12,6 @@ use crate::{
     hero::{
         action::{PreparedArenaAction, prepare},
         context::{EpochAnchors, HeroContext},
-        error::{ReactError, Result},
         gc_planner::plan_gc,
         planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, plan_hero},
     },
@@ -155,8 +155,7 @@ impl<AS: ArenaSender> Hero<AS> {
             &storage
                 .snapshot_hash(epoch_number, 0)?
                 .expect("snapshot is inserted atomically with settlement info"),
-        )
-        .map_err(anyhow::Error::from)?;
+        )?;
         let anchors = EpochAnchors {
             initial_hash,
             geometry: storage.sling_config()?.geometry,
@@ -184,8 +183,8 @@ impl<AS: ArenaSender> Hero<AS> {
 
     pub async fn tick(&mut self) -> Result<HeroTick> {
         let ticked = self.plan_tick().await;
-        if let Err(ReactError::Anyhow { source }) = &ticked {
-            self.reader.forget_contradicted_solid(source);
+        if let Err(error) = &ticked {
+            self.reader.forget_contradicted_solid(error);
         }
         ticked
     }
@@ -241,8 +240,7 @@ impl<AS: ArenaSender> Hero<AS> {
                 &solid_standings,
                 &mut self.source,
             )
-            .await
-            .map_err(anyhow::Error::from)?;
+            .await?;
             let solid_decision = plan_hero(solid_context.snapshot());
             if !is_exact_join(solid_decision, foam_join) {
                 // Keep the lane empty while Solid catches up. A Foam cleanup
@@ -266,8 +264,7 @@ impl<AS: ArenaSender> Hero<AS> {
         let mut wave = Vec::new();
         match decision {
             HeroDecision::Act(intent) => {
-                let action = super::machine_work(|| prepare(intent, &context, &mut self.source))
-                    .map_err(anyhow::Error::from)?;
+                let action = super::machine_work(|| prepare(intent, &context, &mut self.source))?;
                 info!(
                     "prepared {intent:?} in {:.1?} (reads, builds and proving), observed at block {}",
                     started.elapsed(),
@@ -311,8 +308,7 @@ impl<AS: ArenaSender> Hero<AS> {
             &standings,
             &mut self.source,
         )
-        .await
-        .map_err(anyhow::Error::from)?;
+        .await?;
         Ok(Observation {
             head,
             foam,
@@ -327,7 +323,7 @@ impl<AS: ArenaSender> Hero<AS> {
         standings: &HashMap<Address, TournamentStanding>,
         at: u64,
     ) -> Result<Option<LaneRequest>> {
-        let Some(intent) = plan_gc(dispute, standings, at).map_err(anyhow::Error::from)? else {
+        let Some(intent) = plan_gc(dispute, standings, at)? else {
             return Ok(None);
         };
         info!("plan cleanup intent: {intent:?}");

@@ -1,13 +1,12 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-mod error;
 mod recovery;
 
-use self::error::Result;
 use self::recovery::{RecoveryTree, plan_recovery};
 use alloy::primitives::{Address, B256, TxKind, U256, keccak256};
 use alloy::providers::DynProvider;
+use anyhow::Result;
 use log::{debug, error, info, trace};
 use std::{sync::Arc, time::Duration};
 
@@ -126,11 +125,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
             );
         } else if !tick.wave.is_empty() {
             let calls = tick.wave.iter().map(call_key).collect();
-            reports = self
-                .transaction_lane
-                .submit_wave(tick.wave)
-                .await
-                .map_err(crate::hero::error::ReactError::from)?;
+            reports = self.transaction_lane.submit_wave(tick.wave).await?;
             let (reverted, repeated) = repeated_reverts(&self.reverted, calls, &reports);
             // The lane warns of each skip with its reason. Once is routine
             // with several honest nodes on one commitment: another node's
@@ -158,10 +153,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
         let Some(epoch) = self.storage.unfinished_epoch()? else {
             return Ok(None);
         };
-        let finalized = chain
-            .finalized_head()
-            .await
-            .map_err(crate::hero::error::ReactError::from)?;
+        let finalized = chain.finalized_head().await?;
         // Ingestion is finalized-only. A later sealed epoch proves this one's
         // settlement, but it must not outrun the refund observation's head.
         let settled = self.storage.last_sealed_epoch()?.is_some_and(|last| {
