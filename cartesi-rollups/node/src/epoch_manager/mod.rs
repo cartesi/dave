@@ -23,7 +23,10 @@ use crate::storage::{
 };
 use crate::sync::ShutdownSignal;
 use crate::{
-    hero::{Hero, HeroTick, TournamentResult, planner::Loss},
+    hero::{
+        Hero, HeroTick,
+        planner::{HeroTerminal, Loss},
+    },
     merkle::Digest,
     tournament::ArenaSender,
 };
@@ -195,18 +198,18 @@ impl<AS: ArenaSender> EpochManager<AS> {
                     Ok(tick) => {
                         let result = tick.result();
                         let head = tick.head();
-                        wave.extend(tick.into_wave());
+                        wave.extend(tick.into_request());
                         // A sentry votes the state it computed once the root
                         // has a winner, its own or not: after a loss its claim
                         // is the dissent a guardian reads. Staging and
                         // acceptance follow only its own win.
                         if matches!(
                             result,
-                            TournamentResult::Won | TournamentResult::Lost(Loss::Root { .. })
+                            Some(HeroTerminal::Won | HeroTerminal::Lost(Loss::Root { .. }))
                         ) {
                             let consensus =
                                 DaveConsensus::new(self.consensus, chain.provider().clone());
-                            let step = if result == TournamentResult::Won {
+                            let step = if result == Some(HeroTerminal::Won) {
                                 self.plan_settlement(&consensus, epoch.epoch_number, head)
                                     .await
                             } else {
@@ -582,13 +585,13 @@ impl<AS: ArenaSender> EpochManager<AS> {
             .tick()
             .await?;
         match tick.result() {
-            TournamentResult::Running => {}
-            TournamentResult::Won => info!(
+            None => {}
+            Some(HeroTerminal::Won) => info!(
                 "local commitment won dispute tournament {} for epoch {}",
                 epoch.root_tournament, epoch.epoch_number
             ),
-            TournamentResult::Lost(loss) => self.report_loss(epoch, loss)?,
-            TournamentResult::FailedNoWinner => log::error!(
+            Some(HeroTerminal::Lost(loss)) => self.report_loss(epoch, loss)?,
+            Some(HeroTerminal::FailedNoWinner) => log::error!(
                 "dispute tournament {} for epoch {} finished without a winner",
                 epoch.root_tournament,
                 epoch.epoch_number

@@ -14,7 +14,7 @@ use crate::{
         action::{PreparedArenaAction, prepare},
         context::{EpochAnchors, HeroContext},
         gc_planner::plan_gc,
-        planner::{HeroDecision, HeroIntent, HeroTerminal, Loss, plan_hero},
+        planner::{HeroDecision, HeroIntent, HeroTerminal, plan_hero},
     },
     merkle::Digest,
     provider::LaneRequest,
@@ -29,31 +29,32 @@ use crate::{
 };
 use alloy::primitives::Address;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TournamentResult {
-    Lost(Loss),
-    Running,
-    Won,
-    FailedNoWinner,
-}
-
 /// One dispute tick's outcome and its optional lane request.
 ///
-/// Hero work and cleanup never share a wave: at most one request leaves a
-/// tick, and a cleanup is selected only when that tick has no Hero action.
+/// A tick yields at most one request: the Hero's action, or a cleanup when
+/// the Hero waits.
 #[derive(Clone, Debug)]
 pub struct HeroTick {
-    result: TournamentResult,
+    result: Option<HeroTerminal>,
     head: ChainHead,
-    wave: Vec<LaneRequest>,
+    request: Option<LaneRequest>,
 }
 
 impl HeroTick {
-    pub(crate) fn new(result: TournamentResult, head: ChainHead, wave: Vec<LaneRequest>) -> Self {
-        Self { result, head, wave }
+    pub(crate) fn new(
+        result: Option<HeroTerminal>,
+        head: ChainHead,
+        request: Option<LaneRequest>,
+    ) -> Self {
+        Self {
+            result,
+            head,
+            request,
+        }
     }
 
-    pub const fn result(&self) -> TournamentResult {
+    /// The dispute's terminal result, or None while it runs.
+    pub const fn result(&self) -> Option<HeroTerminal> {
         self.result
     }
 
@@ -63,8 +64,8 @@ impl HeroTick {
         self.head
     }
 
-    pub fn into_wave(self) -> Vec<LaneRequest> {
-        self.wave
+    pub fn into_request(self) -> Option<LaneRequest> {
+        self.request
     }
 }
 
@@ -250,19 +251,15 @@ impl<AS: ArenaSender> Hero<AS> {
                     "latest proposed {foam_decision:?}, which Solid does not support exactly; retry next tick"
                 );
                 report_slow_tick(started, "the join waits for finality");
-                return Ok(HeroTick::new(
-                    TournamentResult::Running,
-                    latest_head,
-                    Vec::new(),
-                ));
+                return Ok(HeroTick::new(None, latest_head, None));
             }
             (solid_context, solid_decision, solid_head)
         } else {
             (foam_context, foam_decision, latest_head)
         };
 
-        let mut result = TournamentResult::Running;
-        let mut wave = Vec::new();
+        let mut result = None;
+        let mut request = None;
         match decision {
             HeroDecision::Act(intent) => {
                 let action = super::machine_work(|| prepare(intent, &context, &mut self.source))?;
@@ -271,7 +268,8 @@ impl<AS: ArenaSender> Hero<AS> {
                     started.elapsed(),
                     action_head.number
                 );
-                wave.push(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
+                request =
+                    Some(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
             }
             HeroDecision::Wait(reason) => {
                 if reason.missed() {
@@ -287,24 +285,14 @@ impl<AS: ArenaSender> Hero<AS> {
                     debug!("Hero waits: {reason:?}");
                 }
                 report_slow_tick(started, format!("{reason:?}"));
+                request = self.gc_request(&foam, &foam_standings, latest_head.number)?;
             }
             HeroDecision::Terminal(terminal) => {
                 // The epoch manager logs the result, once per tick.
-                result = match terminal {
-                    HeroTerminal::Won => TournamentResult::Won,
-                    HeroTerminal::Lost(loss) => TournamentResult::Lost(loss),
-                    HeroTerminal::FailedNoWinner => TournamentResult::FailedNoWinner,
-                };
+                result = Some(terminal);
             }
         }
-
-        if result == TournamentResult::Running
-            && wave.is_empty()
-            && let Some(request) = self.gc_request(&foam, &foam_standings, latest_head.number)?
-        {
-            wave.push(request);
-        }
-        Ok(HeroTick::new(result, latest_head, wave))
+        Ok(HeroTick::new(result, latest_head, request))
     }
 
     async fn observe(&mut self) -> Result<Observation> {

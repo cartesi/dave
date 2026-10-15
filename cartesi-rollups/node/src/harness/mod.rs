@@ -715,8 +715,8 @@ impl Adversary {
         if self.stopped {
             return Ok(());
         }
-        let mut wave = match self.hero.tick().await {
-            Ok(tick) => tick.into_wave(),
+        let mut wave: Vec<_> = match self.hero.tick().await {
+            Ok(tick) => tick.into_request().into_iter().collect(),
             Err(error) => {
                 self.errors.push(format!("{error:#}"));
                 return Ok(());
