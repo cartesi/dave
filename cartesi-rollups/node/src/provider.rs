@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::args::SignerArgs;
-use crate::kms::{CommonSignature, KmsSignerBuilder};
+use crate::kms;
 use alloy::{
     eips::{eip1559::Eip1559Estimation, eip2718::Encodable2718},
     network::{
         Ethereum, EthereumWallet, NetworkTransactionBuilder, NetworkWallet, TransactionBuilder,
+        TxSigner,
     },
-    primitives::{Address, B256, U256, keccak256, utils::format_ether},
+    primitives::{Address, B256, Signature, U256, keccak256, utils::format_ether},
     providers::{DynProvider, Provider, ProviderBuilder},
     rpc::{
         client::RpcClient,
@@ -38,7 +39,7 @@ pub(crate) async fn create_signer(
     chain_id: NamedChain,
     signer_args: &SignerArgs,
 ) -> Result<(Address, EthereumWallet)> {
-    let signer: Box<CommonSignature> = match signer_args {
+    let signer: Box<dyn TxSigner<Signature> + Send + Sync> = match signer_args {
         SignerArgs::Pk {
             auth_private_key,
             auth_private_key_file,
@@ -94,10 +95,7 @@ pub(crate) async fn create_signer(
                 auth_aws_kms_key_id.clone().unwrap()
             };
 
-            let kms_signer = KmsSignerBuilder::new(&key_id, chain_id.into())
-                .with_region(aws_region)
-                .with_endpoint(&endpoint_url)
-                .build()
+            let kms_signer = kms::kms_signer(key_id, chain_id.into(), aws_region, &endpoint_url)
                 .await
                 .context(
                     "failed to create the AWS KMS signer (--auth-aws-kms-key-id(-file), \

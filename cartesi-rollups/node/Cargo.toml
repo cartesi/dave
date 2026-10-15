@@ -42,7 +42,6 @@ clap = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-lazy_static = { workspace = true }
 log = { workspace = true }
 rusqlite = { workspace = true }
 hex = { workspace = true }
