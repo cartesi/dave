@@ -479,7 +479,7 @@ mod tests {
             AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
             MatchCoordinate, MatchSide, ParentLink, ReadyToSealMatch, SealedDivergence,
             SealedLeafMatch, TimeoutDisposition, TournamentDescriptor, TournamentKind,
-            TournamentStanding, WaitingChildren,
+            TournamentStanding, WaitingChildren, validate_match_geometry,
         },
     };
 
@@ -593,11 +593,7 @@ mod tests {
         log2_stride: u64,
         height: u64,
         side: MatchSide,
-        build_live: impl FnOnce(
-            &mut DisputeSource<ToyFactory>,
-            &LevelCoords,
-            TournamentDescriptor,
-        ) -> LiveMatch,
+        build_live: impl FnOnce(&mut DisputeSource<ToyFactory>, &LevelCoords) -> LiveMatch,
     ) -> Fixture {
         let mut source = source();
         let initial_hash = ToyStf::hash_of(0);
@@ -607,9 +603,9 @@ mod tests {
         let opponent = digest(0xd0);
         assert_ne!(commitment, opponent);
         let match_id = id_for(commitment, opponent, side);
-        let live = build_live(&mut source, &coords, descriptor);
-        let engagement =
-            Engagement::try_new(commitment, match_id, live.state(), live.timeout()).unwrap();
+        let live = build_live(&mut source, &coords);
+        validate_match_geometry(descriptor, live.state()).unwrap();
+        let engagement = Engagement::new(match_id, side, live);
         let context = single_level_context(
             descriptor,
             coords,
@@ -674,7 +670,7 @@ mod tests {
     }
 
     fn advance_fixture(side: MatchSide, branch: Branch) -> Fixture {
-        engaged_fixture(LEAF, 0, 7, side, move |source, coords, descriptor| {
+        engaged_fixture(LEAF, 0, 7, side, move |source, coords| {
             let remaining_height = match side {
                 MatchSide::One => 3,
                 MatchSide::Two => 2,
@@ -683,7 +679,7 @@ mod tests {
             let contested = coords.node(remaining_height, coordinate.leaf_position());
             let revealing_parent = source.node(&contested).unwrap();
             let (left, right) = source.children(&contested).unwrap();
-            LiveMatch::try_new(
+            LiveMatch::new(
                 LiveMatchState::Bisecting(
                     BisectingMatch::try_new(
                         revealing_parent,
@@ -696,9 +692,6 @@ mod tests {
                 ),
                 TimeoutDisposition::None,
             )
-            .unwrap()
-            .validate_in(descriptor)
-            .unwrap()
         })
     }
 
@@ -711,43 +704,34 @@ mod tests {
                 MatchSide::Two => (LEAF, 1, 6),
             }
         };
-        engaged_fixture(
-            kind,
-            log2_stride,
-            height,
-            side,
-            move |source, coords, descriptor| {
-                let leaf_position = if matches!(branch, Branch::Left) {
-                    U256::ZERO
-                } else {
-                    U256::from(2)
-                };
-                let cycle = leaf_position << log2_stride;
-                let coordinate = MatchCoordinate::new(leaf_position, cycle);
-                let contested = coords.node(1, coordinate.leaf_position());
-                let revealing_parent = source.node(&contested).unwrap();
-                let (left, right) = source.children(&contested).unwrap();
-                let ready = ReadyToSealMatch::new(
-                    revealing_parent,
-                    waiting(branch, left, right),
-                    coordinate,
-                    side,
-                );
-                let state = if child {
-                    LiveMatchState::ReadyToDelegate(ready)
-                } else {
-                    LiveMatchState::ReadyToSealLeaf(ready)
-                };
-                LiveMatch::try_new(state, TimeoutDisposition::None)
-                    .unwrap()
-                    .validate_in(descriptor)
-                    .unwrap()
-            },
-        )
+        engaged_fixture(kind, log2_stride, height, side, move |source, coords| {
+            let leaf_position = if matches!(branch, Branch::Left) {
+                U256::ZERO
+            } else {
+                U256::from(2)
+            };
+            let cycle = leaf_position << log2_stride;
+            let coordinate = MatchCoordinate::new(leaf_position, cycle);
+            let contested = coords.node(1, coordinate.leaf_position());
+            let revealing_parent = source.node(&contested).unwrap();
+            let (left, right) = source.children(&contested).unwrap();
+            let ready = ReadyToSealMatch::new(
+                revealing_parent,
+                waiting(branch, left, right),
+                coordinate,
+                side,
+            );
+            let state = if child {
+                LiveMatchState::ReadyToDelegate(ready)
+            } else {
+                LiveMatchState::ReadyToSealLeaf(ready)
+            };
+            LiveMatch::new(state, TimeoutDisposition::None)
+        })
     }
 
     fn timeout_fixture(side: MatchSide) -> Fixture {
-        engaged_fixture(LEAF, 0, 7, side, move |source, coords, descriptor| {
+        engaged_fixture(LEAF, 0, 7, side, move |source, coords| {
             let (remaining_height, responder) = match side {
                 MatchSide::One => (2, MatchSide::Two),
                 MatchSide::Two => (3, MatchSide::One),
@@ -773,15 +757,12 @@ mod tests {
                     deferred_charge: BlockDuration::from_blocks(4),
                 },
             };
-            LiveMatch::try_new(state, timeout)
-                .unwrap()
-                .validate_in(descriptor)
-                .unwrap()
+            LiveMatch::new(state, timeout)
         })
     }
 
     fn proof_fixture(side: MatchSide, fault: ProofFault) -> Fixture {
-        engaged_fixture(LEAF, 0, 7, side, move |_source, _coords, descriptor| {
+        engaged_fixture(LEAF, 0, 7, side, move |_source, _coords| {
             let position = match side {
                 MatchSide::One => U256::ZERO,
                 MatchSide::Two => U256::ONE,
@@ -810,10 +791,7 @@ mod tests {
                 final_state_one,
                 final_state_two,
             ));
-            LiveMatch::try_new(LiveMatchState::SealedLeaf(sealed), TimeoutDisposition::None)
-                .unwrap()
-                .validate_in(descriptor)
-                .unwrap()
+            LiveMatch::new(LiveMatchState::SealedLeaf(sealed), TimeoutDisposition::None)
         })
     }
 
@@ -839,18 +817,15 @@ mod tests {
             final_state_one,
             final_state_two,
         );
-        let parent_live = LiveMatch::try_new(
+        let parent_live = LiveMatch::new(
             LiveMatchState::AwaitingChild(AwaitingChildMatch::try_new(divergence, CHILD).unwrap()),
             TimeoutDisposition::None,
-        )
-        .unwrap()
-        .validate_in(parent_descriptor)
-        .unwrap();
+        );
 
         let child_descriptor = descriptor(CHILD, 1, LEAF, agree_state, U256::ZERO, 0, 3);
         let child_coords = LevelCoords::new(0, U256::ZERO, 0, 3);
         let child_winner = source.node(&child_coords.root()).unwrap();
-        let parent_link = ParentLink::try_new(ROOT, parent_match, parent_commitment).unwrap();
+        let parent_link = ParentLink::new(ROOT, parent_match, parent_commitment, side);
         let child_snapshot = SemanticSnapshot::new(
             child_descriptor,
             TournamentStanding::InnerWinner(InnerWinner::new(parent_commitment, child_winner)),
@@ -859,13 +834,7 @@ mod tests {
             Some(parent_link),
             None,
         );
-        let parent_engagement = Engagement::try_new(
-            parent_commitment,
-            parent_match,
-            parent_live.state(),
-            parent_live.timeout(),
-        )
-        .unwrap();
+        let parent_engagement = Engagement::new(parent_match, side, parent_live);
         let parent_snapshot = SemanticSnapshot::new(
             parent_descriptor,
             TournamentStanding::MatchesActive {
@@ -1139,30 +1108,21 @@ mod tests {
             })
         ));
 
-        let mut wrong_parent = engaged_fixture(
-            LEAF,
-            0,
-            7,
-            MatchSide::One,
-            |_source, _coords, descriptor| {
-                LiveMatch::try_new(
-                    LiveMatchState::Bisecting(
-                        BisectingMatch::try_new(
-                            digest(0xfb),
-                            WaitingChildren::new(digest(0xfc), digest(0xfd)),
-                            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-                            3,
-                            MatchSide::One,
-                        )
-                        .unwrap(),
-                    ),
-                    TimeoutDisposition::None,
-                )
-                .unwrap()
-                .validate_in(descriptor)
-                .unwrap()
-            },
-        );
+        let mut wrong_parent = engaged_fixture(LEAF, 0, 7, MatchSide::One, |_source, _coords| {
+            LiveMatch::new(
+                LiveMatchState::Bisecting(
+                    BisectingMatch::try_new(
+                        digest(0xfb),
+                        WaitingChildren::new(digest(0xfc), digest(0xfd)),
+                        MatchCoordinate::new(U256::ZERO, U256::ZERO),
+                        3,
+                        MatchSide::One,
+                    )
+                    .unwrap(),
+                ),
+                TimeoutDisposition::None,
+            )
+        });
         assert!(matches!(
             prepare(
                 planned(&wrong_parent.context),

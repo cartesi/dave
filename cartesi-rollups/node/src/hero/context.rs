@@ -16,12 +16,10 @@ use crate::{
     engine::{DisputeSource, Level, LevelCoords, Positioner, TournamentGeometry},
     merkle::Digest,
     tournament::{
-        dispute::{
-            CommitmentPosition, Dispute, Match, MatchDeletionReason, MatchStatus, WinnerCommitment,
-        },
+        dispute::{CommitmentPosition, Dispute, MatchStatus},
         domain::{
-            DomainError, EliminationReason, EliminationRecord, Engagement, LocalCommitmentStanding,
-            MatchSide, ParentLink, SemanticSnapshot, TournamentDescriptor, TournamentStanding,
+            Engagement, LocalCommitmentStanding, ParentLink, SemanticSnapshot,
+            TournamentDescriptor, TournamentStanding,
         },
         observer::read_match,
     },
@@ -98,16 +96,10 @@ impl HeroContext {
             let (local_standing, next) = match tournament.position(&local_commitment) {
                 CommitmentPosition::NotJoined => (LocalCommitmentStanding::NotJoined, None),
                 CommitmentPosition::Candidate { .. } => (LocalCommitmentStanding::Candidate, None),
-                CommitmentPosition::Eliminated { match_, reason, .. } => (
-                    LocalCommitmentStanding::Eliminated(project_elimination(
-                        address,
-                        local_commitment,
-                        match_,
-                        reason,
-                    )?),
-                    None,
-                ),
-                CommitmentPosition::Engaged { match_, .. } => {
+                CommitmentPosition::Eliminated { reason, .. } => {
+                    (LocalCommitmentStanding::Eliminated { reason }, None)
+                }
+                CommitmentPosition::Engaged { match_, side, .. } => {
                     let live =
                         read_match(chain, tournament, match_, head)
                             .await
@@ -116,16 +108,7 @@ impl HeroContext {
                                 match_id_hash: match_.id_hash(),
                                 source,
                             })?;
-                    let engagement = Engagement::try_new(
-                        local_commitment,
-                        match_.id(),
-                        live.state(),
-                        live.timeout(),
-                    )
-                    .map_err(|source| ContextError::Domain {
-                        tournament: address,
-                        source,
-                    })?;
+                    let engagement = Engagement::new(match_.id(), side, live);
 
                     let next = match match_.status() {
                         // The next level is this match's delegated child, the
@@ -134,11 +117,8 @@ impl HeroContext {
                         // planner and preparation rely on that pairing (a
                         // propagation's parent and child) without checking it.
                         MatchStatus::Inner { child } => {
-                            let link = ParentLink::try_new(address, match_.id(), local_commitment)
-                                .map_err(|source| ContextError::Domain {
-                                    tournament: address,
-                                    source,
-                                })?;
+                            let link =
+                                ParentLink::new(address, match_.id(), local_commitment, side);
                             Some((child.as_ref(), link))
                         }
                         MatchStatus::Clocked { .. } | MatchStatus::Leaf { .. } => None,
@@ -215,12 +195,6 @@ pub enum ContextError {
         #[source]
         source: anyhow::Error,
     },
-    #[error("semantic projection failed for tournament {tournament}: {source}")]
-    Domain {
-        tournament: Address,
-        #[source]
-        source: DomainError,
-    },
 }
 
 #[derive(Clone, Copy)]
@@ -295,49 +269,14 @@ fn level_coords(epoch: u64, descriptor: TournamentDescriptor) -> Result<LevelCoo
     ))
 }
 
-fn project_elimination(
-    tournament: Address,
-    local_commitment: Digest,
-    match_: &Match,
-    reason: MatchDeletionReason,
-) -> Result<EliminationRecord, ContextError> {
-    let MatchStatus::Resolved { winner, .. } = match_.status() else {
-        unreachable!("an eliminated commitment has a resolved match")
-    };
-    EliminationRecord::try_new(
-        local_commitment,
-        match_.id(),
-        elimination_reason(reason),
-        winner_side(*winner),
-    )
-    .map_err(|source| ContextError::Domain { tournament, source })
-}
-
-const fn winner_side(winner: WinnerCommitment) -> Option<MatchSide> {
-    match winner {
-        WinnerCommitment::Neither => None,
-        WinnerCommitment::One => Some(MatchSide::One),
-        WinnerCommitment::Two => Some(MatchSide::Two),
-    }
-}
-
-const fn elimination_reason(reason: MatchDeletionReason) -> EliminationReason {
-    match reason {
-        MatchDeletionReason::Step => EliminationReason::Step,
-        MatchDeletionReason::Timeout => EliminationReason::Timeout,
-        MatchDeletionReason::ChildTournament => EliminationReason::ChildTournament,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tournament::{
         MatchID,
-        dispute::{Event, EventKind},
         domain::{
-            AwaitingChildMatch, JoinDisposition, LiveMatchState, MatchCoordinate, SealedDivergence,
-            TimeoutDisposition, TournamentKind,
+            AwaitingChildMatch, JoinDisposition, LiveMatch, LiveMatchState, MatchCoordinate,
+            MatchSide, SealedDivergence, TimeoutDisposition, TournamentKind,
         },
     };
 
@@ -422,20 +361,23 @@ mod tests {
             commitment_one: digest(3),
             commitment_two: digest(4),
         };
-        let parent = ParentLink::try_new(ROOT, parent_match, digest(3)).unwrap();
+        let parent = ParentLink::new(ROOT, parent_match, digest(3), MatchSide::One);
         let divergence = SealedDivergence::new(
             agree_state,
             MatchCoordinate::new(U256::ZERO, U256::ZERO),
             digest(5),
             digest(6),
         );
-        let engagement = Engagement::try_new(
-            digest(3),
+        let engagement = Engagement::new(
             parent_match,
-            LiveMatchState::AwaitingChild(AwaitingChildMatch::try_new(divergence, CHILD).unwrap()),
-            TimeoutDisposition::None,
-        )
-        .unwrap();
+            MatchSide::One,
+            LiveMatch::new(
+                LiveMatchState::AwaitingChild(
+                    AwaitingChildMatch::try_new(divergence, CHILD).unwrap(),
+                ),
+                TimeoutDisposition::None,
+            ),
+        );
 
         let root = PathLevel {
             descriptor: root_descriptor,
@@ -462,61 +404,5 @@ mod tests {
         assert_eq!(child.descriptor().address(), CHILD);
         assert_eq!(child.parent(), Some(parent));
         assert!(child.child().is_none());
-    }
-
-    #[test]
-    fn eliminated_position_projects_the_recorded_winner_orientation() {
-        let local = digest(3);
-        let opponent = digest(4);
-        let id = MatchID {
-            commitment_one: opponent,
-            commitment_two: local,
-        };
-        let dispute = Dispute::try_new(descriptor(
-            ROOT,
-            0,
-            TournamentKind::Leaf,
-            digest(1),
-            0,
-            0,
-            3,
-        ))
-        .unwrap()
-        .apply_block([
-            Event {
-                tournament: ROOT,
-                kind: EventKind::CommitmentJoined { root: opponent },
-            },
-            Event {
-                tournament: ROOT,
-                kind: EventKind::CommitmentJoined { root: local },
-            },
-            Event {
-                tournament: ROOT,
-                kind: EventKind::MatchCreated {
-                    id,
-                    eliminable_at: 10,
-                },
-            },
-            Event {
-                tournament: ROOT,
-                kind: EventKind::MatchDeleted {
-                    match_id_hash: id.hash(),
-                    reason: MatchDeletionReason::Timeout,
-                    winner: WinnerCommitment::One,
-                },
-            },
-        ])
-        .unwrap();
-
-        let CommitmentPosition::Eliminated { match_, reason, .. } = dispute.root().position(&local)
-        else {
-            panic!("local commitment should be eliminated");
-        };
-        let record = project_elimination(ROOT, local, match_, reason).unwrap();
-        assert_eq!(record.match_id(), id);
-        assert_eq!(record.local_side(), MatchSide::Two);
-        assert_eq!(record.reason(), EliminationReason::Timeout);
-        assert_eq!(record.survivor(), Some(MatchSide::One));
     }
 }

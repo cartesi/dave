@@ -453,15 +453,8 @@ pub struct LiveMatch {
 }
 
 impl LiveMatch {
-    pub fn try_new(
-        state: LiveMatchState,
-        timeout: TimeoutDisposition,
-    ) -> Result<Self, DomainError> {
-        if matches!(state, LiveMatchState::AwaitingChild(_)) && timeout != TimeoutDisposition::None
-        {
-            return Err(DomainError::AwaitingChildHasTimeout);
-        }
-        Ok(Self { state, timeout })
+    pub const fn new(state: LiveMatchState, timeout: TimeoutDisposition) -> Self {
+        Self { state, timeout }
     }
 
     pub const fn state(self) -> LiveMatchState {
@@ -470,14 +463,6 @@ impl LiveMatch {
 
     pub const fn timeout(self) -> TimeoutDisposition {
         self.timeout
-    }
-
-    /// Validate this match against the immutable geometry and kind of its
-    /// containing tournament.
-    pub fn validate_in(self, descriptor: TournamentDescriptor) -> Result<Self, DomainError> {
-        validate_match_kind(descriptor.kind(), self.state)?;
-        validate_match_geometry(descriptor, self.state)?;
-        Ok(self)
     }
 }
 
@@ -490,19 +475,12 @@ pub struct Engagement {
 }
 
 impl Engagement {
-    pub fn try_new(
-        local_commitment: Digest,
-        match_id: MatchID,
-        state: LiveMatchState,
-        timeout: TimeoutDisposition,
-    ) -> Result<Self, DomainError> {
-        let local_side = side_for(local_commitment, match_id)?;
-        let live = LiveMatch::try_new(state, timeout)?;
-        Ok(Self {
+    pub const fn new(match_id: MatchID, local_side: MatchSide, live: LiveMatch) -> Self {
+        Self {
             match_id,
             local_side,
             live,
-        })
+        }
     }
 
     pub const fn match_id(self) -> MatchID {
@@ -518,61 +496,12 @@ impl Engagement {
     }
 }
 
+/// Why a match was resolved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EliminationReason {
+pub enum MatchDeletionReason {
     Step,
     Timeout,
     ChildTournament,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct EliminationRecord {
-    match_id: MatchID,
-    local_side: MatchSide,
-    reason: EliminationReason,
-    survivor: Option<MatchSide>,
-}
-
-impl EliminationRecord {
-    pub fn try_new(
-        local_commitment: Digest,
-        match_id: MatchID,
-        reason: EliminationReason,
-        survivor: Option<MatchSide>,
-    ) -> Result<Self, DomainError> {
-        let local_side = side_for(local_commitment, match_id)?;
-        if survivor == Some(local_side) {
-            return Err(DomainError::SurvivorMarkedEliminated);
-        }
-        if reason == EliminationReason::Step && survivor.is_none() {
-            return Err(DomainError::StepDeletionMissingSurvivor);
-        }
-        Ok(Self {
-            match_id,
-            local_side,
-            reason,
-            survivor,
-        })
-    }
-
-    #[cfg(test)]
-    pub const fn match_id(self) -> MatchID {
-        self.match_id
-    }
-
-    #[cfg(test)]
-    pub const fn local_side(self) -> MatchSide {
-        self.local_side
-    }
-
-    pub const fn reason(self) -> EliminationReason {
-        self.reason
-    }
-
-    #[cfg(test)]
-    pub const fn survivor(self) -> Option<MatchSide> {
-        self.survivor
-    }
 }
 
 /// The fold/view interpretation of the Hero's commitment in one tournament.
@@ -584,7 +513,7 @@ pub enum LocalCommitmentStanding {
     NotJoined,
     Candidate,
     Engaged(Engagement),
-    Eliminated(EliminationRecord),
+    Eliminated { reason: MatchDeletionReason },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -680,18 +609,18 @@ pub struct ParentLink {
 }
 
 impl ParentLink {
-    pub fn try_new(
+    pub const fn new(
         parent_tournament: Address,
         parent_match: MatchID,
         parent_commitment: Digest,
-    ) -> Result<Self, DomainError> {
-        let parent_side = side_for(parent_commitment, parent_match)?;
-        Ok(Self {
+        parent_side: MatchSide,
+    ) -> Self {
+        Self {
             parent_tournament,
             parent_match,
             parent_commitment,
             parent_side,
-        })
+        }
     }
 
     pub const fn parent_tournament(self) -> Address {
@@ -784,20 +713,8 @@ pub enum DomainError {
     TournamentCycleRangeOverflow,
     #[error("bisecting height must be at least two, got {0}")]
     InvalidBisectingHeight(u64),
-    #[error("a match cannot contain the same commitment twice")]
-    DuplicateMatchCommitment,
-    #[error("local commitment {commitment} is not in the supplied match")]
-    CommitmentNotInMatch { commitment: Digest },
-    #[error("an awaiting-child match cannot have a parent-match timeout")]
-    AwaitingChildHasTimeout,
-    #[error("an elimination record cannot eliminate the recorded survivor")]
-    SurvivorMarkedEliminated,
-    #[error("a step deletion must record one surviving commitment")]
-    StepDeletionMissingSurvivor,
     #[error("child tournament address must be nonzero")]
     ZeroChildTournament,
-    #[error("match state does not agree with the immutable tournament kind")]
-    MatchKindMismatch,
     #[error("match remaining height exceeds the tournament commitment height")]
     MatchHeightOutOfRange,
     #[error("match responder disagrees with commitment-height parity")]
@@ -816,37 +733,7 @@ pub enum DomainError {
     ChildBaseCycleMismatch,
 }
 
-fn side_for(commitment: Digest, match_id: MatchID) -> Result<MatchSide, DomainError> {
-    if match_id.commitment_one == match_id.commitment_two {
-        return Err(DomainError::DuplicateMatchCommitment);
-    }
-    if commitment == match_id.commitment_one {
-        Ok(MatchSide::One)
-    } else if commitment == match_id.commitment_two {
-        Ok(MatchSide::Two)
-    } else {
-        Err(DomainError::CommitmentNotInMatch { commitment })
-    }
-}
-
-fn validate_match_kind(kind: TournamentKind, state: LiveMatchState) -> Result<(), DomainError> {
-    let agrees = matches!(
-        (kind, state),
-        (TournamentKind::Leaf, LiveMatchState::Bisecting(_))
-            | (TournamentKind::Leaf, LiveMatchState::ReadyToSealLeaf(_))
-            | (TournamentKind::Leaf, LiveMatchState::SealedLeaf(_))
-            | (TournamentKind::NonLeaf, LiveMatchState::Bisecting(_))
-            | (TournamentKind::NonLeaf, LiveMatchState::ReadyToDelegate(_))
-            | (TournamentKind::NonLeaf, LiveMatchState::AwaitingChild(_))
-    );
-    if agrees {
-        Ok(())
-    } else {
-        Err(DomainError::MatchKindMismatch)
-    }
-}
-
-fn validate_match_geometry(
+pub(crate) fn validate_match_geometry(
     descriptor: TournamentDescriptor,
     state: LiveMatchState,
 ) -> Result<(), DomainError> {
@@ -934,22 +821,6 @@ mod tests {
         .unwrap()
     }
 
-    fn match_id() -> MatchID {
-        MatchID {
-            commitment_one: digest(1),
-            commitment_two: digest(2),
-        }
-    }
-
-    fn divergence() -> SealedDivergence {
-        SealedDivergence::new(
-            digest(10),
-            MatchCoordinate::new(U256::from(3), U256::from(24)),
-            digest(11),
-            digest(12),
-        )
-    }
-
     #[test]
     fn descriptor_preserves_authoritative_kind_and_rejects_invalid_geometry() {
         let non_leaf = descriptor(address(1), 0, TournamentKind::NonLeaf, digest(9), 0);
@@ -1029,117 +900,6 @@ mod tests {
     }
 
     #[test]
-    fn engagement_validates_identity_and_awaiting_child_timeout() {
-        let ready = ReadyToSealMatch::new(
-            digest(3),
-            WaitingChildren::new(digest(4), digest(5)),
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            MatchSide::Two,
-        );
-        assert_eq!(
-            Engagement::try_new(
-                digest(9),
-                match_id(),
-                LiveMatchState::ReadyToSealLeaf(ready),
-                TimeoutDisposition::None,
-            ),
-            Err(DomainError::CommitmentNotInMatch {
-                commitment: digest(9)
-            })
-        );
-
-        let awaiting =
-            AwaitingChildMatch::try_new(divergence(), address(3)).expect("nonzero child");
-        assert_eq!(
-            Engagement::try_new(
-                digest(1),
-                match_id(),
-                LiveMatchState::AwaitingChild(awaiting),
-                TimeoutDisposition::OneWins {
-                    deferred_charge: BlockDuration::ZERO,
-                },
-            ),
-            Err(DomainError::AwaitingChildHasTimeout)
-        );
-    }
-
-    #[test]
-    fn elimination_record_consumes_survivor_evidence() {
-        assert_eq!(
-            EliminationRecord::try_new(
-                digest(1),
-                match_id(),
-                EliminationReason::Timeout,
-                Some(MatchSide::One),
-            ),
-            Err(DomainError::SurvivorMarkedEliminated)
-        );
-        assert_eq!(
-            EliminationRecord::try_new(digest(1), match_id(), EliminationReason::Step, None,),
-            Err(DomainError::StepDeletionMissingSurvivor)
-        );
-
-        let step_loser = EliminationRecord::try_new(
-            digest(1),
-            match_id(),
-            EliminationReason::Step,
-            Some(MatchSide::Two),
-        )
-        .unwrap();
-        assert_eq!(step_loser.local_side(), MatchSide::One);
-        assert_eq!(step_loser.survivor(), Some(MatchSide::Two));
-
-        assert!(
-            EliminationRecord::try_new(digest(1), match_id(), EliminationReason::Timeout, None,)
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn timeout_disposition_is_taken_as_the_contract_reports_it() {
-        let bisecting = LiveMatchState::Bisecting(
-            BisectingMatch::try_new(
-                digest(3),
-                WaitingChildren::new(digest(4), digest(5)),
-                MatchCoordinate::new(U256::ZERO, U256::ZERO),
-                4,
-                MatchSide::One,
-            )
-            .unwrap(),
-        );
-        let sealed = LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence()));
-
-        // A winner that is the running responder, or a sealed-leaf winner
-        // with a deferred charge, is impossible only through how the clock
-        // contracts combine; refusing it would stall every tick.
-        for (state, timeout) in [
-            (
-                bisecting,
-                TimeoutDisposition::OneWins {
-                    deferred_charge: BlockDuration::ZERO,
-                },
-            ),
-            (
-                bisecting,
-                TimeoutDisposition::TwoWins {
-                    deferred_charge: BlockDuration::from_blocks(7),
-                },
-            ),
-            (
-                sealed,
-                TimeoutDisposition::OneWins {
-                    deferred_charge: BlockDuration::from_blocks(1),
-                },
-            ),
-        ] {
-            assert_eq!(
-                LiveMatch::try_new(state, timeout).map(LiveMatch::timeout),
-                Ok(timeout)
-            );
-        }
-    }
-
-    #[test]
     fn bisecting_height_must_exceed_one() {
         // Advancing opens the children of the node below the contested one,
         // so this bound, not nonzero, fronts the engine's `children` expect.
@@ -1161,11 +921,7 @@ mod tests {
     fn match_geometry_validates_height_responder_position_and_cycle() {
         let leaf = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
         let waiting = WaitingChildren::new(digest(4), digest(5));
-        let validate = |state| {
-            LiveMatch::try_new(state, TimeoutDisposition::None)
-                .unwrap()
-                .validate_in(leaf)
-        };
+        let validate = |state| validate_match_geometry(leaf, state);
 
         let too_tall = BisectingMatch::try_new(
             digest(3),

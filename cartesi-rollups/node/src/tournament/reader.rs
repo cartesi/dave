@@ -24,9 +24,8 @@ use crate::{
     chain::{Chain, ChainHead},
     tournament::{
         MatchID,
-        dispute::{
-            Dispute, DisputeError, EventKind, MatchDeletionReason, Tournament, WinnerCommitment,
-        },
+        dispute::{Dispute, DisputeError, EventKind, Tournament, WinnerCommitment},
+        domain::MatchDeletionReason,
         observer,
     },
 };
