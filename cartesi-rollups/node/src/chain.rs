@@ -62,6 +62,7 @@ impl Chain {
         &self.provider
     }
 
+    #[cfg(test)]
     pub async fn latest_block_number(&self) -> Result<u64> {
         Ok(self
             .provider

@@ -275,11 +275,9 @@ impl Storage {
         Ok(())
     }
 
-    /// Opens a batch on a working clone of the newest boundary: the
-    /// machine mutates the clone in place, leaving committed
-    /// boundaries untouched. Restart and tick are the same code path:
-    /// a crash re-executes at most one batch of inputs from staging
-    /// swept clean.
+    /// Test helper: opens a batch on a working clone of the newest
+    /// boundary, where the runner opens the one its plan selected.
+    #[cfg(test)]
     pub fn begin_advances(&mut self) -> Result<(RollupsMachine, AdvanceBatch)> {
         let (epoch, input, hash) = self.read(super::snapshots::latest_boundary_in)?;
         self.begin_advances_at(epoch, input, hash)

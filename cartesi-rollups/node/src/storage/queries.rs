@@ -25,6 +25,7 @@ impl Storage {
         })
     }
 
+    #[cfg(test)]
     pub fn epoch_count(&mut self) -> Result<u64> {
         self.read(epoch_count_in)
     }
