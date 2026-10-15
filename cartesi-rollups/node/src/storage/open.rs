@@ -261,6 +261,23 @@ impl Storage {
         })
     }
 
+    /// Bytes an unprivileged writer may still allocate on the data
+    /// directory's filesystem.
+    pub fn free_bytes(&self) -> std::io::Result<u64> {
+        use std::os::unix::ffi::OsStrExt;
+        let path = std::ffi::CString::new(self.state_dir.as_os_str().as_bytes())?;
+        let mut stat = std::mem::MaybeUninit::<libc::statvfs>::zeroed();
+        // SAFETY: a NUL-terminated path and a buffer statvfs fills on success.
+        if unsafe { libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: statvfs succeeded, so it initialized the buffer.
+        let stat = unsafe { stat.assume_init() };
+        // The field widths differ across platforms.
+        #[allow(clippy::unnecessary_cast)]
+        Ok((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
+    }
+
     pub fn set_snapshot_gap_inputs(&mut self, gap: u64) {
         assert!(gap >= 1, "snapshot gap must be positive");
         self.snapshot_gap_inputs = gap;
@@ -618,6 +635,16 @@ mod tests {
         );
         assert_eq!(crate::fatal::exit_code(&error.into()), 30);
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
+    }
+
+    #[test]
+    fn free_space_is_read_from_the_data_directory_filesystem() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        let storage =
+            initialize_at(&dir.path().join("state"), &template, 0, Address::ZERO, 1).unwrap();
+        assert!(storage.free_bytes().unwrap() > 0);
     }
 
     #[test]

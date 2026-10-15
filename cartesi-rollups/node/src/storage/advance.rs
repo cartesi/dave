@@ -16,7 +16,7 @@
 
 use super::convert::{i64_to_u64, u64_to_i64};
 use super::error::Result;
-use super::open::{create_epoch_dir, snapshots_path};
+use super::open::create_epoch_dir;
 use super::rollups_machine::RollupsMachine;
 use super::snapshots::{
     insert_snapshot_in, remove_orphan_dirs, sweep_scratch_dirs_at_or_below,
@@ -671,7 +671,14 @@ impl Storage {
             insert_settlement_in(tx, &settlement, previous_epoch_number)
         })?;
 
-        self.log_disk_breakdown(new_epoch_number);
+        match self.free_bytes() {
+            Ok(free) => log::info!(
+                "rolled to epoch {new_epoch_number}; {:.1} GiB free on the data directory's \
+                 filesystem",
+                free as f64 / (1u64 << 30) as f64
+            ),
+            Err(e) => log::warn!("could not read the data directory's free space: {e}"),
+        }
 
         Ok(())
     }
@@ -725,26 +732,6 @@ impl Storage {
             roots.push((pad_root, max_windows - recorded));
         }
         Ok(crate::engine::fold_runs(roots, LOG2_MAX_ADVANCE_STATES_PER_EPOCH)?.root_hash())
-    }
-
-    /// The disk baseline, logged at every roll: the snapshot store
-    /// dominates and its growth rate is what the COW analysis prices.
-    fn log_disk_breakdown(&self, new_epoch_number: u64) {
-        let snapshots = dir_size(&snapshots_path(&self.state_dir));
-        let db_path = super::open::db_path(&self.state_dir);
-        let db = file_size(&db_path);
-        let wal = file_size(&db_path.with_extension("sqlite3-wal"));
-        let scratch: u64 = (0..=new_epoch_number)
-            .map(|epoch| dir_size(&self.state_dir.join(epoch.to_string())))
-            .sum();
-        const MB: f64 = 1024.0 * 1024.0;
-        log::info!(
-            "disk after roll to epoch {new_epoch_number}: snapshots {:.1} MB, db {:.1} MB (wal {:.1} MB), epoch scratch {:.1} MB",
-            snapshots as f64 / MB,
-            db as f64 / MB,
-            wal as f64 / MB,
-            scratch as f64 / MB,
-        );
     }
 }
 
@@ -833,25 +820,6 @@ fn gc_old_epochs_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<PathBuf>> {
     sweep_unreferenced_snapshots_in(tx)
 }
 
-/// Best effort: sizes are telemetry, never load-bearing.
-fn file_size(path: &Path) -> u64 {
-    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
-}
-
-fn dir_size(path: &Path) -> u64 {
-    let Ok(entries) = std::fs::read_dir(path) else {
-        return 0;
-    };
-    entries
-        .flatten()
-        .map(|entry| match entry.metadata() {
-            Ok(meta) if meta.is_dir() => dir_size(&entry.path()),
-            Ok(meta) => meta.len(),
-            Err(_) => 0,
-        })
-        .sum()
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::queries::{setup_settlement_storage, test_settlement};
@@ -860,6 +828,7 @@ mod tests {
     use crate::engine::TournamentGeometry;
     use crate::merkle::MerkleBuilder;
     use crate::storage::Epoch;
+    use crate::storage::open::snapshots_path;
     use alloy::primitives::Address;
 
     /// A window's runs for tests: arbitrary interior, tail carrying
