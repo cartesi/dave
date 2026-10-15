@@ -1,11 +1,14 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
+// Pub: what the binaries and integration tests import, and
+// blockchain_reader, whose AddressBook is a NodeConfig field. The rest
+// stays crate-private so rustc reports its dead code.
 pub mod args;
 pub mod blockchain_reader;
 pub mod chain;
-pub mod epoch_manager;
-pub mod escalation;
+mod epoch_manager;
+mod escalation;
 pub mod fatal;
 pub mod machine_runner;
 pub mod provider;
@@ -16,14 +19,14 @@ pub mod sync;
 // node is their only consumer, and if it ever extracts to its own
 // repo they travel inside it.
 pub mod arithmetic;
-pub mod kms;
+mod kms;
 pub mod merkle;
 
 // The dispute engine: the spec-oracled geometry core (engine) and
 // its consumers, the hero's react loop and the tournament layer.
 pub mod engine;
-pub mod hero;
-pub mod tournament;
+mod hero;
+mod tournament;
 
 #[cfg(test)]
 mod harness;
