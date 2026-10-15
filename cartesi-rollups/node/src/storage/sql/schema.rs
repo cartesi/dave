@@ -105,7 +105,7 @@ mod tests {
     }
 
     /// Keccak-256 of schema.sql, pinned by the test below.
-    const SCHEMA_PIN: &str = "c6268a513f4201f125bb94b8ca8b181faf2987720430b1c511ca190a5bba1aec";
+    const SCHEMA_PIN: &str = "668596323ec38dc1ecf5c6fa4fda8f5d6099a1bb5006a321361e1a75951db094";
 
     /// An edit of schema.sql fails here until its author decides whether a
     /// store built before it is still readable: if not, bump STORE_FORMAT.

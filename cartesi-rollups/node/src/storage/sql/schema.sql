@@ -58,14 +58,6 @@ CREATE TABLE epoch_completion (
 ) WITHOUT ROWID;
 INSERT INTO epoch_completion (id, next_epoch) VALUES (1, 0);
 
-CREATE TABLE template_machine (
-    id         INTEGER PRIMARY KEY CHECK (id = 1),
-    state_hash BLOB NOT NULL
-        UNIQUE
-        REFERENCES machine_state_snapshots (state_hash)
-        ON DELETE RESTRICT
-) WITHOUT ROWID;
-
 CREATE TABLE machine_state_snapshots (
     state_hash  BLOB NOT NULL PRIMARY KEY,
     file_path   TEXT NOT NULL
@@ -269,33 +261,6 @@ CREATE TRIGGER trg_sling_config_no_delete
 BEFORE DELETE ON sling_config
 BEGIN
     SELECT RAISE(ABORT, 'sling_config is write-once');
-END;
-
--- template_machine: write-once cell. INSERT OR IGNORE previously
--- absorbed a DISAGREEING rewrite silently; the verify trigger closes
--- that (equal rewrites still absorb via the conflict clause).
-
-CREATE TRIGGER trg_template_machine_write_once_verify
-BEFORE INSERT ON template_machine
-FOR EACH ROW
-WHEN EXISTS (
-    SELECT 1 FROM template_machine
-    WHERE id = NEW.id AND state_hash != NEW.state_hash
-)
-BEGIN
-    SELECT RAISE(ABORT, 'template_machine disagrees with its stored row');
-END;
-
-CREATE TRIGGER trg_template_machine_no_update
-BEFORE UPDATE ON template_machine
-BEGIN
-    SELECT RAISE(ABORT, 'template_machine is write-once');
-END;
-
-CREATE TRIGGER trg_template_machine_no_delete
-BEFORE DELETE ON template_machine
-BEGIN
-    SELECT RAISE(ABORT, 'template_machine is write-once');
 END;
 
 -- sling_nodes: append-only write-once-verify (the nondeterminism
