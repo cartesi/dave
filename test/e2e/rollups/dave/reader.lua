@@ -123,11 +123,10 @@ function Reader:_read_logs(contract_address, sig, topics, data_sig)
 end
 
 local cast_call_template = [==[
-cast call --rpc-url "%s" %s "%s" "%s" %s 2>&1
+cast call --rpc-url "%s" "%s" "%s" %s 2>&1
 ]==]
 
--- `block` (optional) pins the call to that block's state.
-function Reader:_call(address, sig, args, block)
+function Reader:_call(address, sig, args)
     local quoted_args = {}
     for _, v in ipairs(args) do
         table.insert(quoted_args, '"' .. v .. '"')
@@ -137,7 +136,6 @@ function Reader:_call(address, sig, args, block)
     local cmd = string.format(
         cast_call_template,
         self.endpoint,
-        block and string.format("--block %d", block) or "",
         address,
         sig,
         args_str
@@ -200,8 +198,9 @@ end
 
 -- Each leaf match of `tournament` that sealed: its match ID hash (the
 -- indexed LeafMatchSealed topic, which keys its MatchDeleted) and the
--- transition it sealed on. The divergence cycle is read at the
--- LeafMatchSealed block because resolving the match deletes it.
+-- transition it sealed on. Resolving the match zeroes its `sealedMatch`
+-- view, so the cycle is derived as that view does: the event's divergence
+-- position over the tournament's immutable descriptor.
 function Reader:read_sealed_leaf_matches(tournament)
     local logs = self:_read_logs(
         tournament,
@@ -209,19 +208,22 @@ function Reader:read_sealed_leaf_matches(tournament)
         { false, false, false },
         "(bytes32,bytes32,bytes32,uint256,bytes32,bytes32,uint64,uint64,uint64)"
     )
+    local descriptor = plain_numbers(assert(self:_call(
+        tournament,
+        "tournamentDescriptor()((bytes32,uint256,uint64,uint64,uint64,uint8,uint64,uint64))",
+        {}
+    )[1], "tournamentDescriptor returned nothing"))
+    local base_cycle, log2_stride = descriptor:match("^%(0x%x+,%s*(%d+),%s*(%d+),")
+    base_cycle = uint256.parse(assert(base_cycle, "could not decode tournamentDescriptor"))
+    log2_stride = assert(tonumber(log2_stride))
     local matches = {}
     for _, log in ipairs(logs) do
-        local ret = self:_call(
-            tournament,
-            "sealedMatch(bytes32)(uint8,(bytes32,uint256,uint256,bytes32,bytes32))",
-            { log.emited_topics[2] },
-            log.meta.block_number
-        )
-        local view = plain_numbers(assert(ret[2], "sealedMatch returned no view"))
-        local cycle = view:match("^%(0x%x+,%s*%d+,%s*(%d+),")
+        local position = uint256.parse(plain_numbers(
+            assert(log.decoded_data[4], "could not decode LeafMatchSealed")
+        ))
         table.insert(matches, {
             match_id_hash = Hash:from_digest_hex(log.emited_topics[2]),
-            cycle = uint256.parse(assert(cycle, "could not decode sealedMatch")),
+            cycle = base_cycle + (position << log2_stride),
         })
     end
     return matches
