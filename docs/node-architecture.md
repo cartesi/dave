@@ -333,10 +333,13 @@ Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
 monotonic watermark, prunable derived store - and its writer in
 `storage/` keeps the class: the logs check their sequence and return
-typed errors; the write-once rows (settlements, the engine config,
-boundaries, quartet nodes) compare with the stored row and panic on a
-disagreement, so nondeterminism reaches the loud exit instead of a retry
-loop; the watermark only rises; only collection removes rows.
+typed errors; the write-once rows written while the node runs
+(settlements, boundaries, quartet nodes) compare with the stored row and
+panic on a disagreement, so nondeterminism reaches the loud exit instead
+of a retry loop; the identity rows (`node_metadata` and the engine
+config) are written once at seeding and checked at startup, which refuses
+a mismatch with exit status 30 or 40; the watermark only rises; only
+collection removes rows.
 `sql/discipline.rs` pins where in-place writes and deletes may appear.
 GC releases boundary rows and, in the same transaction, finds the states no
 remaining row names; their directories are removed only AFTER that

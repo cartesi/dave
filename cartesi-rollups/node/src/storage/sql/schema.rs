@@ -10,9 +10,9 @@ use rusqlite::{Connection, params};
 
 const SCHEMA: &str = include_str!("schema.sql");
 /// How the data directory is laid out: the tables in schema.sql and what the
-/// node keeps beside them. Bump it with every change a store built by an
-/// older node cannot be read under; the schema pin test makes every edit of
-/// schema.sql decide.
+/// node keeps beside them. Bump it, never reusing a number, with every change
+/// a store built by an older node cannot be read under; the schema pin test
+/// makes every edit of schema.sql decide.
 const STORE_FORMAT: u32 = 1;
 /// What stored commitments mean: leaf values and transition shapes. Bump it
 /// with every change that alters them, even one that leaves the store format
