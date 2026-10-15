@@ -429,7 +429,7 @@ async fn the_node_collects_an_abandoned_child_tournament() -> Result<()> {
 
 /// The join `adversary` plans next, from its key.
 async fn planned_join(adversary: &mut Adversary) -> Result<TransactionRequest> {
-    let wave = adversary.hero.tick().await?.into_wave();
+    let wave = adversary.hero.tick().await?.into_request();
     let (_, join) = wave
         .into_iter()
         .find(|(label, _)| label == "joinTournament")

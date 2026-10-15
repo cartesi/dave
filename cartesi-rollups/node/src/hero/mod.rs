@@ -11,7 +11,7 @@ pub mod context;
 pub mod gc_planner;
 pub mod planner;
 
-pub use actor::{Hero, HeroTick, TournamentResult};
+pub use actor::{Hero, HeroTick};
 
 /// Runs local machine work (commitment builds, proofs) from the dispute's
 /// async task without pinning a runtime worker: on the multi-threaded
