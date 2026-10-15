@@ -207,16 +207,18 @@ Options:
   call on each such tournament pays the recorded claimer, whoever sends it.
 - Read the levels as the failure policy defines them
   ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
-  an ERROR asks an operator to act; a WARN means the node carries on. A WARN
-  that repeats every tick is a stall to investigate: the node keeps retrying
-  one step while the dispute clocks run.
+  an ERROR asks an operator to act; a WARN means the node carries on. A
+  failure that would cost a dispute logs WARN while it lasts and ERROR once
+  it has lasted 5 minutes, the response window past which a late response
+  draws on the dispute's censorship budget, so a transient blip never pages
+  and a page means the node is losing clock.
 - A steady-state tick refuses an incomplete log response before committing
   and heals on the next tick. During a cold-start catch-up, a chunk that ends
   before the finalized head is checked for contiguity only, so an input or
   epoch dropped at its tail surfaces later as an index or epoch error that
-  does not heal. Either failure logs an error once it repeats on the next
-  tick: point the node at a provider that serves complete logs, and if the
-  error persists, rebuild the data directory.
+  does not heal. Either failure logs an error once it has persisted 5
+  minutes: point the node at a provider that serves complete logs, and if
+  the error persists, rebuild the data directory.
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
   canonical table that allowance is about one week and 140 minutes on

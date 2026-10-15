@@ -412,14 +412,18 @@ impl TransactionLane {
         let mut reserved = U256::ZERO;
         for (label, mut request) in wave {
             if request.gas.is_none() {
-                let Some(gas) = self.gas_limit(&label, &request).await else {
-                    reports.push(SendReport {
-                        label,
-                        nonce,
-                        tx_hash: B256::ZERO,
-                        verdict: SendVerdict::Reverts,
-                    });
-                    continue;
+                let gas = match self.gas_limit(&label, &request).await {
+                    Ok(gas) => gas,
+                    Err(reason) => {
+                        reports.push(SendReport {
+                            label,
+                            nonce,
+                            tx_hash: B256::ZERO,
+                            verdict: SendVerdict::Reverts,
+                            revert: Some(reason),
+                        });
+                        continue;
+                    }
                 };
                 request.set_gas_limit(gas);
             }
@@ -456,6 +460,7 @@ impl TransactionLane {
                 nonce,
                 tx_hash,
                 verdict,
+                revert: None,
             });
             nonce += 1;
         }
@@ -498,18 +503,20 @@ impl TransactionLane {
     /// the flat limit: a flaky endpoint must not hold back a dispute action,
     /// and a real problem such as an underfunded signer still fails loudly
     /// at submission.
-    async fn gas_limit(&self, label: &str, request: &TransactionRequest) -> Option<u64> {
+    /// The slot's gas limit, or the revert reason of a call that reverts at
+    /// latest and so is not sent.
+    async fn gas_limit(&self, label: &str, request: &TransactionRequest) -> Result<u64, String> {
         let mut probe = request.clone();
         probe.set_from(self.signer_address);
         match self.read_provider.estimate_gas(probe).latest().await {
-            Ok(estimate) => Some(gas_limit_for(estimate)),
+            Ok(estimate) => Ok(gas_limit_for(estimate)),
             Err(error) if is_revert(&error) => {
                 warn!("{label} is not sent: it reverts at latest: {error}");
-                None
+                Err(error.to_string())
             }
             Err(error) => {
                 warn!("{label} gas estimation failed, using {FALLBACK_GAS_LIMIT}: {error}");
-                Some(FALLBACK_GAS_LIMIT)
+                Ok(FALLBACK_GAS_LIMIT)
             }
         }
     }
@@ -624,6 +631,8 @@ pub struct SendReport {
     pub nonce: u64,
     pub tx_hash: B256,
     pub verdict: SendVerdict,
+    /// Why a call that reverts at latest was not sent.
+    pub revert: Option<String>,
 }
 
 /// The pool's verdict on one send. Everything short of `Failed` is a

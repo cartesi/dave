@@ -7,12 +7,16 @@ use self::recovery::{RecoveryTree, plan_recovery};
 use alloy::primitives::{Address, B256, TxKind, U256, keccak256};
 use alloy::providers::DynProvider;
 use anyhow::Result;
-use log::{debug, error, info, trace};
-use std::{sync::Arc, time::Duration};
+use log::{Level, error, info, trace};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use crate::chain::{Chain, ChainHead};
+use crate::escalation::{PAGE_AFTER, Persistence};
 use crate::fatal::Fatal;
-use crate::provider::{LaneRequest, SendReport, SendVerdict, TransactionLane};
+use crate::provider::{LaneRequest, SendReport, TransactionLane};
 use crate::storage::{
     Epoch, LeafProof as StoredLeafProof, MachineValidityProof as StoredMachineValidityProof,
     Storage,
@@ -33,14 +37,22 @@ pub struct EpochManager<AS: ArenaSender> {
     storage: Storage,
     epoch_hero: Option<Hero<AS>>,
     shutdown: ShutdownSignal,
-    /// The calls the previous tick skipped as reverting at latest.
-    reverted: Vec<CallKey>,
+    /// The previous tick's calls, each with the instant it was first
+    /// planned on consecutive ticks (`track_planned`).
+    planned: Vec<(CallKey, Instant)>,
+    /// How long the unfinished epoch has failed to plan or advance.
+    stall: Persistence,
+    /// Whether this tick recorded a stall; a tick without one clears it.
+    stalled_now: bool,
     /// The unfinished epoch's dispute tree, walked over finalized blocks.
     recovery: Option<RecoveryTree>,
 }
 
 /// A call's identity across ticks: its verb, target and calldata.
 type CallKey = (String, Option<TxKind>, B256);
+
+/// A call planned for PAGE_AFTER or longer, its latest report and how long.
+type Overdue<'r> = (CallKey, &'r SendReport, Duration);
 
 struct EpochTick {
     epoch: u64,
@@ -78,7 +90,9 @@ impl<AS: ArenaSender> EpochManager<AS> {
             storage,
             epoch_hero: None,
             shutdown,
-            reverted: Vec::new(),
+            planned: Vec::new(),
+            stall: Persistence::default(),
+            stalled_now: false,
             recovery: None,
         }
     }
@@ -90,11 +104,20 @@ impl<AS: ArenaSender> EpochManager<AS> {
         let shutdown = self.shutdown.clone();
         while !shutdown.is_requested() {
             match self.tick(&chain).await {
-                // Catch up completed historical epochs without a polling sleep.
-                Ok(Ticked { done: true, .. }) => continue,
-                Ok(_) => {}
+                Ok(ticked) => {
+                    if !self.stalled_now {
+                        self.stall.cleared();
+                    }
+                    // Catch up completed historical epochs without a polling sleep.
+                    if ticked.done {
+                        continue;
+                    }
+                }
                 Err(e) if Fatal::of(&e).is_some() => return Err(e),
-                Err(e) => log::warn!("epoch tick failed, retrying next tick: {e:#}"),
+                Err(e) => self.stalled(
+                    Level::Warn,
+                    format_args!("epoch tick failed, retrying next tick: {e:#}"),
+                ),
             }
             tokio::select! { biased;
                 _ = shutdown.requested() => break,
@@ -105,8 +128,9 @@ impl<AS: ArenaSender> EpochManager<AS> {
     }
 
     pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<Ticked> {
+        self.stalled_now = false;
         let Some(tick) = self.plan_tick(chain).await? else {
-            self.reverted.clear();
+            self.planned.clear();
             return Ok(Ticked {
                 done: false,
                 reports: Vec::new(),
@@ -128,22 +152,24 @@ impl<AS: ArenaSender> EpochManager<AS> {
         } else if !tick.wave.is_empty() {
             let calls = tick.wave.iter().map(call_key).collect();
             reports = self.transaction_lane.submit_wave(tick.wave).await?;
-            let (reverted, repeated) = repeated_reverts(&self.reverted, calls, &reports);
-            // The lane warns of each skip with its reason. Once is routine
-            // with several honest nodes on one commitment: another node's
-            // copy of the step mined between this node's read and its
-            // estimate. The same call again on the next tick is not.
-            for (label, to, _) in repeated {
+            let overdue;
+            (self.planned, overdue) = track_planned(&self.planned, calls, &reports, Instant::now());
+            for ((label, to, _), report, lasted) in overdue {
                 let to = to.and_then(|kind| kind.to().copied()).unwrap_or_default();
+                let why = match &report.revert {
+                    Some(reason) => format!("it reverts at latest: {reason}"),
+                    None => format!("last verdict {:?}", report.verdict),
+                };
                 error!(
-                    "{label} to {to} reverts at latest on consecutive ticks: the node \
-                     keeps planning a step it cannot take, and a dispute clock may be running"
+                    "{label} to {to} has been planned for {} min without landing ({why}): \
+                     the node keeps planning a step that does not land, and a dispute clock \
+                     may be running",
+                    lasted.as_secs() / 60
                 );
             }
-            self.reverted = reverted;
         }
         if reports.is_empty() {
-            self.reverted.clear();
+            self.planned.clear();
         }
         Ok(Ticked {
             done: tick.done,
@@ -177,8 +203,11 @@ impl<AS: ArenaSender> EpochManager<AS> {
                                 .await
                             {
                                 Ok(step) => wave.extend(step),
-                                Err(e) => log::warn!(
-                                    "settlement planning failed, retrying next tick: {e:#}"
+                                Err(e) => self.stalled(
+                                    Level::Warn,
+                                    format_args!(
+                                        "settlement planning failed, retrying next tick: {e:#}"
+                                    ),
                                 ),
                             }
                         }
@@ -187,12 +216,20 @@ impl<AS: ArenaSender> EpochManager<AS> {
                         info!("dispute planning stopped by shutdown: {e:#}")
                     }
                     Err(e) if Fatal::of(&e).is_some() => return Err(e),
-                    Err(e) => log::warn!("dispute planning failed, retrying next tick: {e:#}"),
+                    Err(e) => self.stalled(
+                        Level::Warn,
+                        format_args!("dispute planning failed, retrying next tick: {e:#}"),
+                    ),
                 }
             } else {
-                debug!(
-                    "wait for machine-runner to prepare epoch {}",
-                    epoch.epoch_number
+                // Routine while the runner finishes a sealed epoch's tail; the
+                // root join waits for it.
+                self.stalled(
+                    Level::Debug,
+                    format_args!(
+                        "wait for machine-runner to prepare sealed epoch {}",
+                        epoch.epoch_number
+                    ),
                 );
             }
         }
@@ -213,7 +250,10 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 recovery.complete
             }
             Err(e) => {
-                log::warn!("bond recovery planning failed, retrying next tick: {e:#}");
+                self.stalled(
+                    Level::Warn,
+                    format_args!("bond recovery planning failed, retrying next tick: {e:#}"),
+                );
                 false
             }
         };
@@ -222,6 +262,20 @@ impl<AS: ArenaSender> EpochManager<AS> {
             wave,
             done: settled && refunds_complete,
         }))
+    }
+
+    /// Logs why this tick could not advance its epoch: at `quiet` until the
+    /// stall has lasted PAGE_AFTER, then at ERROR. A tick that records no
+    /// stall clears it.
+    fn stalled(&mut self, quiet: Level, message: std::fmt::Arguments<'_>) {
+        self.stalled_now = true;
+        match self.stall.failed() {
+            Level::Error => error!(
+                "{message} (the epoch has not advanced for {} min; a dispute clock may be running)",
+                self.stall.minutes()
+            ),
+            _ => log::log!(quiet, "{message}"),
+        }
     }
 
     /// Plans the next staged-settlement step: a sentry claim when
@@ -530,25 +584,36 @@ fn call_key((label, request): &LaneRequest) -> CallKey {
     (label.clone(), request.to, input)
 }
 
-/// The calls this tick skipped as reverting at latest (one report per call,
-/// in order), and those of them the previous tick skipped too.
-fn repeated_reverts(
-    previous: &[CallKey],
+/// This tick's calls (one report per call, in order), each with the instant
+/// it was first planned on consecutive ticks, and those planned for
+/// PAGE_AFTER or longer. Planning reads latest and drops a call once it
+/// lands, so a call planned tick after tick has not landed: it reverts at
+/// estimation, a relay holds or dropped it, it is outbid, or it mines
+/// without effect. A repeat or two is routine: inclusion takes a block or
+/// two, and another honest node's copy of a step can land first.
+fn track_planned<'r>(
+    previous: &[(CallKey, Instant)],
     calls: Vec<CallKey>,
-    reports: &[SendReport],
-) -> (Vec<CallKey>, Vec<CallKey>) {
-    let reverted: Vec<_> = calls
+    reports: &'r [SendReport],
+    now: Instant,
+) -> (Vec<(CallKey, Instant)>, Vec<Overdue<'r>>) {
+    let mut overdue = Vec::new();
+    let planned = calls
         .into_iter()
         .zip(reports)
-        .filter(|(_, report)| report.verdict == SendVerdict::Reverts)
-        .map(|(call, _)| call)
+        .map(|(call, report)| {
+            let since = previous
+                .iter()
+                .find(|(planned, _)| *planned == call)
+                .map_or(now, |(_, since)| *since);
+            let lasted = now.saturating_duration_since(since);
+            if lasted >= PAGE_AFTER {
+                overdue.push((call.clone(), report, lasted));
+            }
+            (call, since)
+        })
         .collect();
-    let repeated = reverted
-        .iter()
-        .filter(|call| previous.contains(call))
-        .cloned()
-        .collect();
-    (reverted, repeated)
+    (planned, overdue)
 }
 
 fn to_leaf_proof(proof: StoredLeafProof) -> DaveConsensus::LeafProof {
@@ -575,6 +640,7 @@ fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::SendVerdict;
     use crate::storage::{
         LeafProof, MACHINE_MEMORY_PROOF_SIBLING_COUNT, MachineValidityProof, Proof,
     };
@@ -592,7 +658,7 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn repeated_reverts_escalate_only_on_consecutive_ticks() {
+    fn a_call_pages_once_it_has_been_planned_for_the_response_window() {
         let call_to = |label: &str, to: u8, input: u8| {
             call_key(&(
                 label.to_string(),
@@ -607,37 +673,48 @@ mod tests {
             nonce: 0,
             tx_hash: B256::ZERO,
             verdict,
+            revert: None,
         };
-        let skipped = [report(SendVerdict::Reverts), report(SendVerdict::Submitted)];
-        let tick = |previous: &[CallKey], calls: Vec<CallKey>| {
+        let reports = [report(SendVerdict::Submitted), report(SendVerdict::Reverts)];
+        let start = Instant::now();
+        let tick = |previous: &[(CallKey, Instant)], calls: Vec<CallKey>, at: Duration| {
             let count = calls.len();
-            repeated_reverts(previous, calls, &skipped[..count])
+            let (planned, overdue) = track_planned(previous, calls, &reports[..count], start + at);
+            let overdue: Vec<_> = overdue.into_iter().map(|(call, _, _)| call).collect();
+            (planned, overdue)
         };
         let advance = call("advanceMatch", 1);
 
-        // The first skip is a warning only; the same call next tick is not.
-        let (first, repeated) = tick(&[], vec![advance.clone()]);
-        assert!(repeated.is_empty());
-        let (second, repeated) = tick(&first, vec![advance.clone()]);
-        assert_eq!(repeated, vec![advance.clone()]);
-        // A sent call is not a skip.
-        let (sent, repeated) = repeated_reverts(
-            &second,
-            vec![call("joinTournament", 2), advance.clone()],
-            &skipped,
-        );
-        assert!(repeated.is_empty());
-        assert_eq!(sent, vec![call("joinTournament", 2)]);
-        // A tick without it resets, and a lost race on the next step of the
+        // Planned again and again, whatever the verdict, it pages once it
+        // has been planned for the response window.
+        let (first, overdue) = tick(&[], vec![advance.clone()], Duration::ZERO);
+        assert!(overdue.is_empty());
+        let (second, overdue) = tick(&first, vec![advance.clone()], PAGE_AFTER / 2);
+        assert!(overdue.is_empty());
+        let (_, overdue) = tick(&second, vec![advance.clone()], PAGE_AFTER);
+        assert_eq!(overdue, vec![advance.clone()]);
+        // A tick without it restarts its clock, and the next step of the
         // same verb is another call.
-        let (none, _) = tick(&second, vec![]);
-        assert!(tick(&none, vec![advance.clone()]).1.is_empty());
-        assert!(tick(&second, vec![call("advanceMatch", 3)]).1.is_empty());
+        let (none, _) = tick(&second, vec![], PAGE_AFTER);
+        assert!(
+            tick(&none, vec![advance.clone()], 2 * PAGE_AFTER)
+                .1
+                .is_empty()
+        );
+        assert!(
+            tick(&second, vec![call("advanceMatch", 3)], PAGE_AFTER)
+                .1
+                .is_empty()
+        );
         // Recoveries share verb and calldata; another tournament is another
         // call.
-        let (recovery, _) = tick(&[], vec![call_to("tryRecoveringBond", 0x20, 0)]);
+        let (recovery, _) = tick(
+            &[],
+            vec![call_to("tryRecoveringBond", 0x20, 0)],
+            Duration::ZERO,
+        );
         let other = vec![call_to("tryRecoveringBond", 0x21, 0)];
-        assert!(tick(&recovery, other).1.is_empty());
+        assert!(tick(&recovery, other, PAGE_AFTER).1.is_empty());
     }
 
     fn proof_leaf(data_byte: u8, sibling_byte: u8) -> LeafProof {
@@ -647,7 +724,6 @@ mod tests {
                 .unwrap(),
         }
     }
-
     #[test]
     fn stage_tournament_result_encodes_machine_validity_proof() {
         let proof = MachineValidityProof {

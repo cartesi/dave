@@ -119,7 +119,7 @@ safety, not hygiene:
   every later commitment. Re-proving contract rules on the
   dispute path buys little against commission: a fabricated value yields an
   action the contract rejects, which the lane skips at estimation with a
-  warning, and an error when the same call repeats on the next tick. It does
+  warning, and an error once the same call has been planned for G. It does
   nothing against omission or a lying read: a missing finalized log or a
   false standing can make the Hero wait instead of act, and nothing reverts.
   The fold keeps the guards that stop it from guessing; tournament-log
@@ -171,15 +171,23 @@ retry loops found no data the contracts can produce that fails any of them
 deterministically.
 
 Workers retry a failed tick with a warning that carries the whole error chain:
-a transient provider or storage error costs one polling interval, and a
-warning that repeats tick after tick is a stall to investigate. A retry loop
-that should page reuses the epoch manager's consecutive-tick rule
-(`repeated_reverts`: a warning first, an error on the next tick). Ingestion
-applies it to its completeness and continuity checks (`repeated_check`):
-failing the same one on consecutive ticks means the provider keeps omitting
-logs (point the node at a complete one), or a stored chunk lacks one. That
-is the one stall a retry never heals: a log missing from the tail of a
-catch-up chunk (rebuild the data directory). A tournament event that does
+a transient provider or storage error costs one polling interval. The node
+has one paging rule (`escalation.rs`): a failure that would cost a dispute if
+it persisted logs WARN while it lasts and ERROR once it has lasted G, the
+5-minute response window every action is budgeted to land in. Past G a due
+response draws on C, and a transient blip never pages. The rule covers the
+reader's and the runner's ticks, the manager's tick and its dispute,
+settlement and refund planning, a sealed epoch the runner has not finished,
+and each call the manager plans: planning reads latest and drops a call once
+it lands, so a call planned for G has not landed (it reverts at estimation,
+with the reason in the error; a relay holds or dropped it; it is outbid; or
+it mines without effect). G is hardcoded, since the node knows no block time
+to convert the table's budgets; revisit it if a deployment's G departs from 5
+minutes. An ingestion check that keeps failing means the provider keeps
+omitting logs (point the node at a complete one), or a stored chunk lacks
+one: its page names both remedies. That is the one stall a retry never heals:
+a log missing from the tail of a catch-up chunk (rebuild the data directory).
+A tournament event that does
 not fold onto the reader's finalized prefix, or a phase read on the Hero's
 path that contradicts it, drops the prefix, and the next tick refolds from
 the root's creation block as a restart would; any other omitted log that
@@ -204,8 +212,8 @@ exit status.
 
 Log levels carry that split. ERROR means an operator must act: a lost or
 winnerless dispute, a won epoch that cannot settle, a rejected submission, a
-batch the signer cannot cover, a call that reverts on consecutive ticks, an
-ingestion check that fails on consecutive ticks, a torn snapshot, a worker
+batch the signer cannot cover, a failure or a planned call that persists past
+G (the paging rule above), a torn snapshot, a worker
 exit, or a contract answer the node does not know (an unknown bond
 disposition holds the epoch, and with it the next one). WARN
 means the node carries on: the next tick retries, an action is skipped or
@@ -426,10 +434,9 @@ anything is stored, and the next tick retries. Only `F`'s state is read, since
 an earlier block's would need an archive node, so a chunk that ends before `F`
 during catch-up is checked by contiguity alone: a log missing from its tail
 surfaces only later, at the next log of its kind or at `F`, and then stops
-ingestion until the data directory is rebuilt. Until `F` reaches the
-consensus's deployment (an application deployed ahead of its consensus, or a
-node started before its deployment finalized), the totals cannot be read and
-the tick retries.
+ingestion until the data directory is rebuilt. Until `F` reaches genesis (a
+node started before its deployment finalized), the consensus has no code to
+answer the totals, and ingestion waits without error.
 
 Ingestion starts at genesis, the earlier of the application's and the
 consensus's recorded deployment blocks, so a new application on a long-lived
@@ -592,9 +599,9 @@ never makes an admissible call inadmissible (a fork that lifts the cap leaves
 the clamp conservative, never harmful); estimation failing other than by a
 revert falls back to 15M. A call that already reverts at latest is not sent:
 it costs nothing, and the lane warns with its revert reason. The manager logs
-an error when the same call (verb, target and calldata) is skipped on
-consecutive ticks, since the node keeps planning a step it cannot take; one
-skip is routine with several honest nodes on one commitment, when another
+an error, with that reason, once the same call (verb, target and calldata)
+has been planned for G, since the node keeps planning a step it cannot take;
+one skip is routine with several honest nodes on one commitment, when another
 node's copy of the step mines between this node's read and its estimate. The
 node harness fails on any honest skip. Already-known transactions, underpriced
 replacements, and stale nonces are ordinary retry states; every later tick
