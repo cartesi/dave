@@ -9,8 +9,8 @@
 # and rerunning repairs it.
 set -euo pipefail
 
-readonly release_tag="v0.22.0-test3"
-readonly release_commit="7adfd492ba79000f83ab166caf85dc1e4080b76e"
+readonly release_tag="v0.22.0"
+readonly release_commit="f9e4f82003a6f5acc9821c06f8a29025e0f895e3"
 readonly release_patch_sha256="f9050dd452caf8762aad0b74b59d5601aa64f44433dc691edc254b6e3f90d168"
 readonly release_patch_url="https://github.com/cartesi/machine-emulator/releases/download/${release_tag}/add-generated-files.diff"
 

@@ -238,8 +238,12 @@ CI mirrors the policy. Package-backed jobs export `/usr/lib` and
 explicitly before Cargo.
 
 Release acquisition and image-generation pins remain distributed across the
-external devshell flake, the machine preparation script, CI, and
-the per-image producers under `test/programs/script/`. Semantic version guards
+external devshell flake, the machine preparation script
+(`machine/script/cartesi-machine-source.sh`: release tag, commit and generated
+sources digest), CI's package action (`.github/actions/cartesi-machine`: the
+package digest), the corpus script (`script/computation-hash-corpus.sh`:
+archive and manifest digests), and the per-image producers under
+`test/programs/script/`. Semantic version guards
 also live in the safe Rust wrapper, node configuration, and computation-corpus gate. An emulator bump
 must update every matching guard and artifact together with both machine
 submodules and regenerated program images; search for the current version
@@ -381,8 +385,9 @@ into a failure, and a failed run uploads the per-scenario node logs. Actions
 are pinned by digest. When renaming just recipes, grep the workflow first; CI
 calls them by name. Shared acquisition and provider policy belongs in actions
 or Just targets, not copied shell programs in the workflow. In particular, the
-emulator release commit and artifact digests live in the machine preparation
-script; CI only selects a lane and installs or consumes its result.
+emulator release commit and the generated-sources digest live in the machine
+preparation script and the package digest in CI's package action; CI only
+selects a lane and installs or consumes its result.
 
 Machine provider coverage is intentional: package lanes exercise the external
 archive, while release-node builds prepare and execute a wrapper test against

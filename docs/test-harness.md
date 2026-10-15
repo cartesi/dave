@@ -107,9 +107,9 @@ longer gates every e2e epoch: its answers are checked below e2e, where the
 node's runner, leaves and the release corpus are compared with it
 (`cartesi-rollups/node/tests/engine_machine.rs`, `just
 test-reference-cli-goldens`). Those tests identify the CLI by its
-`--version` line, which cannot tell the v0.22.0-test3 release candidate from
-the final v0.22.0 or from unreleased upstream builds that report the same
-version, so they need its package digest (todo.md).
+`--version` line, which cannot tell the v0.22.0 release from its
+v0.22.0-testN pre-releases (some with another uarch) or from an unreleased
+upstream build, so they need its package digest (todo.md).
 Where the CLI disagrees with the step it is no reference (computation-hash.md,
 the CLI exclusions).
 
