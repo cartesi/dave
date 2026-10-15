@@ -115,6 +115,10 @@ pub(crate) async fn create_signer(
     Ok((wallet_address, wallet))
 }
 
+/// How long one request may take, connect through body: an RPC attempt, or
+/// a KMS call.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// reqwest's defaults, except where noted: HTTP/2 where TLS negotiates it
 /// (every hosted provider), HTTP/1.1 on plain http, and TCP keepalive.
 fn create_client(url: &Url) -> Result<RpcClient> {
@@ -130,7 +134,7 @@ fn create_client(url: &Url) -> Result<RpcClient> {
         .pool_idle_timeout(Duration::from_secs(60))
         // Per attempt, connect through body. alloy never resends a timeout,
         // and logs_bisecting splits on it.
-        .timeout(Duration::from_secs(20))
+        .timeout(REQUEST_TIMEOUT)
         .build()
         .context(
             "failed to build the HTTP client (on Linux it needs the system's CA certificates)",

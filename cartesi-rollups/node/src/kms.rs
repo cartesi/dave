@@ -3,7 +3,9 @@ use alloy::{
     signers::aws::AwsSigner,
 };
 use anyhow::{self, Context};
-use aws_config::BehaviorVersion;
+use aws_config::{BehaviorVersion, timeout::TimeoutConfig};
+
+use crate::provider::REQUEST_TIMEOUT;
 use aws_sdk_kms::{
     Client,
     types::{KeySpec, KeyUsageType},
@@ -85,9 +87,18 @@ impl KmsSignerBuilder {
         // requests. Production builds retain the default AWS credential chain.
         #[cfg(test)]
         let config = config.test_credentials();
+        // The SDK bounds only the connect by default, so a KMS endpoint that
+        // accepts a call and never answers would park the manager's tick in
+        // `sign` with nothing logged. Bounded like one RPC attempt, the tick
+        // fails instead, and the paging rule reports it if it persists.
         let config = config
             .endpoint_url(self.aws_endpoint_url.clone())
             .region(self.aws_region.clone())
+            .timeout_config(
+                TimeoutConfig::builder()
+                    .operation_timeout(REQUEST_TIMEOUT)
+                    .build(),
+            )
             .load()
             .await;
         Client::new(&config)
