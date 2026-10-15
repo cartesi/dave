@@ -6,7 +6,7 @@ source_script := source_directory() / "script/cartesi-machine-source.sh"
 default:
     @just --list
 
-# publish the four generated sources from the pinned v0.21 release artifact
+# publish the four generated sources from the pinned release artifact
 prepare-release:
     "{{ source_script }}" prepare-release
 

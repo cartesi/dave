@@ -17,7 +17,7 @@ at the commit that added this file; re-check them.
   `BaseDeploymentScript.sol`; `cartesi-rollups/contracts/script/`
   `Deployment.s.sol`, `deploy.sh`, `deploy-mainnets.sh`, `deploy-testnets.sh`
   and `deploy-experimental.sh`.
-- `machine/step` (the generated Solidity uarch, solidity-step v0.15.0): in
+- `machine/step` (the generated Solidity uarch, solidity-step v0.16): in
   scope, or trusted as upstream with `CartesiStateTransition` as the seam
   (an open question).
 
@@ -126,18 +126,12 @@ before the freeze.
    address; and the deployments import fails closed on a planted duplicate
    name but silently imports stale extra names, so deploy from a clean
    checkout.
-5. The `CM_MARCHID` literal. `CartesiStateTransition.sol:35-37` hard-codes
-   21 until a solidity-step release exports it; machine/step v0.15.0 exports
-   none, and the only Solidity test echoes the literal. A new node refuses a
-   mismatched deployment, and any step bump that moves the pristine uarch,
-   whatever the literal says: it also checks `UARCH_PRISTINE_STATE_HASH`,
-   which the adapter imports from step. Under an unchanged literal, two
-   cases would still start silently (a lead): a step change that keeps the
-   pristine uarch hash while changing other semantics, and any step change
-   against a node binary released before the node checked the uarch hash.
-   Importing the upstream constant changes the bytecode and the addresses,
-   so it rides the next deployment bundle (normally the next generation);
-   list it as a known item.
+5. `CM_MARCHID`. `CartesiStateTransition` imports it from solidity-step
+   (v0.16), as it does `UARCH_PRISTINE_STATE_HASH`, and a node unit test
+   holds both to the linked emulator's. A new node refuses a deployment whose
+   values differ from its library's. One case would still start silently (a
+   lead): a step change that keeps both values while changing other
+   semantics, as between two release candidates of one emulator version.
 6. The leaf-proof gas witnesses in CI: done. `Gas.WIN_LEAF_MATCH =
    5,536,000` (`prt/contracts/src/tournament/libs/Gas.sol:35`), the largest
    allocation, is witnessed only by the 13 full-stack FFI tests in
@@ -180,8 +174,8 @@ against the released one:
   fingerprints only `Tournament` and `MultiLevelTournamentFactory`: wire
   ABI, storage layout, and creation and runtime bytecode with and without
   metadata. Extend it to `CanonicalTournamentParametersProvider` (the
-  canonical switch changed it), `CartesiStateTransition` (the `CM_MARCHID`
-  import and upstream PR #390 change it), `DaveConsensus` and
+  canonical switch changed it), `CartesiStateTransition` (the v0.22
+  step bump changed it, and upstream PR #390 will), `DaveConsensus` and
   `DaveAppFactory`.
 - Record its output and a clean `just measure-prt-gas` at the audit commit
   and again at the release commit. Equal metadata-free fingerprints show

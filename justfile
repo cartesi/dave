@@ -218,19 +218,19 @@ test-node-harness: bind
 test-live-rpc: bind
     cargo test -p cartesi-sling-node --test live_rpc -- --ignored --nocapture --test-threads 1
 
-# the released CLI's answers behind the runner goldens (needs cartesi-machine
-# 0.21.0 on PATH; UPDATE_FIXTURES=1 regenerates them)
+# the released CLI's answers behind the runner goldens (needs the pinned
+# cartesi-machine on PATH; UPDATE_FIXTURES=1 regenerates them)
 test-reference-cli-goldens: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/machine-image-fingerprint.sh verify yield
     cargo test -p cartesi-sling-node --test engine_machine \
       reference_cli_goldens_hold -- --ignored --exact --nocapture
 
-# download and verify v0.21's released computation-hash corpus
+# download and verify the pinned release's computation-hash corpus
 download-computation-hash-corpus:
     ./script/computation-hash-corpus.sh download
 
-# replay every released mcycle and uarch case through the v0.21 CLI
+# replay every released mcycle and uarch case through the pinned CLI
 test-computation-hash-corpus-cli: bind download-computation-hash-corpus
     ./script/computation-hash-corpus.sh test-cli
 

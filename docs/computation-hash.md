@@ -60,9 +60,9 @@ distinct when changing the coordinate code.
 
 `CartesiStateTransition` accepts only counters inside this 92-bit epoch span.
 It rejects a larger counter before parsing its proof or consulting the data
-provider. The concrete adapter also exposes the `CM_MARCHID` qualified for the
-pinned Cartesi Machine v0.21 release. Dave pins that value locally until a
-released solidity-step exports it. Node startup compares the deployed value
+provider. The concrete adapter also exposes `CM_MARCHID`, solidity-step's
+`EmulatorConstants.CM_MARCHID`, which step generates from the Cartesi Machine
+release it targets. Node startup compares the deployed value
 with the linked Cartesi Machine library before opening or initializing local
 storage. The adapter also publishes `UARCH_PRISTINE_STATE_HASH`, the pristine
 uarch hash that every uarch reset restores, taken from solidity-step's
@@ -76,15 +76,11 @@ linked library's pristine uarch hash (H). It refuses S != H beside the
 storage, and T != H at template inspection (below); each refusal names the
 pair that disagrees. Inspection first refuses a template whose hash tree is
 not Keccak-256, under which T cannot equal H and the uarch cannot run. The
-emulator's C API exports neither H nor the node's coordinates
-(`UARCH_STATE_START_ADDRESS` 0x400000 and `UARCH_STATE_LOG2_SIZE` 22) yet,
-though its Lua module exports all three (todo.md, Upstream). Until then the
-Rust bindings read H from the library's internal `uarch_pristine_hash`
-symbol, declared by hand in `cartesi-machine-sys` (a provider requirement,
-machine/README.md), and the node pins the coordinates in
-`engine/constants.rs`, as do the bindings tests. The unit test
-`linked_emulator_and_step_agree_on_the_pristine_uarch` holds H and the
-coordinates to step's, and the bindings test
+emulator's C API exports H (`cm_get_uarch_pristine_hash`) and the node's
+coordinates (`CM_UARCH_STATE_START_ADDRESS` 0x400000 and
+`CM_UARCH_STATE_LOG2_SIZE` 22), and the Rust bindings read all three from it.
+The unit test `linked_emulator_and_step_agree_on_the_pristine_uarch` holds H,
+the coordinates and `CM_MARCHID` to step's, and the bindings test
 `uarch_pristine_hash_is_what_a_uarch_reset_restores` holds H to what a uarch
 reset writes.
 
@@ -156,10 +152,10 @@ boundary. The closing reset rewrites the uarch region to it, so only the
 template can break the assumption, and the template is the trusted app
 developer's (docs/dimensioning.md). Dave relies on it twice: the big
 machine runs whole cycles without touching the uarch, and one captured idle
-span stands for every later one. The v0.21 CLI and the Lua client rely on
-it too. A template with custom uarch code is outside the model: on the
-release corpus case `uarch-near-limit-tail`, Solidity, the CLI and Dave give
-three different roots. The node refuses such a template at startup, before
+span stands for every later one. The CLI and the Lua client rely on it too.
+A template with custom uarch code is outside the model: on the release
+corpus case `uarch-near-limit-tail`, Solidity and Dave give different roots,
+and the CLI refuses the epoch. The node refuses such a template at startup, before
 it touches the data directory: a template is a big-cycle boundary, so the
 hash of its uarch state's node must be the linked emulator's pristine uarch
 hash (T == H above). Startup also requires the deployed step's
@@ -319,14 +315,10 @@ whole build stores anyway. Only such tall quartets use the collector, so
 only the two-level table's height-38 leaf does: every other quartet, every leaf
 of the three-level table (height 27) included, is stepped through
 `Ruler::collect`. `Collector::Stepped`, which steps a tall build as well, stays
-permanently as the collector's test reference. In production stepping also
-covers one cycle the v0.21 collector gets
-wrong: a rejection on the input budget's last cycle keeps the physical root
-instead of the revert root, so that cycle is stepped. That fallback cannot
-cover an input whose first cycle is its budget's last, which takes a delivery
-at mcycle 2^64 - 2, where the budget saturates: a template preset there, or
-centuries of machine time. It is out of model, and the node stops with an
-assert where stepping would proceed. Memory is one
+permanently as the collector's test reference. Bulk collection cannot take an
+input delivered at mcycle 2^64 - 1, whose saturated budget leaves no cycle to
+collect: a template preset there, or centuries of machine time. It is out of
+model, and the node stops with an assert where stepping would proceed. Memory is one
 collection call's roots, one span's roots and the 256 span roots, and an idle
 stretch costs one captured big cycle per stratum span it covers (at most 256
 per build) however long it is.
@@ -375,32 +367,30 @@ authority for one transition. The release corpus is immutable conformance
 evidence; the release CLI replays it through the emulator's collectors, so it
 is not independent of the node's bulk path. The node's stepped path, the Lua
 client and the test-only prototype builder are the independent lineages.
-Agreement alone is not evidence (at seam 2 the node and the v0.21.0 CLI once
-agreed and were both wrong): a divergence between any two is settled by
+Agreement alone is not evidence (at seam 2 the node and an earlier release
+CLI once agreed and were both wrong): a divergence between any two is settled by
 proving the transition through Solidity, and a golden is regenerated only
 after its differential passes.
 
-Where the v0.21.0 CLI disagrees with the step, the step wins and the case is
-a named exclusion rather than a reference answer, until a tagged release
-carries the fix (todo.md, Upstream):
+Since v0.22 the collector and the CLI follow the step at both input-budget
+seams, an oversized input is a no-op on both sides, and the CLI refuses
+`uarch-near-limit-tail`. Where the release CLI still disagrees with the step,
+the step wins and the case is a named exclusion rather than a reference
+answer, until a tagged release carries the fix (todo.md, Upstream):
 
-- Seam 1: the rejecting period's uarch hash keeps the physical root at the
-  closing reset (the node's bulk collector shares this; the seam-1 guard
-  steps that cycle). After either seam with more inputs to come, the CLI
-  ends the epoch and pads. The unreleased upstream c1280ed4 fixes both.
-- A non-pristine uarch: `uarch-near-limit-tail` is out of model (above;
-  the unreleased 22b4431 makes it error-no-hash), and a uarch cycle overflow
-  or a uarch halting at `UARCH_CYCLE_MAX` throws where the step defines an
-  identity step (no upstream fix yet).
-- An oversized input throws where the step is a no-op (c1280ed4's host-send
-  hunk); `InputBox` caps inputs at 2^16 bytes, so only synthetic vectors
-  reach it.
+- A uarch cycle overflow, or a uarch halting at `UARCH_CYCLE_MAX`, throws
+  where the step defines an identity step.
+- Lead, unverified: a template preset halted with an RX_ACCEPTED yield
+  pending ends the CLI's epoch at the halt, where the step delivers the
+  input.
 
-Two v0.21 emulator traits shape Dave's tests and leaf builds without
-changing any value: it flocks the files it creates without close-on-exec, so
-tests that spawn anvil run serially (the justfile's `test-node-harness`), and
-its hash tree goes parallel by core count rather than by work, so per-step
-leaf hashing runs serially (`runtime_config`, `engine/machine_stf.rs`).
+The release corpus carries no seam case with later inputs, so the node's
+seam behavior rests on its own seam tests and their Solidity replay
+(`NodeWitnessesTest`).
+
+One emulator trait shapes Dave's leaf builds without changing any value: its
+hash tree goes parallel by core count rather than by work, so per-step leaf
+hashing runs serially (`runtime_config`, `engine/machine_stf.rs`).
 
 Any divergence between (1)/(2) and (3) means an honest node loses a
 dispute it should have won. The e2e tests cross-check (1) against (2)
