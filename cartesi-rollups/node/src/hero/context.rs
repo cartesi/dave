@@ -100,6 +100,9 @@ impl HeroContext {
                     (LocalCommitmentStanding::Eliminated { reason }, None)
                 }
                 CommitmentPosition::Engaged { match_, side, .. } => {
+                    // For a delegated match this bounds the child by its parent
+                    // before the next iteration computes the child's commitment;
+                    // that ordering is what keeps a lying child out of the engine.
                     let live =
                         read_match(chain, tournament, match_, head)
                             .await
@@ -275,8 +278,8 @@ mod tests {
     use crate::tournament::{
         MatchID,
         domain::{
-            AwaitingChildMatch, JoinDisposition, LiveMatch, LiveMatchState, MatchCoordinate,
-            MatchSide, SealedDivergence, TimeoutDisposition, TournamentKind,
+            JoinDisposition, LiveMatch, LiveMatchState, MatchSide, TimeoutDisposition,
+            TournamentKind,
         },
     };
 
@@ -354,27 +357,18 @@ mod tests {
 
     #[test]
     fn snapshot_path_is_built_from_leaf_to_root() {
-        let agree_state = digest(2);
         let root_descriptor = descriptor(ROOT, 0, TournamentKind::NonLeaf, digest(1), 0, 3, 4);
-        let child_descriptor = descriptor(CHILD, 1, TournamentKind::Leaf, agree_state, 0, 0, 3);
+        let child_descriptor = descriptor(CHILD, 1, TournamentKind::Leaf, digest(2), 0, 0, 3);
         let parent_match = MatchID {
             commitment_one: digest(3),
             commitment_two: digest(4),
         };
         let parent = ParentLink::new(ROOT, parent_match, digest(3), MatchSide::One);
-        let divergence = SealedDivergence::new(
-            agree_state,
-            MatchCoordinate::new(U256::ZERO, U256::ZERO),
-            digest(5),
-            digest(6),
-        );
         let engagement = Engagement::new(
             parent_match,
             MatchSide::One,
             LiveMatch::new(
-                LiveMatchState::AwaitingChild(
-                    AwaitingChildMatch::try_new(divergence, CHILD).unwrap(),
-                ),
+                LiveMatchState::AwaitingChild(CHILD),
                 TimeoutDisposition::None,
             ),
         );

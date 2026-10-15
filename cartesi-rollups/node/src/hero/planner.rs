@@ -245,9 +245,9 @@ mod tests {
     use crate::tournament::{
         MatchID,
         domain::{
-            AwaitingChildMatch, BisectingMatch, BlockDuration, InnerWinner, JoinDisposition,
-            LiveMatch, LocalCommitmentStanding, MatchCoordinate, ParentLink, ReadyToSealMatch,
-            RootWinner, SealedDivergence, SealedLeafMatch, TournamentDescriptor, TournamentKind,
+            BisectingMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
+            LocalCommitmentStanding, MatchCoordinate, ParentLink, ReadyToSealMatch, RootWinner,
+            SealedDivergence, SealedLeafMatch, TournamentDescriptor, TournamentKind,
             WaitingChildren,
         },
     };
@@ -676,13 +676,11 @@ mod tests {
             None,
         );
 
-        let awaiting =
-            AwaitingChildMatch::try_new(divergence(), child_descriptor.address()).unwrap();
         let engagement = Engagement::new(
             parent_match,
             MatchSide::One,
             LiveMatch::new(
-                LiveMatchState::AwaitingChild(awaiting),
+                LiveMatchState::AwaitingChild(child_descriptor.address()),
                 TimeoutDisposition::None,
             ),
         );

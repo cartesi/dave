@@ -2,8 +2,9 @@
 //!
 //! Events own dispute structure and match cleanup schedules. This module reads
 //! only the root tournament's immutable descriptor, current tournament
-//! standings, and the one live match selected by Hero; it decodes a child's
-//! descriptor from its creation event.
+//! standings, and the one clocked or sealed-leaf match the Hero engages at a
+//! level. It decodes a child's descriptor from its creation event and bounds
+//! it by its parent's, so a delegated match needs no read.
 
 use std::collections::HashMap;
 
@@ -28,8 +29,8 @@ use crate::{
         MatchID,
         dispute::{Dispute, Match, MatchStatus, Tournament},
         domain::{
-            AwaitingChildMatch, BisectingMatch, BlockDuration, DomainError, InnerEliminationReason,
-            InnerWinner, JoinDisposition, LiveMatch, LiveMatchState, MatchCoordinate, MatchSide,
+            BisectingMatch, BlockDuration, DomainError, InnerEliminationReason, InnerWinner,
+            JoinDisposition, LiveMatch, LiveMatchState, MatchCoordinate, MatchSide,
             ReadyToSealMatch, RootWinner, SealedDivergence, SealedLeafMatch, TimeoutDisposition,
             TournamentDescriptor, TournamentKind, TournamentStanding, WaitingChildren,
             validate_match_geometry,
@@ -176,9 +177,9 @@ pub async fn read_standings(
 /// Observe the one event-selected live match needed for a Hero decision.
 ///
 /// Clocked and sealed-leaf matches need a timeout classification plus exactly
-/// one phase projection. A delegated match is already known from events to
-/// have no local timeout; it needs only `sealedMatch` for Hero calldata and
-/// event-child geometry validation.
+/// one phase projection. A delegated match is answered from events: its local
+/// clocks no longer apply, and nothing the Hero sends from it reads its sealed
+/// divergence. Its child's descriptor is bounded by the parent's instead.
 pub async fn read_match(
     chain: &Chain,
     tournament: &Tournament,
@@ -196,35 +197,16 @@ pub async fn read_match(
             return Err(ObserverError::ResolvedMatchSelected { match_id_hash }.into());
         }
         MatchStatus::Inner { child } => {
-            // NewInnerTournament makes the parent match's local clocks
-            // inapplicable. Events own the child address; the sealed projection
-            // supplies only the divergence needed for Hero calldata and child
-            // geometry validation.
-            let wire = contract
-                .sealedMatch(match_id_hash.into())
-                .block(at)
-                .call()
-                .await
-                .with_context(|| {
-                    format!(
-                        "observe delegated match {match_id_hash} in tournament {}",
-                        descriptor.address()
-                    )
-                })?;
-            let projection_phase = decode_match_phase(wire.actualPhase)?;
-            validate_event_phase(match_id_hash, match_.status(), projection_phase)?;
-            let state = decode_sealed(
-                wire.actualPhase,
-                wire.value,
-                descriptor.kind(),
-                Some(child.address()),
-                match_id_hash,
-            )?;
-            let LiveMatchState::AwaitingChild(awaiting) = state else {
-                unreachable!("an inner match decodes only as awaiting its child");
-            };
-            validate_child_geometry(descriptor, child.descriptor(), awaiting.divergence())?;
-            (state, TimeoutDisposition::None)
+            // A Leaf tournament cannot delegate: its child would sit one
+            // level past the pinned table, where context assembly panics.
+            if descriptor.kind() != TournamentKind::NonLeaf {
+                return Err(ObserverError::MatchChildTopology { match_id_hash }.into());
+            }
+            validate_child_geometry(descriptor, child.descriptor())?;
+            (
+                LiveMatchState::AwaitingChild(child.address()),
+                TimeoutDisposition::None,
+            )
         }
         MatchStatus::Clocked { .. } | MatchStatus::Leaf { .. } => {
             let timeout_wire = contract
@@ -290,7 +272,6 @@ pub async fn read_match(
                         wire.actualPhase,
                         wire.value,
                         descriptor.kind(),
-                        None,
                         match_id_hash,
                     )?
                 }
@@ -449,7 +430,7 @@ fn validate_event_phase(
             ),
         ),
         MatchStatus::Leaf { .. } => ("sealed leaf", observed_phase == MatchPhase::Sealed),
-        MatchStatus::Inner { .. } => ("delegated", observed_phase == MatchPhase::Sealed),
+        MatchStatus::Inner { .. } => unreachable!("a delegated match is answered from events"),
         MatchStatus::Resolved { .. } => {
             return Err(ObserverError::ResolvedMatchSelected { match_id_hash });
         }
@@ -465,10 +446,14 @@ fn validate_event_phase(
     }
 }
 
+/// A delegated child must sit one level below its parent, with its base cycle
+/// on one of the parent's leaves: exactly the cycles a sealed divergence in
+/// the parent can name. This bound runs before context assembly computes the
+/// child's commitment, so it keeps every child coordinate, and every cycle
+/// the engine proves, inside the parent's span.
 fn validate_child_geometry(
     parent: TournamentDescriptor,
     child: TournamentDescriptor,
-    divergence: SealedDivergence,
 ) -> ObserverResult<()> {
     if parent
         .level()
@@ -477,11 +462,15 @@ fn validate_child_geometry(
     {
         return Err(DomainError::ChildLevelMismatch.into());
     }
-    if child.initial_hash() != divergence.agree_state() {
-        return Err(DomainError::ChildInitialHashMismatch.into());
-    }
-    if child.base_cycle() != divergence.coordinate().cycle() {
-        return Err(DomainError::ChildBaseCycleMismatch.into());
+    // TournamentDescriptor::try_new keeps stride plus height below 256.
+    let leaf = U256::from(1) << parent.log2_stride();
+    let span = leaf << parent.height().get();
+    let on_a_leaf = child
+        .base_cycle()
+        .checked_sub(parent.base_cycle())
+        .is_some_and(|offset| offset < span && (offset % leaf).is_zero());
+    if !on_a_leaf {
+        return Err(DomainError::ChildOutsideParentLeaf.into());
     }
     Ok(())
 }
@@ -538,7 +527,6 @@ fn decode_sealed(
     actual_phase: u8,
     wire: AbiSealedMatchView,
     kind: TournamentKind,
-    child: Option<Address>,
     match_id_hash: Digest,
 ) -> ObserverResult<LiveMatchState> {
     let projection_phase = decode_match_phase(actual_phase)?;
@@ -556,16 +544,9 @@ fn decode_sealed(
         wire.finalStateOne.into(),
         wire.finalStateTwo.into(),
     );
-    match (kind, child) {
-        (TournamentKind::Leaf, None) => {
-            Ok(LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence)))
-        }
-        (TournamentKind::NonLeaf, Some(child)) => Ok(LiveMatchState::AwaitingChild(
-            AwaitingChildMatch::try_new(divergence, child)?,
-        )),
-        (TournamentKind::Leaf, Some(_)) | (TournamentKind::NonLeaf, None) => {
-            Err(ObserverError::MatchChildTopology { match_id_hash })
-        }
+    match kind {
+        TournamentKind::Leaf => Ok(LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence))),
+        TournamentKind::NonLeaf => Err(ObserverError::MatchChildTopology { match_id_hash }),
     }
 }
 
@@ -610,9 +591,12 @@ mod tests {
     use alloy::primitives::B256;
 
     use super::*;
-    use crate::tournament::{
-        dispute::{Event, EventKind, WinnerCommitment},
-        domain::MatchDeletionReason,
+    use crate::{
+        chain::recording::recording_provider,
+        tournament::{
+            dispute::{Event, EventKind, WinnerCommitment},
+            domain::MatchDeletionReason,
+        },
     };
 
     fn digest(byte: u8) -> Digest {
@@ -1018,26 +1002,6 @@ mod tests {
             })
         );
 
-        let child = Tournament::new(descriptor(
-            address(2),
-            1,
-            TournamentKind::Leaf,
-            digest(9),
-            0,
-        ));
-        let inner = MatchStatus::Inner {
-            child: Box::new(child),
-        };
-        assert!(validate_event_phase(match_id_hash, &inner, MatchPhase::Sealed).is_ok());
-        assert_eq!(
-            validate_event_phase(match_id_hash, &inner, MatchPhase::ReadyToSeal),
-            Err(ObserverError::EventPhaseMismatch {
-                match_id_hash,
-                event_status: "delegated",
-                observed_phase: MatchPhase::ReadyToSeal,
-            })
-        );
-
         let resolved = MatchStatus::Resolved {
             reason: MatchDeletionReason::Timeout,
             winner: WinnerCommitment::Neither,
@@ -1079,13 +1043,8 @@ mod tests {
                 ));
             }
 
-            let result = decode_sealed(
-                actual_phase,
-                sealed_wire(),
-                TournamentKind::Leaf,
-                None,
-                digest(8),
-            );
+            let result =
+                decode_sealed(actual_phase, sealed_wire(), TournamentKind::Leaf, digest(8));
             if actual_phase == 3 {
                 assert!(matches!(result, Ok(LiveMatchState::SealedLeaf(_))));
             } else {
@@ -1113,61 +1072,144 @@ mod tests {
     }
 
     #[test]
-    fn sealed_projection_uses_the_event_child_and_validates_its_geometry() {
+    fn a_sealed_match_decodes_only_in_a_leaf_tournament() {
         assert!(matches!(
             decode_ready(2, ready_wire(), TournamentKind::NonLeaf),
             Ok(LiveMatchState::ReadyToDelegate(_))
         ));
-        let state = decode_sealed(
-            3,
-            sealed_wire(),
-            TournamentKind::NonLeaf,
-            Some(address(2)),
-            digest(8),
-        )
-        .unwrap();
-        let LiveMatchState::AwaitingChild(awaiting) = state else {
-            panic!("a non-leaf sealed match must await its event-derived child");
-        };
-        assert_eq!(awaiting.child_tournament(), address(2));
+        assert!(matches!(
+            decode_sealed(3, sealed_wire(), TournamentKind::Leaf, digest(8)),
+            Ok(LiveMatchState::SealedLeaf(_))
+        ));
         assert_eq!(
-            decode_sealed(3, sealed_wire(), TournamentKind::NonLeaf, None, digest(8),),
+            decode_sealed(3, sealed_wire(), TournamentKind::NonLeaf, digest(8)),
             Err(ObserverError::MatchChildTopology {
                 match_id_hash: digest(8),
             })
         );
-        assert_eq!(
-            decode_sealed(
-                3,
-                sealed_wire(),
+    }
+
+    #[test]
+    fn a_delegated_child_sits_one_level_down_on_a_parent_leaf() {
+        // Stride 2^3 and height 4: a parent's leaves start every 8 cycles
+        // across a span of 128.
+        let parent = |base_cycle| {
+            descriptor(
+                address(1),
+                0,
+                TournamentKind::NonLeaf,
+                digest(9),
+                base_cycle,
+            )
+        };
+        let child = |level, base_cycle| {
+            descriptor(
+                address(2),
+                level,
                 TournamentKind::Leaf,
-                Some(address(2)),
-                digest(8),
-            ),
-            Err(ObserverError::MatchChildTopology {
-                match_id_hash: digest(8),
-            })
+                digest(20),
+                base_cycle,
+            )
+        };
+
+        for (parent_base, child_base) in [(0, 0), (0, 120), (128, 128), (128, 248)] {
+            assert_eq!(
+                validate_child_geometry(parent(parent_base), child(1, child_base)),
+                Ok(())
+            );
+        }
+        // One leaf past the span, below the parent, and between two leaves.
+        for (parent_base, child_base) in [(0, 128), (128, 0), (0, 4)] {
+            assert_eq!(
+                validate_child_geometry(parent(parent_base), child(1, child_base)),
+                Err(ObserverError::Domain(DomainError::ChildOutsideParentLeaf))
+            );
+        }
+        assert_eq!(
+            validate_child_geometry(parent(0), child(2, 0)),
+            Err(ObserverError::Domain(DomainError::ChildLevelMismatch))
+        );
+    }
+
+    fn delegated(root_kind: TournamentKind, child_base_cycle: u64) -> (Dispute, MatchID) {
+        let root = descriptor(address(1), 0, root_kind, digest(9), 0);
+        let child = descriptor(
+            address(2),
+            1,
+            TournamentKind::Leaf,
+            digest(20),
+            child_base_cycle,
+        );
+        let id = MatchID {
+            commitment_one: digest(1),
+            commitment_two: digest(2),
+        };
+        let dispute = Dispute::try_new(root)
+            .unwrap()
+            .apply_block([
+                join(root.address(), digest(1)),
+                join(root.address(), digest(2)),
+                event(
+                    root.address(),
+                    EventKind::MatchCreated {
+                        id,
+                        eliminable_at: 10,
+                    },
+                ),
+            ])
+            .unwrap()
+            .apply_block([event(
+                root.address(),
+                EventKind::NewInnerTournament {
+                    match_id_hash: id.hash(),
+                    child,
+                },
+            )])
+            .unwrap();
+        (dispute, id)
+    }
+
+    #[tokio::test]
+    async fn a_delegated_match_is_answered_without_a_read() {
+        let (provider, _asserter, requests) = recording_provider();
+        let chain = Chain::new(provider);
+        let head = ChainHead {
+            number: 7,
+            hash: hash(7),
+        };
+
+        let (dispute, id) = delegated(TournamentKind::NonLeaf, 24);
+        let root = dispute.root();
+        let match_ = root.match_by_id_hash(&id.hash()).unwrap();
+        assert_eq!(
+            read_match(&chain, root, match_, head).await.unwrap(),
+            LiveMatch::new(
+                LiveMatchState::AwaitingChild(address(2)),
+                TimeoutDisposition::None
+            )
         );
 
-        let parent = descriptor(address(1), 0, TournamentKind::NonLeaf, digest(9), 0);
-        let divergence = awaiting.divergence();
-        let child = descriptor(address(2), 1, TournamentKind::Leaf, digest(20), 24);
-        assert!(validate_child_geometry(parent, child, divergence).is_ok());
-        assert_eq!(
-            validate_child_geometry(
-                parent,
-                descriptor(address(2), 1, TournamentKind::Leaf, digest(99), 24),
-                divergence,
+        for (root_kind, child_base_cycle, expected) in [
+            (
+                TournamentKind::Leaf,
+                24,
+                ObserverError::MatchChildTopology {
+                    match_id_hash: id.hash(),
+                },
             ),
-            Err(ObserverError::Domain(DomainError::ChildInitialHashMismatch))
-        );
-        assert_eq!(
-            validate_child_geometry(
-                parent,
-                descriptor(address(2), 1, TournamentKind::Leaf, digest(20), 25),
-                divergence,
+            (
+                TournamentKind::NonLeaf,
+                128,
+                ObserverError::Domain(DomainError::ChildOutsideParentLeaf),
             ),
-            Err(ObserverError::Domain(DomainError::ChildBaseCycleMismatch))
-        );
+        ] {
+            let (dispute, id) = delegated(root_kind, child_base_cycle);
+            let root = dispute.root();
+            let match_ = root.match_by_id_hash(&id.hash()).unwrap();
+            let error = read_match(&chain, root, match_, head).await.unwrap_err();
+            assert_eq!(error.downcast_ref::<ObserverError>(), Some(&expected));
+        }
+
+        assert!(requests.lock().unwrap().is_empty());
     }
 }

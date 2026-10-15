@@ -140,9 +140,10 @@ through validators that accept everything the contracts produce. The observer
 checks each match against its tournament's descriptor (height, position,
 alignment, cycle); a bisecting match must stand above height 1, since
 advancing opens the children of the node below the contested one; a level's
-base cycle must be aligned to its span, and a child's must be its parent's
-divergence cycle; and every level's stride and height must match the pinned
-table, which tiles the machine coordinate.
+base cycle must be aligned to its span, and a delegated child must sit one
+level below its parent, on one of the parent's leaves; and every level's
+stride and height must match the pinned table, which tiles the machine
+coordinate.
 Nothing checks that the root's base cycle is 0; the trusted factory sets it.
 The observer's standing decoders likewise front its own `expect`s on
 candidate and parent-match data. The engine's asserts behind them
@@ -503,8 +504,9 @@ Hero's tick, which then drops Solid the same way; a lagging or mixed Foam
 tail costs one such refold. Both drops repeat while their cause persists (a
 provider that keeps omitting the log, or a node bug): every tick then refolds
 and fails with the same warning, adding reads to a stall that exists anyway.
-Any other omission that still folds, such as a missed advance, or a missed
-join until a match pairs it, stays silent, and one may surface too late: a
+Any other omission that still folds, such as a missed advance, a missed join
+until a match pairs it, or a missed deletion of a delegated match (the Hero
+reads nothing there), stays silent, and one may surface too late: a
 missed creation of the Hero's own match, when the Hero moves first, fails to
 fold only at the opponent's timeout deletion. Log completeness is a trusted
 RPC property.
@@ -529,14 +531,15 @@ child's immutable descriptor arrives in its `NewInnerTournament` event, which
 the factory projects from the child's clone arguments. Point reads add only
 the root's descriptor on a cold fold (the node reads no factory logs), one
 current standing per reachable tournament, and the phase payload for each
-engaged match on the Hero's one recursive path.
+clocked or sealed-leaf match the Hero engages on its one recursive path.
 A match resolution drops its child subtree, so the reader stops fetching the
 child's stream, even for the range in which the parent resolved: nothing reads
 a resolved child, and bond recovery walks the tournaments through its own
 `NewInnerTournament` logs.
 Standing calls use bounded concurrency. A clock-bearing Hero match needs a
-timeout classification and one phase projection; a delegated parent needs only
-its sealed projection. These reads are pinned to `H`. The observer narrows ABI
+timeout classification and one phase projection; a delegated parent needs no
+read, since the observer bounds its child's event-borne descriptor by the
+parent's. These reads are pinned to `H`. The observer narrows ABI
 values into domain types; it does not reconcile a second whole-tree projection
 against events. Transaction signing and submission remain strictly serial.
 
