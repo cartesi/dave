@@ -9,20 +9,13 @@ use alloy::primitives::Address;
 
 use crate::{
     merkle::Digest,
-    tournament::{
-        MatchID,
-        domain::{
-            BlockDuration, EliminationReason, Engagement, InnerEliminationReason, LiveMatchState,
-            MatchSide, ParentLink, ReadyToSealMatch, SealedLeafMatch, SemanticSnapshot,
-            TimeoutDisposition, TournamentStanding,
-        },
+    tournament::domain::{
+        EliminationReason, Engagement, InnerEliminationReason, LiveMatchState, MatchSide,
+        SemanticSnapshot, TimeoutDisposition, TournamentStanding,
     },
 };
 
 /// The complete result of planning one accepted observation.
-// Decisions are short-lived values; keeping action payloads inline preserves a
-// simple value API at the planner/executor boundary.
-#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HeroDecision {
     Terminal(HeroTerminal),
@@ -78,72 +71,36 @@ impl WaitReason {
     }
 }
 
+/// Where to act. Preparation reads the match from the context that produced
+/// the intent, so an intent names only the tournaments its call targets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HeroIntent {
-    Join(JoinIntent),
-    ClaimTimeout(TimeoutIntent),
-    Advance(AdvanceIntent),
-    SealLeaf(SealIntent),
-    CreateChild(ChildIntent),
-    ProveLeaf(ProofIntent),
-    PropagateChild(PropagationIntent),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct JoinIntent {
-    pub tournament: Address,
-    pub commitment: Digest,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TimeoutIntent {
-    pub tournament: Address,
-    pub match_id: MatchID,
-    pub commitment: Digest,
-    pub survivor: MatchSide,
-    pub deferred_charge: BlockDuration,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct AdvanceIntent {
-    pub tournament: Address,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SealIntent {
-    pub tournament: Address,
-    pub match_id: MatchID,
-    pub commitment: Digest,
-    pub side: MatchSide,
-    pub match_state: ReadyToSealMatch,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ChildIntent {
-    pub tournament: Address,
-    pub match_id: MatchID,
-    pub commitment: Digest,
-    pub side: MatchSide,
-    pub match_state: ReadyToSealMatch,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ProofIntent {
-    pub tournament: Address,
-    pub match_id: MatchID,
-    pub commitment: Digest,
-    pub side: MatchSide,
-    pub match_state: SealedLeafMatch,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PropagationIntent {
-    pub parent_tournament: Address,
-    pub child_tournament: Address,
-    pub parent_match: MatchID,
-    pub parent_commitment: Digest,
-    pub parent_side: MatchSide,
-    pub child_winner: Digest,
+    /// Names the commitment too: the actor joins only when Solid plans this
+    /// exact join, and after a reorg one child address can carry another
+    /// descriptor, hence another local commitment.
+    Join {
+        tournament: Address,
+        commitment: Digest,
+    },
+    ClaimTimeout {
+        tournament: Address,
+    },
+    Advance {
+        tournament: Address,
+    },
+    SealLeaf {
+        tournament: Address,
+    },
+    CreateChild {
+        tournament: Address,
+    },
+    ProveLeaf {
+        tournament: Address,
+    },
+    PropagateChild {
+        parent_tournament: Address,
+        child_tournament: Address,
+    },
 }
 
 /// Choose exactly one decision for a semantic snapshot.
@@ -173,11 +130,10 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
                     tournament: snapshot.descriptor().address(),
                 }));
             }
-            return HeroDecision::Act(HeroIntent::PropagateChild(propagation_intent(
-                snapshot,
-                parent,
-                winner.child_commitment(),
-            )));
+            return HeroDecision::Act(HeroIntent::PropagateChild {
+                parent_tournament: parent.parent_tournament(),
+                child_tournament: snapshot.descriptor().address(),
+            });
         }
         TournamentStanding::InnerEliminable { reason } => {
             return HeroDecision::Wait(WaitReason::ChildEliminable { reason });
@@ -188,10 +144,10 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
     match snapshot.local_standing() {
         crate::tournament::domain::LocalCommitmentStanding::NotJoined => {
             if snapshot.standing().accepts_joins() {
-                HeroDecision::Act(HeroIntent::Join(JoinIntent {
+                HeroDecision::Act(HeroIntent::Join {
                     tournament: snapshot.descriptor().address(),
                     commitment: snapshot.local_commitment(),
-                }))
+                })
             } else {
                 HeroDecision::Wait(WaitReason::JoinsClosed)
             }
@@ -219,28 +175,16 @@ pub fn plan_hero(snapshot: &SemanticSnapshot) -> HeroDecision {
     }
 }
 
-fn propagation_intent(
-    snapshot: &SemanticSnapshot,
-    parent: ParentLink,
-    child_winner: Digest,
-) -> PropagationIntent {
-    PropagationIntent {
-        parent_tournament: parent.parent_tournament(),
-        child_tournament: snapshot.descriptor().address(),
-        parent_match: parent.parent_match(),
-        parent_commitment: parent.parent_commitment(),
-        parent_side: parent.parent_side(),
-        child_winner,
-    }
-}
-
 fn plan_engagement(snapshot: &SemanticSnapshot, engagement: Engagement) -> HeroDecision {
+    let tournament = snapshot.descriptor().address();
+    let side = engagement.local_side();
+
     match engagement.live().timeout() {
-        TimeoutDisposition::OneWins { deferred_charge } => {
-            return plan_timeout_winner(snapshot, engagement, MatchSide::One, deferred_charge);
+        TimeoutDisposition::OneWins { .. } => {
+            return plan_timeout_winner(tournament, side, MatchSide::One);
         }
-        TimeoutDisposition::TwoWins { deferred_charge } => {
-            return plan_timeout_winner(snapshot, engagement, MatchSide::Two, deferred_charge);
+        TimeoutDisposition::TwoWins { .. } => {
+            return plan_timeout_winner(tournament, side, MatchSide::Two);
         }
         TimeoutDisposition::EliminateBoth => {
             return HeroDecision::Wait(WaitReason::MatchEliminable);
@@ -248,48 +192,23 @@ fn plan_engagement(snapshot: &SemanticSnapshot, engagement: Engagement) -> HeroD
         TimeoutDisposition::None => {}
     }
 
-    let tournament = snapshot.descriptor().address();
-    let commitment = snapshot.local_commitment();
-    let match_id = engagement.match_id();
-    let side = engagement.local_side();
-
     match engagement.live().state() {
-        LiveMatchState::Bisecting(match_state) => {
-            plan_responder(match_state.responder(), side, || {
-                HeroIntent::Advance(AdvanceIntent { tournament })
-            })
-        }
-        LiveMatchState::ReadyToSealLeaf(match_state) => {
-            plan_responder(match_state.responder(), side, || {
-                HeroIntent::SealLeaf(SealIntent {
-                    tournament,
-                    match_id,
-                    commitment,
-                    side,
-                    match_state,
-                })
-            })
-        }
-        LiveMatchState::ReadyToDelegate(match_state) => {
-            plan_responder(match_state.responder(), side, || {
-                HeroIntent::CreateChild(ChildIntent {
-                    tournament,
-                    match_id,
-                    commitment,
-                    side,
-                    match_state,
-                })
-            })
-        }
-        LiveMatchState::SealedLeaf(match_state) => {
-            HeroDecision::Act(HeroIntent::ProveLeaf(ProofIntent {
-                tournament,
-                match_id,
-                commitment,
-                side,
-                match_state,
-            }))
-        }
+        LiveMatchState::Bisecting(match_state) => plan_responder(
+            match_state.responder(),
+            side,
+            HeroIntent::Advance { tournament },
+        ),
+        LiveMatchState::ReadyToSealLeaf(match_state) => plan_responder(
+            match_state.responder(),
+            side,
+            HeroIntent::SealLeaf { tournament },
+        ),
+        LiveMatchState::ReadyToDelegate(match_state) => plan_responder(
+            match_state.responder(),
+            side,
+            HeroIntent::CreateChild { tournament },
+        ),
+        LiveMatchState::SealedLeaf(_) => HeroDecision::Act(HeroIntent::ProveLeaf { tournament }),
         LiveMatchState::AwaitingChild(_) => {
             let child = snapshot
                 .child()
@@ -300,31 +219,20 @@ fn plan_engagement(snapshot: &SemanticSnapshot, engagement: Engagement) -> HeroD
 }
 
 fn plan_timeout_winner(
-    snapshot: &SemanticSnapshot,
-    engagement: Engagement,
+    tournament: Address,
+    local_side: MatchSide,
     winner: MatchSide,
-    deferred_charge: BlockDuration,
 ) -> HeroDecision {
-    if engagement.local_side() != winner {
+    if local_side != winner {
         return HeroDecision::Wait(WaitReason::OpponentWinsByTimeout { winner });
     }
 
-    HeroDecision::Act(HeroIntent::ClaimTimeout(TimeoutIntent {
-        tournament: snapshot.descriptor().address(),
-        match_id: engagement.match_id(),
-        commitment: snapshot.local_commitment(),
-        survivor: winner,
-        deferred_charge,
-    }))
+    HeroDecision::Act(HeroIntent::ClaimTimeout { tournament })
 }
 
-fn plan_responder(
-    responder: MatchSide,
-    local_side: MatchSide,
-    action: impl FnOnce() -> HeroIntent,
-) -> HeroDecision {
+fn plan_responder(responder: MatchSide, local_side: MatchSide, action: HeroIntent) -> HeroDecision {
     if responder == local_side {
-        HeroDecision::Act(action())
+        HeroDecision::Act(action)
     } else {
         HeroDecision::Wait(WaitReason::OpponentTurn { responder })
     }
@@ -335,10 +243,14 @@ mod tests {
     use alloy::primitives::U256;
 
     use super::*;
-    use crate::tournament::domain::{
-        AwaitingChildMatch, BisectingMatch, EliminationReason, EliminationRecord, InnerWinner,
-        JoinDisposition, LocalCommitmentStanding, MatchCoordinate, ReadyToSealMatch, RootWinner,
-        SealedDivergence, TournamentDescriptor, TournamentKind, WaitingChildren,
+    use crate::tournament::{
+        MatchID,
+        domain::{
+            AwaitingChildMatch, BisectingMatch, BlockDuration, EliminationReason,
+            EliminationRecord, InnerWinner, JoinDisposition, LocalCommitmentStanding,
+            MatchCoordinate, ParentLink, ReadyToSealMatch, RootWinner, SealedDivergence,
+            SealedLeafMatch, TournamentDescriptor, TournamentKind, WaitingChildren,
+        },
     };
 
     fn digest(byte: u8) -> Digest {
@@ -489,10 +401,10 @@ mod tests {
         for (joins, expected) in [
             (
                 JoinDisposition::Open,
-                HeroDecision::Act(HeroIntent::Join(JoinIntent {
+                HeroDecision::Act(HeroIntent::Join {
                     tournament: address(10),
                     commitment: local,
-                })),
+                }),
             ),
             (
                 JoinDisposition::Closed,
@@ -514,7 +426,7 @@ mod tests {
         );
         assert!(matches!(
             plan_hero(&awaiting_closure),
-            HeroDecision::Act(HeroIntent::Join(_))
+            HeroDecision::Act(HeroIntent::Join { .. })
         ));
     }
 
@@ -601,10 +513,12 @@ mod tests {
             };
 
             let ours_wins = live_snapshot(kind, winner, state, disposition);
-            assert!(matches!(
+            assert_eq!(
                 plan_hero(&ours_wins),
-                HeroDecision::Act(HeroIntent::ClaimTimeout(_))
-            ));
+                HeroDecision::Act(HeroIntent::ClaimTimeout {
+                    tournament: address(10)
+                })
+            );
 
             let opponent_wins = live_snapshot(kind, loser, state, disposition);
             assert_eq!(
@@ -637,7 +551,7 @@ mod tests {
             let snapshot = live_snapshot(TournamentKind::Leaf, MatchSide::One, state, disposition);
             assert!(matches!(
                 plan_hero(&snapshot),
-                HeroDecision::Act(HeroIntent::ClaimTimeout(_))
+                HeroDecision::Act(HeroIntent::ClaimTimeout { .. })
             ));
         }
 
@@ -654,100 +568,19 @@ mod tests {
     }
 
     #[test]
-    fn action_intents_preserve_locators_and_semantic_payloads() {
-        let bisecting = bisecting(MatchSide::One);
-        let bisecting_state = LiveMatchState::Bisecting(bisecting);
-        assert_eq!(
-            plan_hero(&live_snapshot(
-                TournamentKind::Leaf,
-                MatchSide::Two,
-                bisecting_state,
-                TimeoutDisposition::TwoWins {
-                    deferred_charge: BlockDuration::from_blocks(7),
-                },
-            )),
-            HeroDecision::Act(HeroIntent::ClaimTimeout(TimeoutIntent {
-                tournament: address(10),
-                match_id: match_id(),
-                commitment: digest(2),
-                survivor: MatchSide::Two,
-                deferred_charge: BlockDuration::from_blocks(7),
-            }))
-        );
-        assert_eq!(
-            plan_hero(&live_snapshot(
-                TournamentKind::Leaf,
-                MatchSide::One,
-                bisecting_state,
-                TimeoutDisposition::None,
-            )),
-            HeroDecision::Act(HeroIntent::Advance(AdvanceIntent {
-                tournament: address(10),
-            }))
-        );
-
-        let ready = ready(MatchSide::Two);
-        assert_eq!(
-            plan_hero(&live_snapshot(
-                TournamentKind::Leaf,
-                MatchSide::Two,
-                LiveMatchState::ReadyToSealLeaf(ready),
-                TimeoutDisposition::None,
-            )),
-            HeroDecision::Act(HeroIntent::SealLeaf(SealIntent {
-                tournament: address(10),
-                match_id: match_id(),
-                commitment: digest(2),
-                side: MatchSide::Two,
-                match_state: ready,
-            }))
-        );
-        assert_eq!(
-            plan_hero(&live_snapshot(
-                TournamentKind::NonLeaf,
-                MatchSide::Two,
-                LiveMatchState::ReadyToDelegate(ready),
-                TimeoutDisposition::None,
-            )),
-            HeroDecision::Act(HeroIntent::CreateChild(ChildIntent {
-                tournament: address(10),
-                match_id: match_id(),
-                commitment: digest(2),
-                side: MatchSide::Two,
-                match_state: ready,
-            }))
-        );
-
-        let sealed = SealedLeafMatch::new(divergence());
-        assert_eq!(
-            plan_hero(&live_snapshot(
-                TournamentKind::Leaf,
-                MatchSide::One,
-                LiveMatchState::SealedLeaf(sealed),
-                TimeoutDisposition::None,
-            )),
-            HeroDecision::Act(HeroIntent::ProveLeaf(ProofIntent {
-                tournament: address(10),
-                match_id: match_id(),
-                commitment: digest(1),
-                side: MatchSide::One,
-                match_state: sealed,
-            }))
-        );
-    }
-
-    #[test]
     fn no_timeout_phase_table_is_exhaustive() {
         let bisect = LiveMatchState::Bisecting(bisecting(MatchSide::One));
-        assert!(matches!(
+        assert_eq!(
             plan_hero(&live_snapshot(
                 TournamentKind::Leaf,
                 MatchSide::One,
                 bisect,
                 TimeoutDisposition::None,
             )),
-            HeroDecision::Act(HeroIntent::Advance(_))
-        ));
+            HeroDecision::Act(HeroIntent::Advance {
+                tournament: address(10)
+            })
+        );
         assert_eq!(
             plan_hero(&live_snapshot(
                 TournamentKind::Leaf,
@@ -761,15 +594,17 @@ mod tests {
         );
 
         let ready_leaf = LiveMatchState::ReadyToSealLeaf(ready(MatchSide::Two));
-        assert!(matches!(
+        assert_eq!(
             plan_hero(&live_snapshot(
                 TournamentKind::Leaf,
                 MatchSide::Two,
                 ready_leaf,
                 TimeoutDisposition::None,
             )),
-            HeroDecision::Act(HeroIntent::SealLeaf(_))
-        ));
+            HeroDecision::Act(HeroIntent::SealLeaf {
+                tournament: address(10)
+            })
+        );
         assert!(matches!(
             plan_hero(&live_snapshot(
                 TournamentKind::Leaf,
@@ -781,15 +616,17 @@ mod tests {
         ));
 
         let ready_child = LiveMatchState::ReadyToDelegate(ready(MatchSide::Two));
-        assert!(matches!(
+        assert_eq!(
             plan_hero(&live_snapshot(
                 TournamentKind::NonLeaf,
                 MatchSide::Two,
                 ready_child,
                 TimeoutDisposition::None,
             )),
-            HeroDecision::Act(HeroIntent::CreateChild(_))
-        ));
+            HeroDecision::Act(HeroIntent::CreateChild {
+                tournament: address(10)
+            })
+        );
         assert!(matches!(
             plan_hero(&live_snapshot(
                 TournamentKind::NonLeaf,
@@ -802,15 +639,17 @@ mod tests {
 
         let sealed = LiveMatchState::SealedLeaf(SealedLeafMatch::new(divergence()));
         for side in [MatchSide::One, MatchSide::Two] {
-            assert!(matches!(
+            assert_eq!(
                 plan_hero(&live_snapshot(
                     TournamentKind::Leaf,
                     side,
                     sealed,
                     TimeoutDisposition::None,
                 )),
-                HeroDecision::Act(HeroIntent::ProveLeaf(_))
-            ));
+                HeroDecision::Act(HeroIntent::ProveLeaf {
+                    tournament: address(10)
+                })
+            );
         }
     }
 
@@ -859,10 +698,10 @@ mod tests {
         let decision = plan_hero(&parent);
         assert_eq!(
             decision,
-            HeroDecision::Act(HeroIntent::Join(JoinIntent {
+            HeroDecision::Act(HeroIntent::Join {
                 tournament: child_descriptor.address(),
                 commitment: digest(40),
-            }))
+            })
         );
         assert_eq!(plan_hero(&parent), decision);
     }
@@ -887,14 +726,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             plan_hero(&ours),
-            HeroDecision::Act(HeroIntent::PropagateChild(PropagationIntent {
+            HeroDecision::Act(HeroIntent::PropagateChild {
                 parent_tournament: address(10),
                 child_tournament: address(20),
-                parent_match,
-                parent_commitment,
-                parent_side: MatchSide::One,
-                child_winner,
-            }))
+            })
         );
 
         let other_parent = digest(2);

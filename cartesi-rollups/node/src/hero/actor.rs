@@ -14,7 +14,7 @@ use crate::{
         action::{PreparedArenaAction, prepare},
         context::{EpochAnchors, HeroContext},
         gc_planner::plan_gc,
-        planner::{HeroDecision, HeroIntent, HeroTerminal, JoinIntent, Loss, plan_hero},
+        planner::{HeroDecision, HeroIntent, HeroTerminal, Loss, plan_hero},
     },
     merkle::Digest,
     provider::LaneRequest,
@@ -223,10 +223,10 @@ impl<AS: ArenaSender> Hero<AS> {
         // Joining commits to the epoch's computation. Latest may suppress a
         // join that is already mined or no longer possible, but only Solid may
         // supply its payload. All deadline-sensitive actions use Foam.
-        let (context, decision, action_head) = if let HeroDecision::Act(HeroIntent::Join(
-            foam_join,
-        )) = foam_decision
-        {
+        let (context, decision, action_head) = if matches!(
+            foam_decision,
+            HeroDecision::Act(HeroIntent::Join { .. })
+        ) {
             let (solid_head, solid) = self
                 .reader
                 .solid()
@@ -243,11 +243,11 @@ impl<AS: ArenaSender> Hero<AS> {
             )
             .await?;
             let solid_decision = plan_hero(solid_context.snapshot());
-            if !is_exact_join(solid_decision, foam_join) {
+            if solid_decision != foam_decision {
                 // Keep the lane empty while Solid catches up. A Foam cleanup
                 // here could still be pending when the finalized join is due.
                 debug!(
-                    "latest proposed {foam_join:?}, which Solid does not support exactly; retry next tick"
+                    "latest proposed {foam_decision:?}, which Solid does not support exactly; retry next tick"
                 );
                 report_slow_tick(started, "the join waits for finality");
                 return Ok(HeroTick::new(
@@ -378,10 +378,6 @@ fn report_slow_tick(started: Instant, outcome: impl std::fmt::Display) {
     if elapsed >= std::time::Duration::from_secs(1) {
         info!("Hero tick took {elapsed:.1?} without acting: {outcome}");
     }
-}
-
-fn is_exact_join(decision: HeroDecision, expected: JoinIntent) -> bool {
-    matches!(decision, HeroDecision::Act(HeroIntent::Join(actual)) if actual == expected)
 }
 
 /// The only production dispatch seam for a prepared Hero action. Matching one
@@ -650,32 +646,6 @@ mod tests {
             number: 9,
             hash: alloy::primitives::B256::repeat_byte(9),
         }
-    }
-
-    #[test]
-    fn solid_must_support_the_exact_foam_join() {
-        let expected = JoinIntent {
-            tournament: address(1),
-            commitment: digest(1),
-        };
-        assert!(is_exact_join(
-            HeroDecision::Act(HeroIntent::Join(expected)),
-            expected
-        ));
-        assert!(!is_exact_join(
-            HeroDecision::Act(HeroIntent::Join(JoinIntent {
-                tournament: address(2),
-                commitment: expected.commitment,
-            })),
-            expected
-        ));
-        assert!(!is_exact_join(
-            HeroDecision::Act(HeroIntent::Join(JoinIntent {
-                tournament: expected.tournament,
-                commitment: digest(2),
-            })),
-            expected
-        ));
     }
 
     #[tokio::test]

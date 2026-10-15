@@ -131,11 +131,10 @@ pub fn prepare<F: RulerFactory>(
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     match intent {
-        HeroIntent::Join(intent) => prepare_join(intent.tournament, context, source),
-        HeroIntent::ClaimTimeout(intent) => prepare_timeout(intent.tournament, context, source),
-        HeroIntent::Advance(intent) => prepare_advance(intent.tournament, context, source),
-        HeroIntent::SealLeaf(intent) => {
-            let tournament = intent.tournament;
+        HeroIntent::Join { tournament, .. } => prepare_join(tournament, context, source),
+        HeroIntent::ClaimTimeout { tournament } => prepare_timeout(tournament, context, source),
+        HeroIntent::Advance { tournament } => prepare_advance(tournament, context, source),
+        HeroIntent::SealLeaf { tournament } => {
             let (match_id, left_leaf, right_leaf, agree_state_proof) =
                 prepare_seal("seal leaf", tournament, context, source)?;
             Ok(PreparedArenaAction::SealLeaf {
@@ -146,8 +145,7 @@ pub fn prepare<F: RulerFactory>(
                 agree_state_proof,
             })
         }
-        HeroIntent::CreateChild(intent) => {
-            let tournament = intent.tournament;
+        HeroIntent::CreateChild { tournament } => {
             let (match_id, left_leaf, right_leaf, agree_state_proof) =
                 prepare_seal("create child", tournament, context, source)?;
             Ok(PreparedArenaAction::CreateChild {
@@ -158,15 +156,17 @@ pub fn prepare<F: RulerFactory>(
                 agree_state_proof,
             })
         }
-        HeroIntent::ProveLeaf(intent) => prepare_leaf_proof(intent.tournament, context, source),
-        HeroIntent::PropagateChild(intent) => {
-            let parent_tournament = intent.parent_tournament;
+        HeroIntent::ProveLeaf { tournament } => prepare_leaf_proof(tournament, context, source),
+        HeroIntent::PropagateChild {
+            parent_tournament,
+            child_tournament,
+        } => {
             let (_, material) = level(context, parent_tournament);
             let (left_node, right_node) =
                 root_children("propagate child", parent_tournament, material, source)?;
             Ok(PreparedArenaAction::PropagateChild {
                 parent_tournament,
-                child_tournament: intent.child_tournament,
+                child_tournament,
                 left_node,
                 right_node,
             })
@@ -658,6 +658,10 @@ mod tests {
         }
     }
 
+    fn live_state(context: &HeroContext) -> LiveMatchState {
+        engagement(context.snapshot()).live().state()
+    }
+
     fn advance_fixture(side: MatchSide, branch: Branch) -> Fixture {
         engaged_fixture(LEAF, 0, 7, side, move |source, coords, descriptor| {
             let remaining_height = match side {
@@ -932,15 +936,7 @@ mod tests {
         for side in [MatchSide::One, MatchSide::Two] {
             for branch in [Branch::Left, Branch::Right] {
                 let mut fixture = advance_fixture(side, branch);
-                let HeroIntent::Advance(intent) = planned(&fixture.context) else {
-                    panic!("advance fixture must plan an advance");
-                };
-                let LocalCommitmentStanding::Engaged(engagement) =
-                    fixture.context.snapshot().local_standing()
-                else {
-                    panic!("advance fixture must be engaged");
-                };
-                let LiveMatchState::Bisecting(state) = engagement.live().state() else {
+                let LiveMatchState::Bisecting(state) = live_state(&fixture.context) else {
                     panic!("advance fixture must be bisecting");
                 };
                 let waiting = state.waiting_children();
@@ -952,7 +948,7 @@ mod tests {
                     new_left_node,
                     new_right_node,
                 } = prepare(
-                    HeroIntent::Advance(intent),
+                    planned(&fixture.context),
                     &fixture.context,
                     &mut fixture.source,
                 )
@@ -980,8 +976,8 @@ mod tests {
         for side in [MatchSide::One, MatchSide::Two] {
             for branch in [Branch::Left, Branch::Right] {
                 let mut fixture = ready_fixture(side, branch, false);
-                let HeroIntent::SealLeaf(intent) = planned(&fixture.context) else {
-                    panic!("ready leaf fixture must plan a seal");
+                let LiveMatchState::ReadyToSealLeaf(state) = live_state(&fixture.context) else {
+                    panic!("ready leaf fixture must be ready to seal a leaf");
                 };
                 let PreparedArenaAction::SealLeaf {
                     tournament,
@@ -990,7 +986,7 @@ mod tests {
                     right_leaf,
                     agree_state_proof,
                 } = prepare(
-                    HeroIntent::SealLeaf(intent),
+                    planned(&fixture.context),
                     &fixture.context,
                     &mut fixture.source,
                 )
@@ -1001,10 +997,7 @@ mod tests {
 
                 assert_eq!(tournament, ROOT);
                 assert_eq!(match_id, fixture.match_id);
-                assert_eq!(
-                    left_leaf.join(&right_leaf),
-                    intent.match_state.revealing_parent()
-                );
+                assert_eq!(left_leaf.join(&right_leaf), state.revealing_parent());
                 match branch {
                     Branch::Left => {
                         assert_eq!(agree_state_proof.position, U256::ZERO);
@@ -1014,7 +1007,7 @@ mod tests {
                     Branch::Right => {
                         assert_eq!(
                             agree_state_proof.position,
-                            intent.match_state.coordinate().leaf_position()
+                            state.coordinate().leaf_position()
                         );
                         assert_eq!(agree_state_proof.node, left_leaf);
                         assert!(agree_state_proof.verify_root(fixture.commitment));
@@ -1028,8 +1021,8 @@ mod tests {
     #[test]
     fn child_creation_uses_the_same_exact_nonleaf_seal_material() {
         let mut fixture = ready_fixture(MatchSide::Two, Branch::Right, true);
-        let HeroIntent::CreateChild(intent) = planned(&fixture.context) else {
-            panic!("ready nonleaf fixture must plan child creation");
+        let LiveMatchState::ReadyToDelegate(state) = live_state(&fixture.context) else {
+            panic!("ready nonleaf fixture must be ready to delegate");
         };
         let PreparedArenaAction::CreateChild {
             tournament,
@@ -1038,7 +1031,7 @@ mod tests {
             right_leaf,
             agree_state_proof,
         } = prepare(
-            HeroIntent::CreateChild(intent),
+            planned(&fixture.context),
             &fixture.context,
             &mut fixture.source,
         )
@@ -1049,13 +1042,10 @@ mod tests {
 
         assert_eq!(tournament, ROOT);
         assert_eq!(match_id, fixture.match_id);
-        assert_eq!(
-            left_leaf.join(&right_leaf),
-            intent.match_state.revealing_parent()
-        );
+        assert_eq!(left_leaf.join(&right_leaf), state.revealing_parent());
         assert_eq!(
             agree_state_proof.position,
-            intent.match_state.coordinate().leaf_position()
+            state.coordinate().leaf_position()
         );
         assert!(agree_state_proof.verify_root(fixture.commitment));
     }
