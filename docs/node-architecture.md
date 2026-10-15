@@ -48,7 +48,7 @@ template, emulator and table) before anything is written. A mismatch names the
 flag to fix (`--app-address`, `--blockchain-id`), calls the directory another
 deployment's or an old one (the template), or asks for a rebuild (consensus,
 emulator, table). A new directory is seeded in one transaction: the initial
-watermark, the epoch-0 boundary, the template row and the pins. So a deployment
+watermark, the epoch-0 boundary and the pins. So a deployment
 or flag these checks reject cannot create or alter local state, and a restart
 never imports the template again. The runner samples each window at the pinned
 root stride. Other operator mistakes (an unknown chain id, an unreadable or
@@ -325,8 +325,7 @@ Main schema (`storage/sql/schema.sql`):
   sibling blobs for iflags_Y, HTIF tohost, and the TX buffer)` - the TX data
   block is the outputs Merkle root
 - `machine_state_snapshots(state_hash, file_path)` + `epoch_snapshot_info`
-  (which (epoch, input) has which snapshot) + `template_machine` (pins the
-  genesis snapshot)
+  (which (epoch, input) has which snapshot); the template is epoch 0's start
 
 Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),

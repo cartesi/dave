@@ -569,38 +569,19 @@ pub(super) fn insert_snapshot_in(
     Ok(())
 }
 
-pub(super) fn insert_template_machine_in(tx: &Transaction, state_hash: &Hash) -> Result<()> {
-    let mut stmt = tx
-        .prepare_cached(
-            r#"
-            INSERT OR IGNORE INTO template_machine (id, state_hash)
-            VALUES(1, ?1)
-            "#,
-        )
-        .map_err(anyhow::Error::from)?;
-    stmt.execute(params![state_hash])
-        .map_err(anyhow::Error::from)?;
-
-    Ok(())
-}
-
 //
 // Garbage collection
 //
 
-/// Deletes content-addressed rows nothing references, returning their
-/// directories. The FK RESTRICT on template_machine and
-/// epoch_snapshot_info backs the NOT IN exclusions.
+/// Deletes content-addressed rows no boundary references, returning their
+/// directories. The template needs no row of its own: epoch 0's start
+/// references it while anything can still need it.
 pub(super) fn sweep_unreferenced_snapshots_in(tx: &Transaction) -> Result<Vec<PathBuf>> {
     let mut stmt = tx
         .prepare_cached(
             r#"
             DELETE FROM machine_state_snapshots
-            WHERE state_hash NOT IN (
-                SELECT state_hash FROM epoch_snapshot_info
-                UNION
-                SELECT state_hash FROM template_machine
-            )
+            WHERE state_hash NOT IN (SELECT state_hash FROM epoch_snapshot_info)
             RETURNING file_path
             "#,
         )

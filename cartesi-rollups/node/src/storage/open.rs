@@ -174,8 +174,8 @@ impl Storage {
     /// it untouched: no watermark raise, no template import. A new one gets
     /// the template stored (filesystem first), then one transaction for the
     /// initial watermark (the last block treated as processed, below epoch
-    /// 0's seal), the epoch-0 boundary, the template row and the pin, so a
-    /// pinned directory is always a seeded one.
+    /// 0's seal), the epoch-0 boundary and the pin, so a pinned directory is
+    /// always a seeded one.
     pub fn initialize(
         state_dir: &Path,
         template: &Template,
@@ -234,7 +234,6 @@ impl Storage {
         self.write(|tx| {
             super::ingest::raise_watermark_in(tx, initial_watermark)?;
             super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash(), &dest)?;
-            super::snapshots::insert_template_machine_in(tx, template.hash())?;
             sling_config::pin(tx, config)?;
             Ok(())
         })

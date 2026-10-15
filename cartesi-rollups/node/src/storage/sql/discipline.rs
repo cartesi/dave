@@ -195,47 +195,6 @@ fn sling_config_is_write_once() {
 }
 
 //
-// template_machine: write-once cell with verify on re-insert
-//
-
-#[test]
-fn template_machine_absorbs_identical_and_refuses_drift() {
-    let (_dir, conn) = initialized_conn();
-    // satisfy the FK on machine_state_snapshots
-    conn.execute(
-        "INSERT INTO machine_state_snapshots VALUES (?1, '/a')",
-        params![[1u8; 32]],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO machine_state_snapshots VALUES (?1, '/b')",
-        params![[2u8; 32]],
-    )
-    .unwrap();
-
-    let insert = "INSERT OR IGNORE INTO template_machine VALUES (1, ?1)";
-    conn.execute(insert, params![[1u8; 32]]).unwrap();
-    // identical re-insert absorbed; INSERT OR IGNORE previously
-    // absorbed disagreement too - the trigger closes exactly that
-    conn.execute(insert, params![[1u8; 32]]).unwrap();
-    expect_abort(
-        conn.execute(insert, params![[2u8; 32]]),
-        "disagrees with its stored row",
-    );
-    expect_abort(
-        conn.execute(
-            "UPDATE template_machine SET state_hash = ?1",
-            params![[2u8; 32]],
-        ),
-        "write-once",
-    );
-    expect_abort(
-        conn.execute("DELETE FROM template_machine", []),
-        "write-once",
-    );
-}
-
-//
 // sling_nodes: the collision tripwire; prune stays legal
 //
 
