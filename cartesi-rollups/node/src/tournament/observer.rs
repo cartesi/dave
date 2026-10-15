@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use alloy::primitives::{Address, B256, U256};
+use alloy::primitives::{Address, U256};
 use anyhow::{Context, Result as AnyResult};
 use cartesi_prt_contracts::tournament::{
     self,
@@ -66,15 +66,6 @@ pub enum ObserverError {
     UnknownTournamentStanding(u8),
     #[error("unknown commitment side discriminant {0}")]
     UnknownCommitmentSide(u8),
-    #[error("{view} returned noncanonical inactive field {field}")]
-    NonCanonicalInactiveField {
-        view: &'static str,
-        field: &'static str,
-    },
-    #[error("timeout outcome {outcome} requires zero deferred charge")]
-    NonCanonicalTimeoutCharge { outcome: u8 },
-    #[error("absent match timeout must be NONE with zero charge")]
-    NonCanonicalAbsentTimeout,
     #[error(
         "{projection} projection phase {projection_phase:?} disagrees with expected phase {expected_phase:?}"
     )]
@@ -95,10 +86,8 @@ pub enum ObserverError {
     ResolvedMatchSelected { match_id_hash: Digest },
     #[error("tournament standing is not legal for this root/inner position")]
     StandingKindMismatch,
-    #[error("standing {standing} has invalid hasCandidate value {has_candidate}")]
-    StandingCandidateShape { standing: u8, has_candidate: bool },
-    #[error("standing {standing} has invalid finishedAt value {finished_at}")]
-    StandingFinishedAtShape { standing: u8, finished_at: u64 },
+    #[error("standing {standing} reports no candidate")]
+    StandingCandidateShape { standing: u8 },
     #[error("inner winner does not map to either side of its recursive parent match")]
     InnerWinnerOutsideParentMatch,
     #[error("live match {match_id_hash} carries an impossible child relationship")]
@@ -143,12 +132,11 @@ pub async fn read_bond(chain: &Chain, tournament: Address, head: ChainHead) -> A
 /// All calls are pinned to `head.hash` and provider pressure is bounded. The
 /// event-derived tree supplies root/inner position and the exact parent match
 /// used to interpret an inner winner. It is not reconciled with redundant
-/// match-count, final-state, or topology projections. Nonterminal candidate
-/// payloads and finish instants are canonicality-checked and then discarded
-/// because events own commitment placement and Hero acts only on current
-/// state. The winner-expiry instant and a non-active standing's join flag go
-/// unchecked: they agree with the standing only through how the contract's
-/// clock and closure rules combine, and a disagreement must not stall a tick.
+/// match-count, final-state, or topology projections. Fields the decoded
+/// standing does not carry (a nonterminal candidate, the finish and
+/// winner-expiry instants, a non-active standing's join flag) go unchecked:
+/// events own commitment placement, Hero acts only on current state, and a
+/// value that disagrees with the standing must not stall a tick.
 pub async fn read_standings(
     chain: &Chain,
     dispute: &Dispute,
@@ -225,7 +213,6 @@ pub async fn read_match(
             let projection_phase = decode_match_phase(wire.actualPhase)?;
             validate_event_phase(match_id_hash, match_.status(), projection_phase)?;
             let state = decode_sealed(
-                MatchPhase::Sealed,
                 wire.actualPhase,
                 wire.value,
                 descriptor.kind(),
@@ -270,7 +257,7 @@ pub async fn read_match(
                                 descriptor.address()
                             )
                         })?;
-                    decode_bisecting(timeout.phase, wire.actualPhase, wire.value)?
+                    decode_bisecting(wire.actualPhase, wire.value)?
                 }
                 MatchPhase::ReadyToSeal => {
                     let wire = contract
@@ -284,12 +271,7 @@ pub async fn read_match(
                                 descriptor.address()
                             )
                         })?;
-                    decode_ready(
-                        timeout.phase,
-                        wire.actualPhase,
-                        wire.value,
-                        descriptor.kind(),
-                    )?
+                    decode_ready(wire.actualPhase, wire.value, descriptor.kind())?
                 }
                 MatchPhase::Sealed => {
                     let wire = contract
@@ -304,7 +286,6 @@ pub async fn read_match(
                             )
                         })?;
                     decode_sealed(
-                        timeout.phase,
                         wire.actualPhase,
                         wire.value,
                         descriptor.kind(),
@@ -370,48 +351,21 @@ fn decode_standing(
         return Err(ObserverError::StandingKindMismatch);
     }
 
-    let standing_discriminant = wire.standing;
-    let candidate =
-        decode_candidate_shape(standing_discriminant, wire.hasCandidate, wire.candidate)?;
-    validate_finished_at_shape(standing_discriminant, wire.finishedAt)?;
-
-    let standing = match standing_discriminant {
-        0 => {
-            require_zero_hash("tournamentStanding", "finalState", wire.finalState)?;
-            require_zero_hash(
-                "tournamentStanding",
-                "parentCommitment",
-                wire.parentCommitment,
-            )?;
-            TournamentStanding::MatchesActive {
-                joins: if wire.acceptsJoins {
-                    JoinDisposition::Open
-                } else {
-                    JoinDisposition::Closed
-                },
-            }
-        }
-        1 => {
-            require_zero_hash("tournamentStanding", "finalState", wire.finalState)?;
-            require_zero_hash(
-                "tournamentStanding",
-                "parentCommitment",
-                wire.parentCommitment,
-            )?;
-            TournamentStanding::AwaitingClosure
-        }
+    let standing = match wire.standing {
+        0 => TournamentStanding::MatchesActive {
+            joins: if wire.acceptsJoins {
+                JoinDisposition::Open
+            } else {
+                JoinDisposition::Closed
+            },
+        },
+        1 => TournamentStanding::AwaitingClosure,
         2 => {
             if !descriptor.is_root() {
                 return Err(ObserverError::StandingKindMismatch);
             }
-            require_terminal_shape(standing_discriminant, &wire, true)?;
-            require_zero_hash(
-                "tournamentStanding",
-                "parentCommitment",
-                wire.parentCommitment,
-            )?;
             TournamentStanding::RootWinner(RootWinner::new(
-                candidate.expect("shape requires a candidate"),
+                require_candidate(&wire)?,
                 wire.finalState.into(),
             ))
         }
@@ -419,18 +373,14 @@ fn decode_standing(
             if !descriptor.is_root() {
                 return Err(ObserverError::StandingKindMismatch);
             }
-            require_terminal_shape(standing_discriminant, &wire, false)?;
-            require_zero_hash("tournamentStanding", "finalState", wire.finalState)?;
             TournamentStanding::RootFailed
         }
         4 => {
             if descriptor.is_root() {
                 return Err(ObserverError::StandingKindMismatch);
             }
-            require_terminal_shape(standing_discriminant, &wire, true)?;
             // finalState carries the winner's claimed final state, which
-            // events own; a zero claim is representable on-chain, so no
-            // shape check applies and the value is discarded.
+            // events own; it is discarded.
             let parent_commitment: Digest = wire.parentCommitment.into();
             let parent_match = parent_match.expect("non-root position has a parent match");
             if parent_commitment != parent_match.commitment_one
@@ -440,15 +390,13 @@ fn decode_standing(
             }
             TournamentStanding::InnerWinner(InnerWinner::new(
                 parent_commitment,
-                candidate.expect("shape requires a candidate"),
+                require_candidate(&wire)?,
             ))
         }
         5 => {
             if descriptor.is_root() {
                 return Err(ObserverError::StandingKindMismatch);
             }
-            require_terminal_shape(standing_discriminant, &wire, false)?;
-            require_zero_hash("tournamentStanding", "finalState", wire.finalState)?;
             TournamentStanding::InnerEliminable {
                 reason: InnerEliminationReason::NoCandidate,
             }
@@ -457,11 +405,9 @@ fn decode_standing(
             if descriptor.is_root() {
                 return Err(ObserverError::StandingKindMismatch);
             }
-            require_terminal_shape(standing_discriminant, &wire, true)?;
-            require_zero_hash("tournamentStanding", "finalState", wire.finalState)?;
             TournamentStanding::InnerEliminable {
                 reason: InnerEliminationReason::WinnerExpired {
-                    candidate: candidate.expect("shape requires a candidate"),
+                    candidate: require_candidate(&wire)?,
                 },
             }
         }
@@ -484,20 +430,6 @@ fn decode_timeout(phase: u8, outcome: u8, deferred_charge: u64) -> ObserverResul
         3 => TimeoutDisposition::EliminateBoth,
         other => return Err(ObserverError::UnknownTimeoutOutcome(other)),
     };
-
-    if phase == MatchPhase::Absent
-        && (disposition != TimeoutDisposition::None || deferred_charge != 0)
-    {
-        return Err(ObserverError::NonCanonicalAbsentTimeout);
-    }
-    if matches!(
-        disposition,
-        TimeoutDisposition::None | TimeoutDisposition::EliminateBoth
-    ) && deferred_charge != 0
-    {
-        return Err(ObserverError::NonCanonicalTimeoutCharge { outcome });
-    }
-
     Ok(TimeoutRead { phase, disposition })
 }
 
@@ -553,15 +485,14 @@ fn validate_child_geometry(
 }
 
 fn decode_bisecting(
-    expected_phase: MatchPhase,
     actual_phase: u8,
     wire: AbiBisectingMatchView,
 ) -> ObserverResult<LiveMatchState> {
     let projection_phase = decode_match_phase(actual_phase)?;
-    if projection_phase != expected_phase || projection_phase != MatchPhase::Bisecting {
+    if projection_phase != MatchPhase::Bisecting {
         return Err(ObserverError::ProjectionPhaseMismatch {
             projection: "bisectingMatch",
-            expected_phase,
+            expected_phase: MatchPhase::Bisecting,
             projection_phase,
         });
     }
@@ -576,16 +507,15 @@ fn decode_bisecting(
 }
 
 fn decode_ready(
-    expected_phase: MatchPhase,
     actual_phase: u8,
     wire: AbiReadyToSealMatchView,
     kind: TournamentKind,
 ) -> ObserverResult<LiveMatchState> {
     let projection_phase = decode_match_phase(actual_phase)?;
-    if projection_phase != expected_phase || projection_phase != MatchPhase::ReadyToSeal {
+    if projection_phase != MatchPhase::ReadyToSeal {
         return Err(ObserverError::ProjectionPhaseMismatch {
             projection: "readyToSealMatch",
-            expected_phase,
+            expected_phase: MatchPhase::ReadyToSeal,
             projection_phase,
         });
     }
@@ -603,7 +533,6 @@ fn decode_ready(
 }
 
 fn decode_sealed(
-    expected_phase: MatchPhase,
     actual_phase: u8,
     wire: AbiSealedMatchView,
     kind: TournamentKind,
@@ -611,10 +540,10 @@ fn decode_sealed(
     match_id_hash: Digest,
 ) -> ObserverResult<LiveMatchState> {
     let projection_phase = decode_match_phase(actual_phase)?;
-    if projection_phase != expected_phase || projection_phase != MatchPhase::Sealed {
+    if projection_phase != MatchPhase::Sealed {
         return Err(ObserverError::ProjectionPhaseMismatch {
             projection: "sealedMatch",
-            expected_phase,
+            expected_phase: MatchPhase::Sealed,
             projection_phase,
         });
     }
@@ -664,78 +593,20 @@ fn decode_side(value: u8) -> ObserverResult<MatchSide> {
     }
 }
 
-fn decode_candidate_shape(
-    standing: u8,
-    has_candidate: bool,
-    candidate: B256,
-) -> ObserverResult<Option<Digest>> {
-    let required = match standing {
-        0 | 1 => None,
-        2 | 4 | 6 => Some(true),
-        3 | 5 => Some(false),
-        other => return Err(ObserverError::UnknownTournamentStanding(other)),
-    };
-    if required.is_some_and(|required| required != has_candidate) {
-        return Err(ObserverError::StandingCandidateShape {
-            standing,
-            has_candidate,
-        });
-    }
-    if has_candidate {
-        Ok(Some(candidate.into()))
+fn require_candidate(wire: &AbiTournamentStandingView) -> ObserverResult<Digest> {
+    if wire.hasCandidate {
+        Ok(wire.candidate.into())
     } else {
-        require_zero_hash("tournamentStanding", "candidate", candidate)?;
-        Ok(None)
-    }
-}
-
-fn validate_finished_at_shape(standing: u8, finished_at: u64) -> ObserverResult<()> {
-    let valid = match standing {
-        0 | 1 => finished_at == 0,
-        2..=6 => finished_at != 0,
-        other => return Err(ObserverError::UnknownTournamentStanding(other)),
-    };
-    if valid {
-        Ok(())
-    } else {
-        Err(ObserverError::StandingFinishedAtShape {
-            standing,
-            finished_at,
+        Err(ObserverError::StandingCandidateShape {
+            standing: wire.standing,
         })
-    }
-}
-
-fn require_terminal_shape(
-    standing: u8,
-    wire: &AbiTournamentStandingView,
-    has_candidate: bool,
-) -> ObserverResult<()> {
-    if wire.hasCandidate != has_candidate {
-        return Err(ObserverError::StandingCandidateShape {
-            standing,
-            has_candidate: wire.hasCandidate,
-        });
-    }
-    if standing != 4 {
-        require_zero_hash(
-            "tournamentStanding",
-            "parentCommitment",
-            wire.parentCommitment,
-        )?;
-    }
-    Ok(())
-}
-
-fn require_zero_hash(view: &'static str, field: &'static str, value: B256) -> ObserverResult<()> {
-    if value == B256::ZERO {
-        Ok(())
-    } else {
-        Err(ObserverError::NonCanonicalInactiveField { view, field })
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use alloy::primitives::B256;
+
     use super::*;
     use crate::tournament::dispute::{Event, EventKind, MatchDeletionReason, WinnerCommitment};
 
@@ -866,77 +737,33 @@ mod tests {
     }
 
     #[test]
-    fn standing_decode_rejects_discriminants_and_inactive_payloads() {
+    fn standing_decode_rejects_unknown_discriminants_and_missing_candidates() {
         let root = descriptor(address(1), 0, TournamentKind::Leaf, digest(9), 0);
+        let child = descriptor(address(2), 1, TournamentKind::Leaf, digest(9), 0);
+        let parent_match = MatchID {
+            commitment_one: digest(1),
+            commitment_two: digest(2),
+        };
 
         assert_eq!(
             decode_standing(root, None, standing_wire(7, false, Some(digest(1)))),
             Err(ObserverError::UnknownTournamentStanding(7))
         );
 
-        let mut active = standing_wire(0, true, Some(digest(1)));
-        active.finalState = hash(11);
         assert_eq!(
-            decode_standing(root, None, active),
-            Err(ObserverError::NonCanonicalInactiveField {
-                view: "tournamentStanding",
-                field: "finalState",
-            })
+            decode_standing(root, None, standing_wire(2, false, None)),
+            Err(ObserverError::StandingCandidateShape { standing: 2 })
         );
-
-        let mut winner = standing_wire(2, false, None);
-        winner.finalState = hash(11);
+        let mut inner_winner = standing_wire(4, false, None);
+        inner_winner.parentCommitment = hash(1);
         assert_eq!(
-            decode_standing(root, None, winner),
-            Err(ObserverError::StandingCandidateShape {
-                standing: 2,
-                has_candidate: false,
-            })
+            decode_standing(child, Some(parent_match), inner_winner),
+            Err(ObserverError::StandingCandidateShape { standing: 4 })
         );
-
-        let mut active = standing_wire(0, false, Some(digest(1)));
-        active.parentCommitment = hash(1);
         assert_eq!(
-            decode_standing(root, None, active),
-            Err(ObserverError::NonCanonicalInactiveField {
-                view: "tournamentStanding",
-                field: "parentCommitment",
-            })
+            decode_standing(child, Some(parent_match), standing_wire(6, false, None)),
+            Err(ObserverError::StandingCandidateShape { standing: 6 })
         );
-
-        let mut active = standing_wire(0, false, None);
-        active.candidate = hash(1);
-        assert_eq!(
-            decode_standing(root, None, active),
-            Err(ObserverError::NonCanonicalInactiveField {
-                view: "tournamentStanding",
-                field: "candidate",
-            })
-        );
-    }
-
-    #[test]
-    fn standing_finished_at_shape_matches_terminality() {
-        for standing in [0, 1] {
-            assert_eq!(validate_finished_at_shape(standing, 0), Ok(()));
-            assert_eq!(
-                validate_finished_at_shape(standing, 42),
-                Err(ObserverError::StandingFinishedAtShape {
-                    standing,
-                    finished_at: 42,
-                })
-            );
-        }
-        for standing in 2..=6 {
-            assert_eq!(validate_finished_at_shape(standing, 42), Ok(()));
-            assert_eq!(
-                validate_finished_at_shape(standing, 0),
-                Err(ObserverError::StandingFinishedAtShape {
-                    standing,
-                    finished_at: 0,
-                })
-            );
-        }
     }
 
     #[test]
@@ -1143,7 +970,7 @@ mod tests {
     }
 
     #[test]
-    fn timeout_decode_rejects_unknown_and_noncanonical_combinations() {
+    fn timeout_decode_rejects_unknown_discriminants() {
         assert_eq!(
             decode_timeout(4, 0, 0),
             Err(ObserverError::UnknownMatchPhase(4))
@@ -1151,22 +978,6 @@ mod tests {
         assert_eq!(
             decode_timeout(1, 4, 0),
             Err(ObserverError::UnknownTimeoutOutcome(4))
-        );
-        assert_eq!(
-            decode_timeout(0, 1, 0),
-            Err(ObserverError::NonCanonicalAbsentTimeout)
-        );
-        assert_eq!(
-            decode_timeout(0, 0, 1),
-            Err(ObserverError::NonCanonicalAbsentTimeout)
-        );
-        assert_eq!(
-            decode_timeout(1, 0, 1),
-            Err(ObserverError::NonCanonicalTimeoutCharge { outcome: 0 })
-        );
-        assert_eq!(
-            decode_timeout(3, 3, 1),
-            Err(ObserverError::NonCanonicalTimeoutCharge { outcome: 3 })
         );
         assert_eq!(
             decode_timeout(1, 2, 7).unwrap().disposition,
@@ -1233,84 +1044,59 @@ mod tests {
     }
 
     #[test]
-    fn projections_reject_every_phase_cross_product_before_payload_decode() {
-        let phases = [
-            (MatchPhase::Absent, 0),
-            (MatchPhase::Bisecting, 1),
-            (MatchPhase::ReadyToSeal, 2),
-            (MatchPhase::Sealed, 3),
-        ];
-
-        for &(expected_phase, _) in &phases {
-            for &(projection_phase, actual_phase) in &phases {
-                let result = decode_bisecting(expected_phase, actual_phase, bisecting_wire());
-                if expected_phase == MatchPhase::Bisecting
-                    && projection_phase == MatchPhase::Bisecting
-                {
-                    assert!(matches!(result, Ok(LiveMatchState::Bisecting(_))));
-                } else {
-                    assert!(matches!(
-                        result,
-                        Err(ObserverError::ProjectionPhaseMismatch {
-                            projection: "bisectingMatch",
-                            ..
-                        })
-                    ));
-                }
+    fn projections_decode_only_their_own_phase() {
+        for actual_phase in 0..=3 {
+            let result = decode_bisecting(actual_phase, bisecting_wire());
+            if actual_phase == 1 {
+                assert!(matches!(result, Ok(LiveMatchState::Bisecting(_))));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(ObserverError::ProjectionPhaseMismatch {
+                        projection: "bisectingMatch",
+                        expected_phase: MatchPhase::Bisecting,
+                        ..
+                    })
+                ));
             }
-        }
 
-        for &(expected_phase, _) in &phases {
-            for &(projection_phase, actual_phase) in &phases {
-                let result = decode_ready(
-                    expected_phase,
-                    actual_phase,
-                    ready_wire(),
-                    TournamentKind::Leaf,
-                );
-                if expected_phase == MatchPhase::ReadyToSeal
-                    && projection_phase == MatchPhase::ReadyToSeal
-                {
-                    assert!(matches!(result, Ok(LiveMatchState::ReadyToSealLeaf(_))));
-                } else {
-                    assert!(matches!(
-                        result,
-                        Err(ObserverError::ProjectionPhaseMismatch {
-                            projection: "readyToSealMatch",
-                            ..
-                        })
-                    ));
-                }
+            let result = decode_ready(actual_phase, ready_wire(), TournamentKind::Leaf);
+            if actual_phase == 2 {
+                assert!(matches!(result, Ok(LiveMatchState::ReadyToSealLeaf(_))));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(ObserverError::ProjectionPhaseMismatch {
+                        projection: "readyToSealMatch",
+                        expected_phase: MatchPhase::ReadyToSeal,
+                        ..
+                    })
+                ));
             }
-        }
 
-        for &(expected_phase, _) in &phases {
-            for &(projection_phase, actual_phase) in &phases {
-                let result = decode_sealed(
-                    expected_phase,
-                    actual_phase,
-                    sealed_wire(),
-                    TournamentKind::Leaf,
-                    None,
-                    digest(8),
-                );
-                if expected_phase == MatchPhase::Sealed && projection_phase == MatchPhase::Sealed {
-                    assert!(matches!(result, Ok(LiveMatchState::SealedLeaf(_))));
-                } else {
-                    assert!(matches!(
-                        result,
-                        Err(ObserverError::ProjectionPhaseMismatch {
-                            projection: "sealedMatch",
-                            ..
-                        })
-                    ));
-                }
+            let result = decode_sealed(
+                actual_phase,
+                sealed_wire(),
+                TournamentKind::Leaf,
+                None,
+                digest(8),
+            );
+            if actual_phase == 3 {
+                assert!(matches!(result, Ok(LiveMatchState::SealedLeaf(_))));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(ObserverError::ProjectionPhaseMismatch {
+                        projection: "sealedMatch",
+                        expected_phase: MatchPhase::Sealed,
+                        ..
+                    })
+                ));
             }
         }
 
         assert_eq!(
             decode_bisecting(
-                MatchPhase::Bisecting,
                 1,
                 AbiBisectingMatchView {
                     responder: 2,
@@ -1324,16 +1110,10 @@ mod tests {
     #[test]
     fn sealed_projection_uses_the_event_child_and_validates_its_geometry() {
         assert!(matches!(
-            decode_ready(
-                MatchPhase::ReadyToSeal,
-                2,
-                ready_wire(),
-                TournamentKind::NonLeaf,
-            ),
+            decode_ready(2, ready_wire(), TournamentKind::NonLeaf),
             Ok(LiveMatchState::ReadyToDelegate(_))
         ));
         let state = decode_sealed(
-            MatchPhase::Sealed,
             3,
             sealed_wire(),
             TournamentKind::NonLeaf,
@@ -1346,21 +1126,13 @@ mod tests {
         };
         assert_eq!(awaiting.child_tournament(), address(2));
         assert_eq!(
-            decode_sealed(
-                MatchPhase::Sealed,
-                3,
-                sealed_wire(),
-                TournamentKind::NonLeaf,
-                None,
-                digest(8),
-            ),
+            decode_sealed(3, sealed_wire(), TournamentKind::NonLeaf, None, digest(8),),
             Err(ObserverError::MatchChildTopology {
                 match_id_hash: digest(8),
             })
         );
         assert_eq!(
             decode_sealed(
-                MatchPhase::Sealed,
                 3,
                 sealed_wire(),
                 TournamentKind::Leaf,
