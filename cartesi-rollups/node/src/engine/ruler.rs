@@ -49,6 +49,23 @@ pub struct Run {
     pub repetitions: U256,
 }
 
+/// Appends `repetitions` copies of `hash`, extending the last run when
+/// it holds the same hash.
+fn push_run(runs: &mut Vec<Run>, hash: Digest, repetitions: U256) {
+    match runs.last_mut() {
+        Some(last) if last.hash == hash => last.repetitions += repetitions,
+        _ => runs.push(Run { hash, repetitions }),
+    }
+}
+
+/// The tripwire behind the module doc's window invariant.
+fn input_overran(position: U256) -> ! {
+    panic!(
+        "input overran its window at position {position}; \
+         transition shape undefined (see module doc)"
+    )
+}
+
 /// A leaf value the engine reports: the live machine (its hash pulled
 /// only when a sample lands) or a known digest from a captured idle
 /// pattern.
@@ -195,11 +212,7 @@ impl<S: Stf> Ruler<S> {
                         self.position += one;
                         continue;
                     }
-                    panic!(
-                        "input overran its window at position {}; \
-                         transition shape undefined (see module doc)",
-                        self.position
-                    );
+                    input_overran(self.position);
                 }
             }
 
@@ -256,15 +269,6 @@ impl<S: Stf> Ruler<S> {
         assert!((to % big_span).is_zero(), "unaligned end");
         assert!(to <= self.structure.ruler_span(), "past the epoch's end");
 
-        fn push(roots: &mut Vec<Run>, hash: Digest, cycles: U256) {
-            match roots.last_mut() {
-                Some(last) if last.hash == hash => last.repetitions += cycles,
-                _ => roots.push(Run {
-                    hash,
-                    repetitions: cycles,
-                }),
-            }
-        }
         let fold = |runs: &[Run]| -> Result<Digest> {
             Ok(fold_runs(
                 runs.iter().map(|run| {
@@ -285,18 +289,15 @@ impl<S: Stf> Ruler<S> {
                 // Aligned by construction: both ends are big boundaries.
                 let cycles = (self.idle_end(p.input, terminal, to) - self.position) / big_span;
                 let root = fold(&self.collect_idle_span()?)?;
-                push(&mut roots, root, cycles);
+                push_run(&mut roots, root, cycles);
                 self.position += cycles * big_span;
                 continue;
             }
             if self.stf.collects_big_cycle_roots() {
                 if p.is_window_start() {
-                    assert!(
-                        self.stf.yielded()?,
-                        "input overran its window at position {}; \
-                         transition shape undefined (see module doc)",
-                        self.position
-                    );
+                    if !self.stf.yielded()? {
+                        input_overran(self.position);
+                    }
                     // The fused transition: the collector's first entry is
                     // its ustep.
                     self.stf.feed(p.input)?;
@@ -308,7 +309,7 @@ impl<S: Stf> Ruler<S> {
                 if !collected.is_empty() {
                     let cycles = U256::from(collected.len());
                     for root in collected {
-                        push(&mut roots, root, U256::from(1));
+                        push_run(&mut roots, root, U256::from(1));
                     }
                     self.position += cycles * big_span;
                     continue;
@@ -325,7 +326,7 @@ impl<S: Stf> Ruler<S> {
             let mut sampler = StrideSampler::new(self.position, 0);
             let cycle_end = self.position + big_span;
             self.step_until(cycle_end, &mut |leaf, count| sampler.feed(leaf, count))?;
-            push(&mut roots, fold(&sampler.finish())?, U256::from(1));
+            push_run(&mut roots, fold(&sampler.finish())?, U256::from(1));
         }
         Ok(roots)
     }
@@ -358,31 +359,25 @@ impl<S: Stf> Ruler<S> {
     /// halts, arithmetic padding, and the closing ureset restoring the
     /// base state (or the recorded pre-input state after rejection).
     fn collect_idle_span(&mut self) -> Result<Vec<Run>> {
-        fn push(runs: &mut Vec<Run>, hash: Digest, count: u64) {
-            match runs.last_mut() {
-                Some(last) if last.hash == hash => last.repetitions += U256::from(count),
-                _ => runs.push(Run {
-                    hash,
-                    repetitions: U256::from(count),
-                }),
-            }
-        }
-
         let big_span = self.structure.big_span();
         let mut runs = vec![];
         let mut slot = 0u64;
         while slot < big_span - 1 && !self.stf.uarch_halted()? {
             self.stf.ustep()?;
             slot += 1;
-            push(&mut runs, self.stf.state_hash()?, 1);
+            push_run(&mut runs, self.stf.state_hash()?, U256::from(1));
         }
         if slot < big_span - 1 {
-            push(&mut runs, self.stf.state_hash()?, big_span - 1 - slot);
+            push_run(
+                &mut runs,
+                self.stf.state_hash()?,
+                U256::from(big_span - 1 - slot),
+            );
         }
         // The closing slot.
         self.stf.ustep()?;
         self.stf.ureset()?;
-        push(&mut runs, self.stf.state_hash()?, 1);
+        push_run(&mut runs, self.stf.state_hash()?, U256::from(1));
         Ok(runs)
     }
 }
@@ -428,13 +423,7 @@ impl<S: Stf> Ruler<S> {
             if self.stf.yielded()? {
                 let feeds_now = p.is_window_start() && has_input;
                 if !feeds_now {
-                    let next_window = p.input + 1;
-                    let next_feed = if next_window < self.fed_windows {
-                        structure.window_start(next_window)
-                    } else {
-                        to
-                    };
-                    let stop = next_feed.min(to);
+                    let stop = self.idle_end(p.input, false, to);
                     let n = stop - self.position;
                     assert!(!n.is_zero(), "yielded with nothing to do");
                     emit(Leaf::Live(&mut self.stf), n)?;
@@ -445,30 +434,16 @@ impl<S: Stf> Ruler<S> {
                 // fused ustep is subsumed by running big cycle 0 whole.
                 self.stf.feed(p.input)?;
             } else if p.is_window_start() {
-                panic!(
-                    "input overran its window at position {}; \
-                     invariant violated (see module doc)",
-                    self.position
-                );
+                input_overran(self.position);
             }
 
             let next_sample = ((self.position >> log2_stride) + one) << log2_stride;
             let window_end = structure.window_start(p.input + 1);
             let chunk_end = next_sample.min(window_end).min(to);
 
-            let mut remaining = (chunk_end - self.position) >> c;
-            while !remaining.is_zero() {
-                let batch = if remaining > U256::from(u64::MAX) {
-                    u64::MAX
-                } else {
-                    u64::try_from(remaining).expect("bounded by u64::MAX")
-                };
-                let ran = self.stf.run_big(batch)?;
-                remaining -= U256::from(ran);
-                if ran < batch {
-                    break;
-                }
-            }
+            let cycles = u64::try_from((chunk_end - self.position) >> c)
+                .expect("a window's big cycles fit u64 (Structure::assert_valid)");
+            self.stf.run_big(cycles)?;
             emit(Leaf::Live(&mut self.stf), chunk_end - self.position)?;
             self.position = chunk_end;
         }
@@ -533,14 +508,7 @@ impl StrideSampler {
         // by the stride, i.e. the stride multiples in (lo, hi].
         let n = (hi >> self.log2_stride) - (lo >> self.log2_stride);
         if !n.is_zero() {
-            let hash = leaf.digest()?;
-            match self.out.last_mut() {
-                Some(last) if last.hash == hash => last.repetitions += n,
-                _ => self.out.push(Run {
-                    hash,
-                    repetitions: n,
-                }),
-            }
+            push_run(&mut self.out, leaf.digest()?, n);
         }
         self.position = hi;
         Ok(())
