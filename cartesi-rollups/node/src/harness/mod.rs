@@ -31,7 +31,7 @@ use anyhow::{Context, Result, ensure};
 use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 use cartesi_prt_contracts::tournament::Tournament;
 use cartesi_rollups_contracts::i_input_box::IInputBox;
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 use tempfile::TempDir;
 
 use crate::{
@@ -48,7 +48,6 @@ use crate::{
     provider::{SendVerdict, TransactionLane},
     storage::{Storage, Template},
     sync::ShutdownSignal,
-    tournament::EthArenaSender,
 };
 
 /// The honest node's anvil key.
@@ -502,7 +501,6 @@ impl World {
         );
         let engine_dir = state_dir.path().join("engine");
         let hero = Hero::with_tail(
-            Arc::new(EthArenaSender::new(self.provider.clone())),
             self.chain.clone(),
             epoch.root_tournament,
             epoch.block_created_number,
@@ -540,7 +538,7 @@ pub(crate) struct Node {
     state_dir: TempDir,
     reader: BlockchainReader,
     runner: MachineRunner,
-    manager: EpochManager<EthArenaSender>,
+    manager: EpochManager,
 }
 
 impl Node {
@@ -559,7 +557,6 @@ impl Node {
             ShutdownSignal::default(),
         )?;
         let manager = EpochManager::new(
-            Arc::new(EthArenaSender::new(world.provider.clone())),
             world.lane(HONEST),
             world.book.consensus,
             world.address(HONEST),
@@ -680,7 +677,7 @@ pub(crate) enum Policy {
 /// has no reader, runner or manager: it disputes the honest node's epoch
 /// from a copy of the honest node's store.
 pub(crate) struct Adversary {
-    hero: Hero<EthArenaSender>,
+    hero: Hero,
     lane: TransactionLane,
     policy: Policy,
     stopped: bool,

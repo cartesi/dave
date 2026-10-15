@@ -7,9 +7,7 @@
 
 use std::collections::HashMap;
 
-#[cfg(test)]
-use alloy::primitives::U256;
-use alloy::primitives::{Address, B256};
+use alloy::primitives::{Address, B256, U256};
 use anyhow::{Context, Result as AnyResult};
 use cartesi_prt_contracts::tournament::{
     self,
@@ -127,6 +125,17 @@ pub async fn read_descriptor(
         .with_context(|| format!("read descriptor for tournament {address}"))?;
     decode_descriptor(address, wire)
         .with_context(|| format!("decode descriptor for tournament {address}"))
+}
+
+/// Read a tournament's join bond at the block of the intent being
+/// fulfilled. The contract rejects a join that deposits less.
+pub async fn read_bond(chain: &Chain, tournament: Address, head: ChainHead) -> AnyResult<U256> {
+    tournament::Tournament::new(tournament, chain.provider())
+        .bondValue()
+        .block(head.block_id())
+        .call()
+        .await
+        .with_context(|| format!("read bond for tournament {tournament}"))
 }
 
 /// Read one current standing for every tournament behind a live parent match.

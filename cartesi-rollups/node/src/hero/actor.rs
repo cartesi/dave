@@ -1,7 +1,7 @@
 //! Production Hero orchestration: observe, project, plan, prepare, and
 //! yield the tick's wave contribution for the epoch manager to submit.
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, time::Instant};
 
 use ::log::{debug, error, info};
 use anyhow::{Result, ensure};
@@ -21,10 +21,11 @@ use crate::{
     storage::Storage,
     sync::ShutdownSignal,
     tournament::{
-        ArenaSender, StateReader,
+        StateReader,
         dispute::Dispute,
         domain::{GcIntent, TournamentStanding},
-        observer::read_standings,
+        observer::{read_bond, read_standings},
+        sender,
     },
 };
 use alloy::primitives::Address;
@@ -70,8 +71,7 @@ impl HeroTick {
 }
 
 /// The production actor owns one epoch's real machine source.
-pub struct Hero<AS: ArenaSender> {
-    arena_sender: Arc<AS>,
+pub struct Hero {
     source: DisputeSource<Positioner>,
     epoch: u64,
     anchors: EpochAnchors,
@@ -90,11 +90,10 @@ struct Observation {
     context: HeroContext,
 }
 
-impl<AS: ArenaSender> Hero<AS> {
+impl Hero {
     /// The node's Hero: its machine work stops once `shutdown` is
     /// requested, keeping what it stored for the restarted node.
     pub fn new(
-        arena_sender: Arc<AS>,
         chain: Chain,
         root_tournament: Address,
         block_created_number: u64,
@@ -104,7 +103,6 @@ impl<AS: ArenaSender> Hero<AS> {
     ) -> Result<Self> {
         let engine_dir = storage.epoch_directory(epoch_number)?.join("engine");
         let mut hero = Self::build(
-            arena_sender,
             chain,
             root_tournament,
             block_created_number,
@@ -120,9 +118,7 @@ impl<AS: ArenaSender> Hero<AS> {
     /// It needs its own engine directory, since a source's positioner
     /// clears the work directories it numbers.
     #[cfg(test)]
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn with_tail(
-        arena_sender: Arc<AS>,
         chain: Chain,
         root_tournament: Address,
         block_created_number: u64,
@@ -132,7 +128,6 @@ impl<AS: ArenaSender> Hero<AS> {
         tail: crate::engine::Tail,
     ) -> Result<Self> {
         let mut hero = Self::build(
-            arena_sender,
             chain,
             root_tournament,
             block_created_number,
@@ -145,7 +140,6 @@ impl<AS: ArenaSender> Hero<AS> {
     }
 
     fn build(
-        arena_sender: Arc<AS>,
         chain: Chain,
         root_tournament: Address,
         block_created_number: u64,
@@ -166,7 +160,6 @@ impl<AS: ArenaSender> Hero<AS> {
         let reader = StateReader::new(chain, block_created_number);
 
         Ok(Self {
-            arena_sender,
             source,
             epoch: epoch_number,
             anchors,
@@ -268,8 +261,7 @@ impl<AS: ArenaSender> Hero<AS> {
                     started.elapsed(),
                     action_head.number
                 );
-                request =
-                    Some(request_prepared(self.arena_sender.as_ref(), action, action_head).await?);
+                request = Some(request_prepared(&chain, action, action_head).await?);
             }
             HeroDecision::Wait(reason) => {
                 if reason.missed() {
@@ -343,17 +335,16 @@ impl<AS: ArenaSender> Hero<AS> {
             return Ok(None);
         };
         info!("plan cleanup intent: {intent:?}");
+        let provider = self.reader.chain().provider();
         Ok(Some(match intent {
             GcIntent::EliminateMatch {
                 tournament,
                 match_id,
-            } => self.arena_sender.eliminate_match(tournament, match_id),
+            } => sender::eliminate_match(provider, tournament, match_id),
             GcIntent::EliminateChild {
                 parent_tournament,
                 child_tournament,
-            } => self
-                .arena_sender
-                .eliminate_inner_tournament(parent_tournament, child_tournament),
+            } => sender::eliminate_inner_tournament(provider, parent_tournament, child_tournament),
         }))
     }
 }
@@ -371,11 +362,12 @@ fn report_slow_tick(started: Instant, outcome: impl std::fmt::Display) {
 /// The only production dispatch seam for a prepared Hero action. Matching one
 /// enum value yields exactly one mutation request; no error path selects a
 /// second verb from the same observation.
-async fn request_prepared<AS: ArenaSender>(
-    arena_sender: &AS,
+async fn request_prepared(
+    chain: &Chain,
     action: PreparedArenaAction,
     head: ChainHead,
 ) -> Result<LaneRequest> {
+    let provider = chain.provider();
     // These concise action markers are also synchronization points for the
     // crash-recovery e2e scenarios. Emit them as the request enters the
     // wave, immediately before the tick submits it.
@@ -387,8 +379,15 @@ async fn request_prepared<AS: ArenaSender>(
             right_child,
         } => {
             info!("submit Hero action: join tournament {tournament}");
-            let bond = arena_sender.bond_value(tournament, head.block_id()).await?;
-            arena_sender.join_tournament(tournament, &proof_last, left_child, right_child, bond)
+            let bond = read_bond(chain, tournament, head).await?;
+            sender::join_tournament(
+                provider,
+                tournament,
+                &proof_last,
+                left_child,
+                right_child,
+                bond,
+            )
         }
         PreparedArenaAction::ClaimTimeout {
             tournament,
@@ -400,7 +399,7 @@ async fn request_prepared<AS: ArenaSender>(
                 "submit Hero action: claim timeout for match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender.win_timeout_match(tournament, match_id, left_node, right_node)
+            sender::win_timeout_match(provider, tournament, match_id, left_node, right_node)
         }
         PreparedArenaAction::Advance {
             tournament,
@@ -414,7 +413,8 @@ async fn request_prepared<AS: ArenaSender>(
                 "submit Hero action: advance match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender.advance_match(
+            sender::advance_match(
+                provider,
                 tournament,
                 match_id,
                 left_node,
@@ -434,7 +434,8 @@ async fn request_prepared<AS: ArenaSender>(
                 "submit Hero action: seal leaf match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender.seal_leaf_match(
+            sender::seal_leaf_match(
+                provider,
                 tournament,
                 match_id,
                 left_leaf,
@@ -453,7 +454,8 @@ async fn request_prepared<AS: ArenaSender>(
                 "submit Hero action: create child for match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender.seal_inner_match(
+            sender::seal_inner_match(
+                provider,
                 tournament,
                 match_id,
                 left_leaf,
@@ -472,7 +474,7 @@ async fn request_prepared<AS: ArenaSender>(
                 "submit Hero action: prove leaf match {} in tournament {tournament}",
                 match_id.hash()
             );
-            arena_sender.win_leaf_match(tournament, match_id, left_node, right_node, proof)
+            sender::win_leaf_match(provider, tournament, match_id, left_node, right_node, proof)
         }
         PreparedArenaAction::PropagateChild {
             parent_tournament,
@@ -483,136 +485,27 @@ async fn request_prepared<AS: ArenaSender>(
             info!(
                 "submit Hero action: propagate child {child_tournament} into tournament {parent_tournament}"
             );
-            arena_sender.win_inner_match(parent_tournament, child_tournament, left_node, right_node)
+            sender::win_inner_match(
+                provider,
+                parent_tournament,
+                child_tournament,
+                left_node,
+                right_node,
+            )
         }
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
-    use alloy::{eips::BlockId, primitives::U256, rpc::types::TransactionRequest};
-    use async_trait::async_trait;
+    use alloy::{
+        primitives::{TxKind, U256},
+        sol_types::SolCall,
+    };
+    use cartesi_prt_contracts::tournament::Tournament;
 
     use super::*;
-    use crate::{
-        merkle::MerkleProof,
-        tournament::{MachineProof, MatchID},
-    };
-
-    fn stub(label: &str) -> LaneRequest {
-        (label.to_string(), TransactionRequest::default())
-    }
-
-    /// Request stubs labeled like the production builders, plus a bond
-    /// read counter: only the join arm may pay for that read.
-    #[derive(Default)]
-    struct RecordingArena {
-        bond_reads: Mutex<usize>,
-    }
-
-    impl RecordingArena {
-        fn bond_reads(&self) -> usize {
-            std::mem::take(&mut *self.bond_reads.lock().unwrap())
-        }
-    }
-
-    #[async_trait]
-    impl ArenaSender for RecordingArena {
-        fn join_tournament(
-            &self,
-            _tournament: Address,
-            _proof: &MerkleProof,
-            _left_child: Digest,
-            _right_child: Digest,
-            _bond_value: U256,
-        ) -> LaneRequest {
-            stub("join")
-        }
-
-        fn advance_match(
-            &self,
-            _tournament: Address,
-            _match_id: MatchID,
-            _left_node: Digest,
-            _right_node: Digest,
-            _new_left_node: Digest,
-            _new_right_node: Digest,
-        ) -> LaneRequest {
-            stub("advance")
-        }
-
-        fn seal_inner_match(
-            &self,
-            _tournament: Address,
-            _match_id: MatchID,
-            _left_leaf: Digest,
-            _right_leaf: Digest,
-            _initial_hash_proof: &MerkleProof,
-        ) -> LaneRequest {
-            stub("create_child")
-        }
-
-        fn win_inner_match(
-            &self,
-            _tournament: Address,
-            _child_tournament: Address,
-            _left_node: Digest,
-            _right_node: Digest,
-        ) -> LaneRequest {
-            stub("propagate_child")
-        }
-
-        fn win_timeout_match(
-            &self,
-            _tournament: Address,
-            _match_id: MatchID,
-            _left_node: Digest,
-            _right_node: Digest,
-        ) -> LaneRequest {
-            stub("claim_timeout")
-        }
-
-        fn seal_leaf_match(
-            &self,
-            _tournament: Address,
-            _match_id: MatchID,
-            _left_leaf: Digest,
-            _right_leaf: Digest,
-            _initial_hash_proof: &MerkleProof,
-        ) -> LaneRequest {
-            stub("seal_leaf")
-        }
-
-        fn win_leaf_match(
-            &self,
-            _tournament: Address,
-            _match_id: MatchID,
-            _left_node: Digest,
-            _right_node: Digest,
-            _proofs: MachineProof,
-        ) -> LaneRequest {
-            stub("prove_leaf")
-        }
-
-        fn eliminate_match(&self, _tournament: Address, _match_id: MatchID) -> LaneRequest {
-            stub("eliminate_match")
-        }
-
-        fn eliminate_inner_tournament(
-            &self,
-            _tournament: Address,
-            _inner_tournament: Address,
-        ) -> LaneRequest {
-            stub("eliminate_child")
-        }
-
-        async fn bond_value(&self, _tournament: Address, _at: BlockId) -> Result<U256> {
-            *self.bond_reads.lock().unwrap() += 1;
-            Ok(U256::from(7))
-        }
-    }
+    use crate::{chain::recording::recording_provider, merkle::MerkleProof, tournament::MatchID};
 
     fn address(byte: u8) -> Address {
         Address::repeat_byte(byte)
@@ -637,27 +530,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn each_prepared_variant_yields_exactly_one_request() {
-        let arena = RecordingArena::default();
+    async fn each_prepared_variant_yields_its_verb_and_only_the_join_reads_the_bond() {
+        let (provider, asserter, requests) = recording_provider();
+        let chain = Chain::new(provider);
+        asserter.push_success(&alloy::primitives::Bytes::from(
+            Tournament::bondValueCall::abi_encode_returns(&U256::from(7)),
+        ));
         let tournament = address(1);
         let child = address(2);
         let proof = || MerkleProof::leaf(digest(3), U256::ZERO);
 
-        let (label, _) = request_prepared(
-            &arena,
-            PreparedArenaAction::Join {
-                tournament,
-                proof_last: proof(),
-                left_child: digest(4),
-                right_child: digest(5),
-            },
-            head(),
-        )
-        .await
-        .unwrap();
-        assert_eq!((arena.bond_reads(), label.as_str()), (1, "join"));
-
         let actions = [
+            (
+                PreparedArenaAction::Join {
+                    tournament,
+                    proof_last: proof(),
+                    left_child: digest(4),
+                    right_child: digest(5),
+                },
+                "joinTournament",
+                Tournament::joinTournamentCall::SELECTOR,
+            ),
             (
                 PreparedArenaAction::ClaimTimeout {
                     tournament,
@@ -665,7 +558,8 @@ mod tests {
                     left_node: digest(4),
                     right_node: digest(5),
                 },
-                "claim_timeout",
+                "winMatchByTimeout",
+                Tournament::winMatchByTimeoutCall::SELECTOR,
             ),
             (
                 PreparedArenaAction::Advance {
@@ -676,7 +570,8 @@ mod tests {
                     new_left_node: digest(6),
                     new_right_node: digest(7),
                 },
-                "advance",
+                "advanceMatch",
+                Tournament::advanceMatchCall::SELECTOR,
             ),
             (
                 PreparedArenaAction::SealLeaf {
@@ -686,7 +581,8 @@ mod tests {
                     right_leaf: digest(5),
                     agree_state_proof: proof(),
                 },
-                "seal_leaf",
+                "sealLeafMatch",
+                Tournament::sealLeafMatchCall::SELECTOR,
             ),
             (
                 PreparedArenaAction::CreateChild {
@@ -696,7 +592,8 @@ mod tests {
                     right_leaf: digest(5),
                     agree_state_proof: proof(),
                 },
-                "create_child",
+                "sealInnerMatchAndCreateInnerTournament",
+                Tournament::sealInnerMatchAndCreateInnerTournamentCall::SELECTOR,
             ),
             (
                 PreparedArenaAction::ProveLeaf {
@@ -706,7 +603,8 @@ mod tests {
                     right_node: digest(5),
                     proof: vec![1, 2, 3],
                 },
-                "prove_leaf",
+                "winLeafMatch",
+                Tournament::winLeafMatchCall::SELECTOR,
             ),
             (
                 PreparedArenaAction::PropagateChild {
@@ -715,13 +613,31 @@ mod tests {
                     left_node: digest(4),
                     right_node: digest(5),
                 },
-                "propagate_child",
+                "winInnerTournament",
+                Tournament::winInnerTournamentCall::SELECTOR,
             ),
         ];
 
-        for (action, expected) in actions {
-            let (label, _) = request_prepared(&arena, action, head()).await.unwrap();
-            assert_eq!((arena.bond_reads(), label.as_str()), (0, expected));
+        for (action, verb, selector) in actions {
+            let is_join = matches!(action, PreparedArenaAction::Join { .. });
+            let (label, request) = request_prepared(&chain, action, head()).await.unwrap();
+            assert_eq!(label, verb);
+            assert_eq!(&request.input.input().unwrap()[..4], selector.as_slice());
+            assert_eq!(request.to, Some(TxKind::Call(tournament)));
+            assert_eq!(request.value, is_join.then(|| U256::from(7)));
         }
+        assert!(asserter.read_q().is_empty());
+
+        // The one read is the join's bond, pinned to the action head.
+        let requests = requests.lock().unwrap();
+        let calls: Vec<_> = requests
+            .iter()
+            .filter(|request| request["method"] == "eth_call")
+            .collect();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0]["params"][1],
+            serde_json::json!(format!("{:#x}", head().hash))
+        );
     }
 }
