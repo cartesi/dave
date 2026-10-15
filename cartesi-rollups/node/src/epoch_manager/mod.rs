@@ -19,7 +19,7 @@ use crate::fatal::Fatal;
 use crate::provider::{LaneRequest, SendReport, TransactionLane};
 use crate::storage::{
     Epoch, LeafProof as StoredLeafProof, MachineValidityProof as StoredMachineValidityProof,
-    Storage,
+    Settlement, Storage,
 };
 use crate::sync::ShutdownSignal;
 use crate::{
@@ -57,6 +57,8 @@ type CallKey = (String, Option<TxKind>, B256);
 
 /// A call planned for PAGE_AFTER or longer, its latest report and how long.
 type Overdue<'r> = (CallKey, &'r SendReport, Duration);
+
+type Consensus = DaveConsensus::DaveConsensusInstance<DynProvider, alloy::network::Ethereum>;
 
 struct EpochTick {
     epoch: u64,
@@ -193,8 +195,8 @@ impl<AS: ArenaSender> EpochManager<AS> {
         });
         let mut wave = Vec::new();
         if !settled {
-            if self.storage.settlement_info(epoch.epoch_number)?.is_some() {
-                match self.react_dispute(chain, &epoch).await {
+            if let Some(settlement) = self.storage.settlement_info(epoch.epoch_number)? {
+                match self.react_dispute(chain, &epoch, &settlement).await {
                     Ok(tick) => {
                         let result = tick.result();
                         let head = tick.head();
@@ -210,11 +212,21 @@ impl<AS: ArenaSender> EpochManager<AS> {
                             let consensus =
                                 DaveConsensus::new(self.consensus, chain.provider().clone());
                             let step = if result == Some(HeroTerminal::Won) {
-                                self.plan_settlement(&consensus, epoch.epoch_number, head)
-                                    .await
+                                self.plan_settlement(
+                                    &consensus,
+                                    epoch.epoch_number,
+                                    &settlement,
+                                    head,
+                                )
+                                .await
                             } else {
-                                self.plan_sentry_claim(&consensus, epoch.epoch_number, head)
-                                    .await
+                                self.plan_sentry_claim(
+                                    &consensus,
+                                    epoch.epoch_number,
+                                    &settlement,
+                                    head,
+                                )
+                                .await
                             };
                             match step {
                                 Ok(step) => wave.extend(step),
@@ -318,26 +330,24 @@ impl<AS: ArenaSender> EpochManager<AS> {
     /// queues behind an earlier step from stale state.
     async fn plan_settlement(
         &mut self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<
-            DynProvider,
-            alloy::network::Ethereum,
-        >,
+        dave_consensus: &Consensus,
         epoch_number: u64,
+        settlement: &Settlement,
         head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
         if let Some(step) = self
-            .plan_sentry_claim(dave_consensus, epoch_number, head)
+            .plan_sentry_claim(dave_consensus, epoch_number, settlement, head)
             .await?
         {
             return Ok(Some(step));
         }
         if let Some(step) = self
-            .plan_stage_tournament_result(dave_consensus, epoch_number, head)
+            .plan_stage_tournament_result(dave_consensus, epoch_number, settlement, head)
             .await?
         {
             return Ok(Some(step));
         }
-        self.plan_accept_tournament_result(dave_consensus, epoch_number, head)
+        self.plan_accept_tournament_result(dave_consensus, epoch_number, settlement, head)
             .await
     }
 
@@ -346,11 +356,9 @@ impl<AS: ArenaSender> EpochManager<AS> {
     /// on the tournament result.
     async fn plan_sentry_claim(
         &mut self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<
-            DynProvider,
-            alloy::network::Ethereum,
-        >,
+        dave_consensus: &Consensus,
         epoch_number: u64,
+        settlement: &Settlement,
         head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
         let sentry_id = dave_consensus
@@ -368,18 +376,24 @@ impl<AS: ArenaSender> EpochManager<AS> {
             return Ok(None);
         }
 
-        let current_sealed_epoch = dave_consensus
-            .getCurrentSealedEpoch()
+        // Its epoch number is the current sealed epoch's.
+        let can_accept = dave_consensus
+            .canAcceptStagedTournamentResult()
             .block(head.block_id())
             .call()
             .await?;
-        if current_sealed_epoch.epochNumber != U256::from(epoch_number) {
+        if can_accept.epochNumber != U256::from(epoch_number) {
             return Ok(None);
         }
-        let epoch_number = current_sealed_epoch.epochNumber;
+        if can_accept.isTournamentResultStaged && can_accept.isClaimStagingPeriodOver {
+            trace!(
+                "epoch {epoch_number} already has a staged result past its staging period; a claim buys nothing"
+            );
+            return Ok(None);
+        }
 
         let has_claimed = dave_consensus
-            .hasSentryClaimedInEpoch(epoch_number, sentry_id)
+            .hasSentryClaimedInEpoch(can_accept.epochNumber, sentry_id)
             .block(head.block_id())
             .call()
             .await?;
@@ -392,45 +406,19 @@ impl<AS: ArenaSender> EpochManager<AS> {
             return Ok(None);
         }
 
-        let can_accept = dave_consensus
-            .canAcceptStagedTournamentResult()
-            .block(head.block_id())
-            .call()
-            .await?;
-
-        if can_accept.isTournamentResultStaged && can_accept.isClaimStagingPeriodOver {
-            trace!(
-                "epoch {} already has a staged result past its staging period; a claim buys nothing",
-                epoch_number
-            );
-            return Ok(None);
-        }
-
-        match self.storage.settlement_info(
-            u64::try_from(epoch_number).expect("fail to convert epoch number to u64"),
-        )? {
-            Some(settlement) => {
-                let claim = vec_u8_to_bytes_32(settlement.final_state.into());
-                info!("submit sentry claim {} for epoch {}", claim, epoch_number);
-                let request = dave_consensus
-                    .submitSentryClaim(epoch_number, claim)
-                    .into_transaction_request();
-                return Ok(Some(("submitSentryClaim".to_string(), request)));
-            }
-            None => {
-                trace!("wait for the `machine-runner` to insert the value");
-            }
-        }
-        Ok(None)
+        let claim = B256::from(settlement.final_state);
+        info!("submit sentry claim {claim} for epoch {epoch_number}");
+        let request = dave_consensus
+            .submitSentryClaim(can_accept.epochNumber, claim)
+            .into_transaction_request();
+        Ok(Some(("submitSentryClaim".to_string(), request)))
     }
 
     async fn plan_stage_tournament_result(
         &mut self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<
-            DynProvider,
-            alloy::network::Ethereum,
-        >,
+        dave_consensus: &Consensus,
         epoch_number: u64,
+        settlement: &Settlement,
         head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
         let can_stage = dave_consensus
@@ -455,58 +443,44 @@ impl<AS: ArenaSender> EpochManager<AS> {
             return Ok(None);
         }
 
-        match self.storage.settlement_info(
-            u64::try_from(can_stage.epochNumber).expect("fail to convert epoch number to u64"),
-        )? {
-            Some(settlement) => {
-                assert_eq!(
-                    settlement.computation_hash.data(),
-                    can_stage.winnerCommitment,
-                    "Winner commitment mismatch, notify all users!"
-                );
-                assert_eq!(
-                    vec_u8_to_bytes_32(settlement.final_state.into()),
-                    can_stage.winnerPostEpochMachineStateHash,
-                    "Winner final state mismatch, notify all users!"
-                );
-                // The node defended a terminal app's true state, which no
-                // validity proof accepts, so it holds the epoch for the
-                // application's guardian.
-                if !settlement.machine_validity_proof.settles() {
-                    log::error!(
-                        "epoch {} ended with the application in a terminal state; \
-                         it won the dispute but cannot settle, notify all users!",
-                        can_stage.epochNumber
-                    );
-                    return Ok(None);
-                }
-                info!(
-                    "stage tournament result of epoch {} with claim {}",
-                    can_stage.epochNumber,
-                    settlement.computation_hash.to_hex()
-                );
-                let request = dave_consensus
-                    .stageTournamentResult(
-                        can_stage.epochNumber,
-                        to_machine_validity_proof(settlement.machine_validity_proof),
-                    )
-                    .into_transaction_request();
-                return Ok(Some(("stageTournamentResult".to_string(), request)));
-            }
-            None => {
-                trace!("wait for the `machine-runner` to insert the value");
-            }
+        assert_eq!(
+            settlement.computation_hash.data(),
+            can_stage.winnerCommitment,
+            "Winner commitment mismatch, notify all users!"
+        );
+        assert_eq!(
+            B256::from(settlement.final_state),
+            can_stage.winnerPostEpochMachineStateHash,
+            "Winner final state mismatch, notify all users!"
+        );
+        // The node defended a terminal app's true state, which no
+        // validity proof accepts, so it holds the epoch for the
+        // application's guardian.
+        if !settlement.machine_validity_proof.settles() {
+            log::error!(
+                "epoch {epoch_number} ended with the application in a terminal state; \
+                 it won the dispute but cannot settle, notify all users!"
+            );
+            return Ok(None);
         }
-        Ok(None)
+        info!(
+            "stage tournament result of epoch {epoch_number} with claim {}",
+            settlement.computation_hash.to_hex()
+        );
+        let request = dave_consensus
+            .stageTournamentResult(
+                can_stage.epochNumber,
+                to_machine_validity_proof(&settlement.machine_validity_proof),
+            )
+            .into_transaction_request();
+        Ok(Some(("stageTournamentResult".to_string(), request)))
     }
 
     async fn plan_accept_tournament_result(
         &mut self,
-        dave_consensus: &DaveConsensus::DaveConsensusInstance<
-            DynProvider,
-            alloy::network::Ethereum,
-        >,
+        dave_consensus: &Consensus,
         epoch_number: u64,
+        settlement: &Settlement,
         head: ChainHead,
     ) -> Result<Option<LaneRequest>> {
         let can_accept = dave_consensus
@@ -523,38 +497,26 @@ impl<AS: ArenaSender> EpochManager<AS> {
             return Ok(None);
         }
 
-        match self.storage.settlement_info(
-            u64::try_from(can_accept.epochNumber).expect("fail to convert epoch number to u64"),
-        )? {
-            Some(settlement) => {
-                assert_eq!(
-                    vec_u8_to_bytes_32(settlement.final_state.into()),
-                    can_accept.stagedPostEpochMachineStateHash,
-                    "Staged final state mismatch, notify all users!"
-                );
-                assert_eq!(
-                    vec_u8_to_bytes_32(settlement.outputs_merkle_root().into()),
-                    can_accept.stagedPostEpochOutputsMerkleRoot,
-                    "Staged outputs Merkle root mismatch, notify all users!"
-                );
-                if can_accept.doAllSentriesAgreeWithStagedTournamentResult
-                    || can_accept.isClaimStagingPeriodOver
-                {
-                    info!(
-                        "settle epoch {}: accept staged tournament result",
-                        can_accept.epochNumber
-                    );
-                    let request = dave_consensus
-                        .acceptStagedTournamentResult(can_accept.epochNumber)
-                        .into_transaction_request();
-                    return Ok(Some(("acceptStagedTournamentResult".to_string(), request)));
-                }
-            }
-            None => {
-                trace!("wait for the `machine-runner` to insert the value");
-            }
+        assert_eq!(
+            B256::from(settlement.final_state),
+            can_accept.stagedPostEpochMachineStateHash,
+            "Staged final state mismatch, notify all users!"
+        );
+        assert_eq!(
+            B256::from(settlement.outputs_merkle_root()),
+            can_accept.stagedPostEpochOutputsMerkleRoot,
+            "Staged outputs Merkle root mismatch, notify all users!"
+        );
+        if !can_accept.doAllSentriesAgreeWithStagedTournamentResult
+            && !can_accept.isClaimStagingPeriodOver
+        {
+            return Ok(None);
         }
-        Ok(None)
+        info!("settle epoch {epoch_number}: accept staged tournament result");
+        let request = dave_consensus
+            .acceptStagedTournamentResult(can_accept.epochNumber)
+            .into_transaction_request();
+        Ok(Some(("acceptStagedTournamentResult".to_string(), request)))
     }
 
     /// The current Hero's repeated observations (Hero::tick).
@@ -565,7 +527,12 @@ impl<AS: ArenaSender> EpochManager<AS> {
             .map_or(0, |hero| hero.reobservations())
     }
 
-    async fn react_dispute(&mut self, chain: &Chain, epoch: &Epoch) -> Result<HeroTick> {
+    async fn react_dispute(
+        &mut self,
+        chain: &Chain,
+        epoch: &Epoch,
+        settlement: &Settlement,
+    ) -> Result<HeroTick> {
         if self.epoch_hero.is_none() {
             let storage = Storage::new(self.storage.state_dir())?;
             self.epoch_hero = Some(Hero::new(
@@ -590,7 +557,7 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 "local commitment won dispute tournament {} for epoch {}",
                 epoch.root_tournament, epoch.epoch_number
             ),
-            Some(HeroTerminal::Lost(loss)) => self.report_loss(epoch, loss)?,
+            Some(HeroTerminal::Lost(loss)) => report_loss(epoch, settlement, loss),
             Some(HeroTerminal::FailedNoWinner) => log::error!(
                 "dispute tournament {} for epoch {} finished without a winner",
                 epoch.root_tournament,
@@ -601,51 +568,44 @@ impl<AS: ArenaSender> EpochManager<AS> {
     }
 }
 
-impl<AS: ArenaSender> EpochManager<AS> {
-    /// Names how the epoch's dispute was lost, once per tick. Every case
-    /// means the honest commitment was not defended in time; a root won
-    /// with another final state also means the chain will settle a state
-    /// this node did not compute.
-    fn report_loss(&mut self, epoch: &Epoch, loss: Loss) -> Result<()> {
-        let e = epoch.epoch_number;
-        match loss {
-            Loss::Root { final_state } => {
-                let ours = self
-                    .storage
-                    .settlement_info(e)?
-                    .map(|settlement| Digest::from(settlement.final_state));
-                if ours == Some(final_state) {
-                    error!(
-                        "epoch {e}: root tournament {} went to another commitment with this \
-                         node's final state {final_state}: the correct state settles once anyone \
-                         stages it (this node stages only its own win), but this node's \
-                         commitment was not defended in time",
-                        epoch.root_tournament
-                    );
-                } else {
-                    error!(
-                        "epoch {e} DIVERGED: root tournament {} went to a commitment ending in \
-                         {final_state}, but this node computed {}. The application's guardian \
-                         can still foreclose before the staged result is accepted; a sentry \
-                         node votes its own state, and the node stops (exit 30) at the next \
-                         epoch, which starts from the settled state",
-                        epoch.root_tournament,
-                        ours.map_or_else(|| "nothing".to_string(), |ours| ours.to_string()),
-                    );
-                }
+/// Names how the epoch's dispute was lost, once per tick. Every case
+/// means the honest commitment was not defended in time; a root won
+/// with another final state also means the chain will settle a state
+/// this node did not compute.
+fn report_loss(epoch: &Epoch, settlement: &Settlement, loss: Loss) {
+    let e = epoch.epoch_number;
+    match loss {
+        Loss::Root { final_state } => {
+            let ours = Digest::from(settlement.final_state);
+            if ours == final_state {
+                error!(
+                    "epoch {e}: root tournament {} went to another commitment with this \
+                     node's final state {final_state}: the correct state settles once anyone \
+                     stages it (this node stages only its own win), but this node's \
+                     commitment was not defended in time",
+                    epoch.root_tournament
+                );
+            } else {
+                error!(
+                    "epoch {e} DIVERGED: root tournament {} went to a commitment ending in \
+                     {final_state}, but this node computed {ours}. The application's guardian \
+                     can still foreclose before the staged result is accepted; a sentry \
+                     node votes its own state, and the node stops (exit 30) at the next \
+                     epoch, which starts from the settled state",
+                    epoch.root_tournament,
+                );
             }
-            Loss::Eliminated { tournament, reason } => error!(
-                "epoch {e}: the local commitment was eliminated in tournament {tournament} \
-                 ({reason:?}); root tournament {}",
-                epoch.root_tournament
-            ),
-            Loss::Child { tournament } => error!(
-                "epoch {e}: another commitment class won child tournament {tournament} of the \
-                 local commitment's match; root tournament {}",
-                epoch.root_tournament
-            ),
         }
-        Ok(())
+        Loss::Eliminated { tournament, reason } => error!(
+            "epoch {e}: the local commitment was eliminated in tournament {tournament} \
+             ({reason:?}); root tournament {}",
+            epoch.root_tournament
+        ),
+        Loss::Child { tournament } => error!(
+            "epoch {e}: another commitment class won child tournament {tournament} of the \
+             local commitment's match; root tournament {}",
+            epoch.root_tournament
+        ),
     }
 }
 
@@ -686,7 +646,7 @@ fn track_planned<'r>(
     (planned, overdue)
 }
 
-fn to_leaf_proof(proof: StoredLeafProof) -> DaveConsensus::LeafProof {
+fn to_leaf_proof(proof: &StoredLeafProof) -> DaveConsensus::LeafProof {
     DaveConsensus::LeafProof {
         dataBlock: B256::from(proof.data_block),
         siblings: proof.siblings.inner().iter().map(B256::from).collect(),
@@ -694,17 +654,13 @@ fn to_leaf_proof(proof: StoredLeafProof) -> DaveConsensus::LeafProof {
 }
 
 fn to_machine_validity_proof(
-    proof: StoredMachineValidityProof,
+    proof: &StoredMachineValidityProof,
 ) -> DaveConsensus::MachineValidityProof {
     DaveConsensus::MachineValidityProof {
-        iflagsYProof: to_leaf_proof(proof.iflags_y_proof),
-        htifTohostProof: to_leaf_proof(proof.htif_tohost_proof),
-        txBufferProof: to_leaf_proof(proof.tx_buffer_proof),
+        iflagsYProof: to_leaf_proof(&proof.iflags_y_proof),
+        htifTohostProof: to_leaf_proof(&proof.htif_tohost_proof),
+        txBufferProof: to_leaf_proof(&proof.tx_buffer_proof),
     }
-}
-
-fn vec_u8_to_bytes_32(hash: Vec<u8>) -> B256 {
-    B256::from_slice(&hash)
 }
 
 #[cfg(test)]
@@ -803,7 +759,7 @@ mod tests {
         };
         let call = DaveConsensus::stageTournamentResultCall {
             epochNumber: U256::from(7),
-            proof: to_machine_validity_proof(proof),
+            proof: to_machine_validity_proof(&proof),
         };
 
         let encoded = call.abi_encode();
@@ -1036,6 +992,7 @@ mod tests {
         storage.roll_epoch().unwrap();
         // The newer epoch has valid, fully prepared settlement material. Only
         // ownership of epoch zero prevents these otherwise applicable actions.
+        let ours = storage.settlement_info(0).unwrap().unwrap();
         let newer = storage.settlement_info(1).unwrap().unwrap();
         let (mut manager, chain, rpc) = manager(dir.path());
         let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
@@ -1052,7 +1009,7 @@ mod tests {
         );
         assert!(
             manager
-                .plan_stage_tournament_result(&consensus, 0, won_at())
+                .plan_stage_tournament_result(&consensus, 0, &ours, won_at())
                 .await
                 .unwrap()
                 .is_none()
@@ -1070,7 +1027,7 @@ mod tests {
         );
         assert!(
             manager
-                .plan_accept_tournament_result(&consensus, 0, won_at())
+                .plan_accept_tournament_result(&consensus, 0, &ours, won_at())
                 .await
                 .unwrap()
                 .is_none()
@@ -1117,24 +1074,6 @@ mod tests {
         (dir, storage)
     }
 
-    fn push_sentry_views(asserter: &Asserter, claimed: bool) {
-        push_call::<DaveConsensus::getSentryIdCall>(asserter, &U256::from(1));
-        push_call::<DaveConsensus::getCurrentSealedEpochCall>(
-            asserter,
-            &DaveConsensus::getCurrentSealedEpochReturn {
-                epochNumber: U256::ZERO,
-                inputIndexLowerBound: U256::ZERO,
-                inputIndexUpperBound: U256::ZERO,
-                tournament: Address::repeat_byte(1),
-                isTournamentResultStaged: false,
-                stagingBlockNumber: U256::ZERO,
-                stagedPostEpochMachineStateHash: B256::ZERO,
-                stagedPostEpochOutputsMerkleRoot: B256::ZERO,
-            },
-        );
-        push_call::<DaveConsensus::hasSentryClaimedInEpochCall>(asserter, &claimed);
-    }
-
     #[tokio::test]
     async fn settlement_reads_the_block_the_hero_won_at() {
         let (dir, mut storage) = rolled_epoch_zero(|_| {});
@@ -1159,23 +1098,27 @@ mod tests {
             winnerPostEpochMachineStateHash: B256::from(settlement.final_state),
         };
 
+        let sentry = U256::from(1);
+
         // A sentry that already claimed stages the result.
-        push_sentry_views(&rpc, true);
+        push_call::<DaveConsensus::getSentryIdCall>(&rpc, &sentry);
+        push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &staged(false));
+        push_call::<DaveConsensus::hasSentryClaimedInEpochCall>(&rpc, &true);
         push_call::<DaveConsensus::canStageTournamentResultCall>(&rpc, &can_stage(false));
         let (label, _) = manager
-            .plan_settlement(&consensus, 0, won_at())
+            .plan_settlement(&consensus, 0, &settlement, won_at())
             .await
             .unwrap()
             .unwrap();
         assert_eq!(label, "stageTournamentResult");
 
         // Once it is staged past its period, nobody claims or stages again.
-        push_sentry_views(&rpc, false);
+        push_call::<DaveConsensus::getSentryIdCall>(&rpc, &sentry);
         push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &staged(true));
         push_call::<DaveConsensus::canStageTournamentResultCall>(&rpc, &can_stage(true));
         push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &staged(true));
         let (label, _) = manager
-            .plan_settlement(&consensus, 0, won_at())
+            .plan_settlement(&consensus, 0, &settlement, won_at())
             .await
             .unwrap()
             .unwrap();
@@ -1190,7 +1133,7 @@ mod tests {
             .iter()
             .filter(|request| request["method"] == "eth_call")
             .collect();
-        assert_eq!(calls.len(), 10);
+        assert_eq!(calls.len(), 8);
         for call in calls {
             assert_eq!(
                 call["params"][1],
@@ -1228,7 +1171,7 @@ mod tests {
         );
         assert!(
             manager
-                .plan_stage_tournament_result(&consensus, 0, won_at())
+                .plan_stage_tournament_result(&consensus, 0, &settlement, won_at())
                 .await
                 .unwrap()
                 .is_none()
@@ -1250,7 +1193,7 @@ mod tests {
         );
         assert!(
             manager
-                .plan_stage_tournament_result(&consensus, 0, won_at())
+                .plan_stage_tournament_result(&consensus, 0, &settlement, won_at())
                 .await
                 .unwrap()
                 .is_none()
