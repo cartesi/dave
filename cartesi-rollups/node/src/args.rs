@@ -4,6 +4,7 @@
 use crate::blockchain_reader::AddressBook;
 use crate::chain::Chain;
 use crate::engine::{Level, Structure, TournamentGeometry};
+use crate::fatal::Fatal;
 use crate::storage::{StateDirLock, Storage, StorageError, Template};
 use alloy::{
     network::EthereumWallet,
@@ -53,15 +54,21 @@ fn tournament_geometry_from_rows(
 
 /// Chain ids the node knows by name; any other is refused.
 fn named_chain(chain_id: u64) -> Result<NamedChain> {
-    NamedChain::try_from(chain_id)
-        .map_err(|_| anyhow::anyhow!("--blockchain-id {chain_id} is not a chain this node knows"))
+    NamedChain::try_from(chain_id).map_err(|_| {
+        Fatal::terminal(format!(
+            "--blockchain-id {chain_id} is not a chain this node knows"
+        ))
+        .into()
+    })
 }
 
 fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
     let required_marchid = u64::from(cartesi_machine::cartesi_machine_sys::CM_MARCHID);
     ensure!(
         deployed_marchid == required_marchid,
-        "incompatible state transition MARCHID: deployed {deployed_marchid}, node requires {required_marchid}"
+        Fatal::terminal(format!(
+            "incompatible state transition MARCHID: deployed {deployed_marchid}, node requires {required_marchid}"
+        ))
     );
     Ok(())
 }
@@ -72,7 +79,9 @@ fn validate_state_transition_marchid(deployed_marchid: u64) -> Result<()> {
 fn validate_state_transition_uarch(deployed_hash: B256, linked_hash: B256) -> Result<()> {
     ensure!(
         deployed_hash == linked_hash,
-        "incompatible state transition pristine uarch hash: deployed {deployed_hash}, linked emulator {linked_hash}"
+        Fatal::terminal(format!(
+            "incompatible state transition pristine uarch hash: deployed {deployed_hash}, linked emulator {linked_hash}"
+        ))
     );
     Ok(())
 }
@@ -97,7 +106,9 @@ pub(crate) async fn discover_deployed_tournament(
     // cannot validate; refuse it before issuing that many calls.
     ensure!(
         (1..=Structure::PRODUCTION.log2_ruler_span()).contains(&level_count),
-        "tournament factory {tournament_factory} reports {level_count} levels"
+        Fatal::terminal(format!(
+            "tournament factory {tournament_factory} reports {level_count} levels"
+        ))
     );
     let mut rows = Vec::new();
     for level in 0..level_count {
@@ -112,8 +123,11 @@ pub(crate) async fn discover_deployed_tournament(
             })?;
         rows.push((parameters.levels, parameters.log2step, parameters.height));
     }
-    let geometry = tournament_geometry_from_rows(level_count, &rows)
-        .with_context(|| format!("tournament factory {tournament_factory} is incompatible"))?;
+    let geometry = tournament_geometry_from_rows(level_count, &rows).map_err(|e| {
+        Fatal::terminal(format!(
+            "tournament factory {tournament_factory} is incompatible: {e:#}"
+        ))
+    })?;
 
     let state_transition = factory.stateTransition().call().await.with_context(|| {
         format!("failed to query state transition from tournament factory {tournament_factory}")
@@ -347,23 +361,28 @@ impl NodeConfig {
         let geometry =
             discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
         log::info!("deployed tournament geometry (stride/height, top first): {geometry}");
-        let template = Template::inspect(&args.template_path).context("--template-path")?;
+        let template = Template::inspect(&args.template_path)
+            .map_err(|e| Fatal::terminal(format!("--template-path: {e:#}")))?;
         ensure!(
             *template.hash() == address_book.initial_hash,
-            "--template-path holds template {}, but application {} starts from {}: fix \
-             --template-path, or check --app-address",
-            alloy::hex::encode_prefixed(template.hash()),
-            address_book.app,
-            alloy::hex::encode_prefixed(address_book.initial_hash),
+            Fatal::terminal(format!(
+                "--template-path holds template {}, but application {} starts from {}: fix \
+                 --template-path, or check --app-address",
+                alloy::hex::encode_prefixed(template.hash()),
+                address_book.app,
+                alloy::hex::encode_prefixed(address_book.initial_hash),
+            ))
         );
         // The engine loads every epoch's initial state as a template awaiting
         // input; from any other one the Hero would only warn every tick.
         ensure!(
             template.awaits_input(),
-            "--template-path matches application {}'s template, but the template is not paused \
-             at a manual accepted yield (awaiting input), so no epoch can start from it: the \
-             deployed application's template is unusable for the node",
-            address_book.app,
+            Fatal::terminal(format!(
+                "--template-path matches application {}'s template, but the template is not \
+                 paused at a manual accepted yield (awaiting input), so no epoch can start from \
+                 it: the deployed application's template is unusable for the node",
+                address_book.app,
+            ))
         );
         let ethereum_submit_gateway = args
             .blockchain_http_submit_endpoint
@@ -454,6 +473,7 @@ mod tests {
             error.to_string().contains("--blockchain-id"),
             "unexpected error: {error}"
         );
+        assert_eq!(crate::fatal::exit_code(&error), 30);
     }
 
     #[test]
@@ -506,6 +526,7 @@ mod tests {
         let required = u64::from(cartesi_machine::cartesi_machine_sys::CM_MARCHID);
         let deployed = required ^ 1;
         let error = validate_state_transition_marchid(deployed).unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 30);
         assert_eq!(
             error.to_string(),
             format!(
@@ -526,6 +547,7 @@ mod tests {
         let mut deployed = linked;
         deployed[31] ^= 1;
         let error = validate_state_transition_uarch(deployed, linked).unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 30);
         assert_eq!(
             error.to_string(),
             format!(

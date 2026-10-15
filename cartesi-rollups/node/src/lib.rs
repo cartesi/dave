@@ -5,6 +5,7 @@ pub mod args;
 pub mod blockchain_reader;
 pub mod chain;
 pub mod epoch_manager;
+pub mod fatal;
 pub mod machine_runner;
 pub mod provider;
 pub mod storage;
@@ -36,6 +37,7 @@ use tokio::task::{JoinError, JoinHandle};
 use crate::blockchain_reader::BlockchainReader;
 use crate::chain::Chain;
 use crate::epoch_manager::EpochManager;
+use crate::fatal::Panicked;
 use crate::machine_runner::MachineRunner;
 use crate::sync::{ShutdownSignal, StopSignals};
 use crate::tournament::EthArenaSender;
@@ -148,14 +150,23 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         std::process::exit(1);
     });
 
-    if !finished.0 {
-        report_drained("machine runner", machine_runner.await);
-    }
-    if !finished.1 {
-        report_drained("blockchain reader", blockchain_reader.await);
-    }
-    if !finished.2 {
-        report_drained("epoch manager", epoch_manager.await);
+    // A failure during the drain is the run's failure too, unless an
+    // earlier one already is; a stop signal does not make it graceful.
+    let mut failure = failure;
+    for (done, name, handle) in [
+        (finished.0, "machine runner", machine_runner),
+        (finished.1, "blockchain reader", blockchain_reader),
+        (finished.2, "epoch manager", epoch_manager),
+    ] {
+        if done {
+            continue;
+        }
+        if let Some(e) = drained_failure(name, handle.await) {
+            match failure {
+                None => failure = Some(e),
+                Some(_) => error!("{e:#}"),
+            }
+        }
     }
 
     match failure {
@@ -175,18 +186,23 @@ fn worker_failure(
             None
         }
         Ok(Ok(())) => Some(anyhow!("{name} stopped unexpectedly")),
-        Ok(Err(e)) => {
-            error!("{name} returned error: {e:#}");
-            Some(e)
-        }
-        Err(join_error) => Some(anyhow!("{name} panicked: {join_error}")),
+        Ok(Err(e)) => Some(e.context(format!("{name} failed"))),
+        Err(join_error) => Some(Panicked(format!("{name} panicked: {join_error}")).into()),
     }
 }
 
-fn report_drained(name: &str, joined: std::result::Result<Result<()>, JoinError>) {
+fn drained_failure(
+    name: &str,
+    joined: std::result::Result<Result<()>, JoinError>,
+) -> Option<anyhow::Error> {
     match joined {
-        Ok(Ok(())) => info!("{name} shutdown gracefully"),
-        Ok(Err(e)) => error!("{name} exited with error during shutdown: {e:#}"),
-        Err(join_error) => error!("{name} panicked during shutdown: {join_error}"),
+        Ok(Ok(())) => {
+            info!("{name} shutdown gracefully");
+            None
+        }
+        Ok(Err(e)) => Some(e.context(format!("{name} failed during shutdown"))),
+        Err(join_error) => {
+            Some(Panicked(format!("{name} panicked during shutdown: {join_error}")).into())
+        }
     }
 }

@@ -30,8 +30,9 @@ use crate::{
 /// What this node already committed to for the epoch, checked against the
 /// chain before any action: a disagreement means the store or the
 /// deployment is not the one the node settled, and acting would defend
-/// the wrong computation. Neither is retryable, so both checks panic: the
-/// tick loop would otherwise retry forever and stop defending in silence.
+/// the wrong computation. Neither is retryable: the Hero stops the node on a
+/// root that starts elsewhere (`Hero::observe`), and context assembly panics
+/// on a level that left the pinned table.
 #[derive(Clone, Debug)]
 pub struct EpochAnchors {
     pub initial_hash: Digest,
@@ -107,15 +108,6 @@ impl HeroContext {
         standings: &HashMap<Address, TournamentStanding>,
         source: &mut DisputeSource<Positioner>,
     ) -> Result<Self, ContextError> {
-        let root_descriptor = dispute.root().descriptor();
-        assert_eq!(
-            root_descriptor.initial_hash(),
-            anchors.initial_hash,
-            "root tournament {} starts from a state this node did not compute \
-             (invariant violation, not retryable)",
-            root_descriptor.address(),
-        );
-
         let mut path = Vec::new();
         let mut levels = HashMap::new();
         let mut tournament = dispute.root();
