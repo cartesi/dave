@@ -60,6 +60,27 @@ pub struct MachineRunner {
     log2_run_stride: u64,
 }
 
+/// The free space a batch or a roll needs before it starts: about one stored
+/// machine, the most a publication writes on a filesystem without reflinks.
+/// Working clones are mapped shared, so a full filesystem would kill the node
+/// by SIGBUS mid-batch, with nothing logged; below the floor the runner stops
+/// first, with an error the paging rule reports.
+const FREE_SPACE_FLOOR: u64 = 1 << 30;
+
+fn ensure_free_space(storage: &Storage) -> anyhow::Result<()> {
+    let free = storage
+        .free_bytes()
+        .map_err(|e| anyhow::anyhow!("could not read the data directory's free space: {e}"))?;
+    anyhow::ensure!(
+        free >= FREE_SPACE_FLOOR,
+        "only {} MiB free on the data directory's filesystem, below the {} MiB a batch needs: \
+         free space there",
+        free >> 20,
+        FREE_SPACE_FLOOR >> 20
+    );
+    Ok(())
+}
+
 impl MachineRunner {
     pub fn new(
         storage: Storage,
@@ -120,11 +141,13 @@ impl MachineRunner {
             match plan_action(&plan, self.storage.snapshot_gap_inputs()) {
                 PlanAction::Idle => return Ok(()),
                 PlanAction::Advance => {
+                    ensure_free_space(&self.storage)?;
                     if !self.advance(plan)? {
                         return Ok(());
                     }
                 }
                 PlanAction::Roll => {
+                    ensure_free_space(&self.storage)?;
                     let epoch = plan.epoch;
                     self.storage.roll_epoch()?;
                     log::info!("started new epoch {}", epoch + 1);
