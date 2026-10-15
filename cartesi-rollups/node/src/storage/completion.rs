@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The epoch manager's durable completion cursor. Snapshot and scratch
+//! The epoch manager's durable completion cursor. Snapshot and dispute-row
 //! collection stays on the machine runner, after it observes this cursor.
 
 use super::Storage;
@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn idle_runner_prunes_only_completed_epochs_and_keeps_its_newest_boundary() {
-        let (dir, mut storage) = setup_settlement_storage();
+        let (_dir, mut storage) = setup_settlement_storage();
         let epochs = epochs(6);
         storage
             .insert_consensus_data(3, [].iter(), epochs.iter().take(3))
@@ -102,7 +102,6 @@ mod tests {
             .collect();
         for epoch in 0..=3 {
             storage.insert_boundary(epoch, 0, &hash(epoch)).unwrap();
-            storage.epoch_directory(epoch).unwrap();
             storage
                 .connection
                 .execute(
@@ -112,15 +111,13 @@ mod tests {
                 .unwrap();
         }
 
-        // Both ingestion and execution are ahead of the manager. Neither
-        // startup cleanup nor an idle runner may discard its epoch zero.
-        storage.sweep_settled_epoch_scratch().unwrap();
+        // Both ingestion and execution are ahead of the manager. An idle
+        // runner may not discard its epoch zero.
         let plan = storage.advance_plan().unwrap();
         assert!(plan.inputs.is_empty());
         assert!(!plan.sealed);
         for epoch in 0..=3 {
             assert!(storage.snapshot_dir(epoch, 0).unwrap().is_some());
-            assert!(dir.path().join(epoch.to_string()).is_dir());
         }
 
         storage.complete_epoch(0).unwrap();
@@ -131,7 +128,6 @@ mod tests {
         for epoch in 0..=3 {
             let retained = epoch >= 2;
             assert_eq!(storage.snapshot_dir(epoch, 0).unwrap().is_some(), retained);
-            assert_eq!(dir.path().join(epoch.to_string()).is_dir(), retained);
             assert_eq!(boundaries[epoch as usize].is_dir(), retained);
             let nodes: i64 = storage
                 .connection
@@ -154,8 +150,6 @@ mod tests {
         assert!(storage.snapshot_dir(2, 0).unwrap().is_none());
         assert!(storage.snapshot_dir(3, 0).unwrap().is_some());
         assert_eq!(storage.next_input_id().unwrap().epoch_number, 3);
-        storage.sweep_settled_epoch_scratch().unwrap();
-        assert!(dir.path().join("3").is_dir());
 
         // Once the runner publishes another boundary, the previously newest
         // completed epoch becomes collectible without another completion.

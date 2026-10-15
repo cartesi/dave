@@ -97,26 +97,22 @@ impl Hero {
         chain: Chain,
         root_tournament: Address,
         block_created_number: u64,
-        mut storage: Storage,
+        storage: Storage,
         epoch_number: u64,
         shutdown: ShutdownSignal,
     ) -> Result<Self> {
-        let engine_dir = storage.epoch_directory(epoch_number)?.join("engine");
         let mut hero = Self::build(
             chain,
             root_tournament,
             block_created_number,
             storage,
             epoch_number,
-            engine_dir,
         )?;
         hero.source.stop_on(shutdown);
         Ok(hero)
     }
 
     /// The harness adversary: this actor over a test-only tail overlay.
-    /// It needs its own engine directory, since a source's positioner
-    /// clears the work directories it numbers.
     #[cfg(test)]
     pub(crate) fn with_tail(
         chain: Chain,
@@ -124,7 +120,6 @@ impl Hero {
         block_created_number: u64,
         storage: Storage,
         epoch_number: u64,
-        engine_dir: std::path::PathBuf,
         tail: crate::engine::Tail,
     ) -> Result<Self> {
         let mut hero = Self::build(
@@ -133,7 +128,6 @@ impl Hero {
             block_created_number,
             storage,
             epoch_number,
-            engine_dir,
         )?;
         hero.source.set_tail(tail);
         Ok(hero)
@@ -145,7 +139,6 @@ impl Hero {
         block_created_number: u64,
         mut storage: Storage,
         epoch_number: u64,
-        engine_dir: std::path::PathBuf,
     ) -> Result<Self> {
         let initial_hash = Digest::from(
             storage
@@ -156,7 +149,7 @@ impl Hero {
             initial_hash,
             geometry: storage.sling_config()?.geometry,
         };
-        let source = DisputeSource::on_store(storage, epoch_number, engine_dir)?;
+        let source = DisputeSource::on_store(storage, epoch_number)?;
         let reader = StateReader::new(chain, block_created_number);
 
         Ok(Self {

@@ -59,15 +59,10 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
     // rather than taking the signal's default action.
     let mut stop_signals = StopSignals::listen().context("failed to listen for stop signals")?;
 
-    // Startup hygiene, before any worker spawns: sweep the scratch
-    // a crash or an older node version left behind - settled epochs'
-    // dispute work and the snapshot store's staging leftovers. Grows
-    // into the sequencer-style ritual as more checks earn a place.
-    {
-        let mut storage = config.storage()?;
-        storage.sweep_settled_epoch_scratch()?;
-        storage.sweep_stale_staging()?;
-    }
+    // Startup hygiene, before any worker spawns: sweep the snapshot
+    // store's staging leftovers a crash left behind. Grows into the
+    // sequencer-style ritual as more checks earn a place.
+    config.storage()?.sweep_stale_staging()?;
 
     // The machine runner is the blocking lane (machine execution +
     // SQLite): plain sync code on a blocking thread. The chain-facing

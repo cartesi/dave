@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 
 /// Where feed's payloads and its pre-feed snapshot live - both are
 /// aspects of the one fused verb. Scratch carries explicit payload
-/// vectors and per-ruler checkpoint dirs (the storage-less
+/// vectors and the directory its checkpoints go to (the storage-less
 /// harnesses: measure, the differential tests). Store is the dispute
 /// path's mode: payloads come from the inputs table and the pre-feed
 /// snapshot commits into the boundary store; positioning has usually
@@ -54,6 +54,8 @@ enum Feeder {
     Scratch {
         fed: usize,
         inputs: Vec<Vec<u8>>,
+        /// Checkpoints live here, one at a time.
+        work_dir: PathBuf,
     },
     Store {
         storage: Storage,
@@ -90,8 +92,6 @@ pub struct MachineStf {
     revert_tail: Option<Vec<Hash>>,
     /// Uarch cycles since the last reset; run_uarch takes absolutes.
     ucycle: u64,
-    /// Scratch-mode checkpoints live here; one at a time.
-    work_dir: PathBuf,
     /// The last feed's pre-input snapshot and the revert root it holds.
     checkpoint: Option<(PathBuf, Hash)>,
     feeder: Feeder,
@@ -128,11 +128,11 @@ pub fn awaits_input(machine: &mut Machine) -> Result<bool> {
 impl MachineStf {
     /// Loads a template machine (the epoch's initial state). It must be
     /// yielded awaiting the first input, with a pristine uarch.
-    pub fn load(template_path: &Path, work_dir: PathBuf, hashing: Hashing) -> Result<Self> {
+    pub fn load(template_path: &Path, hashing: Hashing) -> Result<Self> {
         // Startup checks the template's pristine uarch
         // (storage::Template, docs/computation-hash.md); resume checks
         // only that the uarch sits at cycle zero.
-        let mut stf = Self::resume(template_path, work_dir, hashing)?;
+        let mut stf = Self::resume(template_path, hashing)?;
         ensure!(
             stf.yielded()?,
             "template machine must be yielded awaiting input"
@@ -143,35 +143,40 @@ impl MachineStf {
     /// Resumes a stored machine mid-epoch (a boundary-store answer).
     /// Positions are big-cycle boundaries, so the uarch must be
     /// pristine, but the machine may be in any big state.
-    pub fn resume(path: &Path, work_dir: PathBuf, hashing: Hashing) -> Result<Self> {
+    pub fn resume(path: &Path, hashing: Hashing) -> Result<Self> {
         let mut machine = Machine::load(path, &runtime_config(hashing))
             .context("failed to load stored machine")?;
         ensure!(
             machine.ucycle()? == 0,
             "stored machine must sit at a big-cycle boundary"
         );
-        std::fs::create_dir_all(&work_dir).context("work dir")?;
         Ok(MachineStf {
             machine,
             hashing,
             collector: Collector::Bulk,
             revert_tail: None,
             ucycle: 0,
-            work_dir,
             checkpoint: None,
             feeder: Feeder::Scratch {
                 fed: 0,
                 inputs: vec![],
+                work_dir: PathBuf::new(),
             },
         })
     }
 
     /// Scratch-mode payloads for the windows this stf will feed
-    /// (index 0 is the first window fed from here). Panics in store
+    /// (index 0 is the first window fed from here), and the existing
+    /// directory their pre-feed checkpoints go to. Panics in store
     /// mode, which carries payloads from the inputs table.
-    pub fn with_inputs(mut self, payloads: Vec<Vec<u8>>) -> Self {
+    pub fn with_inputs(mut self, payloads: Vec<Vec<u8>>, dir: PathBuf) -> Self {
         match &mut self.feeder {
-            Feeder::Scratch { inputs, .. } => *inputs = payloads,
+            Feeder::Scratch {
+                inputs, work_dir, ..
+            } => {
+                *inputs = payloads;
+                *work_dir = dir;
+            }
             _ => panic!("only the scratch feeder carries payload vectors"),
         }
         self
@@ -203,9 +208,6 @@ impl MachineStf {
             collector: Collector::Stepped,
             revert_tail: None,
             ucycle: 0,
-            // Advance mode never writes scratch checkpoints; an empty
-            // path fails loudly if a bug ever routes there.
-            work_dir: PathBuf::new(),
             checkpoint: None,
             feeder: Feeder::Advance {
                 window,
@@ -328,21 +330,27 @@ impl Stf for MachineStf {
         // lets the mutable machine follow the same revert off-chain.
         let root = self.machine.root_hash()?;
         let (checkpoint, payload) = match &mut self.feeder {
-            Feeder::Scratch { fed, inputs } => {
+            Feeder::Scratch {
+                fed,
+                inputs,
+                work_dir,
+            } => {
                 assert_eq!(
                     window as usize, *fed,
                     "windows feed sequentially from the resume point"
                 );
-                let path = self.work_dir.join(format!("checkpoint-{fed}"));
+                // Before the store: an unconfigured feeder must not
+                // leave a checkpoint behind.
+                let payload = inputs
+                    .get(window as usize)
+                    .cloned()
+                    .expect("scratch feeder must carry every fed payload");
+                let path = work_dir.join(format!("checkpoint-{fed}"));
                 *fed += 1;
                 self.machine.store(&path).context("store checkpoint")?;
                 if let Some((old, _)) = self.checkpoint.take() {
                     std::fs::remove_dir_all(old).ok();
                 }
-                let payload = inputs
-                    .get(window as usize)
-                    .cloned()
-                    .expect("scratch feeder must carry every fed payload");
                 (path, payload)
             }
             Feeder::Store {
@@ -592,18 +600,16 @@ impl MachineStf {
     }
 }
 
-/// The engine's positioning residue: a work dir, a spawn counter,
-/// and the store handle they serve. Positions rulers by resuming
-/// from the boundary store's nearest stored machine, crossing whole
-/// windows on the runner's clone chain, and advancing the remainder.
-/// The store is live: boundaries recorded by any writer (the open
-/// regime's gap fill, an earlier crossing) shorten the next
-/// positioning. On a freshly initialized store only the epoch start
-/// exists. Constructed only by [`DisputeSource::on_store`]; the type
-/// is public for signatures alone.
+/// The engine's positioning residue: the store handle and a spawn
+/// counter. Positions rulers by resuming from the boundary store's
+/// nearest stored machine, crossing whole windows on the runner's clone
+/// chain, and advancing the remainder. The store is live: boundaries
+/// recorded by any writer (the open regime's gap fill, an earlier
+/// crossing) shorten the next positioning. On a freshly initialized
+/// store only the epoch start exists. Constructed only by
+/// [`DisputeSource::on_store`]; the type is public for signatures alone.
 pub struct Positioner {
     structure: Structure,
-    work_dir: PathBuf,
     /// How many windows feed (the inputs are a contiguous prefix);
     /// payloads stay in the inputs table, read at feed time.
     fed_windows: u64,
@@ -622,18 +628,13 @@ pub struct Positioner {
 /// how positioning constructs itself from storage; consumers hold no
 /// engine pieces.
 impl DisputeSource<Positioner> {
-    pub fn on_store(storage: Storage, epoch: u64, work_dir: PathBuf) -> Result<Self> {
-        Self::on_store_with(storage, epoch, work_dir, Collector::Bulk)
+    pub fn on_store(storage: Storage, epoch: u64) -> Result<Self> {
+        Self::on_store_with(storage, epoch, Collector::Bulk)
     }
 
     /// [`DisputeSource::on_store`] with a chosen dense-leaf collector:
     /// differential tests build leaves both ways. Not an operator setting.
-    pub fn on_store_with(
-        mut storage: Storage,
-        epoch: u64,
-        work_dir: PathBuf,
-        collector: Collector,
-    ) -> Result<Self> {
+    pub fn on_store_with(mut storage: Storage, epoch: u64, collector: Collector) -> Result<Self> {
         let structure = Structure::PRODUCTION;
         let config = storage.sling_config()?;
 
@@ -641,7 +642,6 @@ impl DisputeSource<Positioner> {
 
         let positioner = Positioner {
             structure,
-            work_dir,
             fed_windows,
             // Its own store handle: one connection per holder, like
             // every Storage user.
@@ -736,15 +736,11 @@ impl RulerFactory for Positioner {
                 .store
                 .nearest_boundary_at_or_before(self.epoch, target)?;
 
-            let dir = self.work_dir.join(format!("stf-{}", self.spawned));
             self.spawned += 1;
-            // A previous process may have left checkpoints here, and
-            // the machine refuses to store over an existing directory.
-            std::fs::remove_dir_all(&dir).ok();
             let mut stf = if boundary.0 == 0 {
-                MachineStf::load(&path, dir, hashing)?
+                MachineStf::load(&path, hashing)?
             } else {
-                MachineStf::resume(&path, dir, hashing)?
+                MachineStf::resume(&path, hashing)?
             }
             .with_collector(self.collector);
 
@@ -889,11 +885,11 @@ mod tests {
             collector: Collector::Stepped,
             revert_tail: None,
             ucycle: UARCH_MASK_TO_BARCH,
-            work_dir: PathBuf::new(),
             checkpoint: None,
             feeder: Feeder::Scratch {
                 fed: 0,
                 inputs: vec![],
+                work_dir: PathBuf::new(),
             },
         };
         let mut ruler = Ruler::new_at(
@@ -974,9 +970,12 @@ mod tests {
             collector: Collector::Stepped,
             revert_tail: None,
             ucycle: 0,
-            work_dir,
             checkpoint: None,
-            feeder: Feeder::Scratch { fed: 0, inputs },
+            feeder: Feeder::Scratch {
+                fed: 0,
+                inputs,
+                work_dir,
+            },
         }
     }
 
@@ -1168,11 +1167,11 @@ mod tests {
             hashing: Hashing::Sampled,
             collector: Collector::Stepped,
             revert_tail: None,
-            work_dir: work.path().to_path_buf(),
             checkpoint: Some((checkpoint, revert_root)),
             feeder: Feeder::Scratch {
                 fed: 1,
                 inputs: vec![payload.clone()],
+                work_dir: work.path().to_path_buf(),
             },
         };
         let position = U256::from(closing);
@@ -1280,11 +1279,11 @@ mod tests {
             collector: Collector::Bulk,
             revert_tail: Some(tail),
             ucycle: 0,
-            work_dir: work.path().to_path_buf(),
             checkpoint: Some((checkpoint, revert_root)),
             feeder: Feeder::Scratch {
                 fed: 1,
                 inputs: vec![payload.clone()],
+                work_dir: work.path().to_path_buf(),
             },
         };
         assert_eq!(stf.big_cycle_roots(4)?.len(), 1, "the cycle is collected");
