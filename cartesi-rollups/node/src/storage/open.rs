@@ -20,7 +20,7 @@ use cartesi_machine::{
     machine::Machine,
     types::Hash,
 };
-use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -252,19 +252,6 @@ impl Storage {
         })
     }
 
-    /// A read-only handle: the connection refuses writes outright and
-    /// fails fast under write pressure rather than stalling a tick.
-    pub fn open_read_only(state_dir: &Path) -> Result<Self> {
-        let state_dir = state_dir.canonicalize().map_err(anyhow::Error::from)?;
-        let connection = open_reader_connection(&db_path(&state_dir))?;
-
-        Ok(Self {
-            connection,
-            state_dir,
-            snapshot_gap_inputs: DEFAULT_SNAPSHOT_GAP_INPUTS,
-        })
-    }
-
     /// Bytes an unprivileged writer may still allocate on the data
     /// directory's filesystem.
     pub fn free_bytes(&self) -> std::io::Result<u64> {
@@ -351,18 +338,6 @@ fn configure_writer_pragmas(connection: &Connection) -> Result<()> {
         .busy_timeout(std::time::Duration::from_secs(10))
         .map_err(anyhow::Error::from)?;
     Ok(())
-}
-
-fn open_reader_connection(db_path: &Path) -> Result<Connection> {
-    let connection = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(anyhow::Error::from)?;
-    connection
-        .pragma_update(None, "query_only", "ON")
-        .map_err(anyhow::Error::from)?;
-    connection
-        .busy_timeout(std::time::Duration::from_millis(100))
-        .map_err(anyhow::Error::from)?;
-    Ok(connection)
 }
 
 //

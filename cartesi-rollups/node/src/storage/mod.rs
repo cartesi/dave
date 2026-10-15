@@ -145,20 +145,6 @@ pub struct InputId {
 }
 
 impl InputId {
-    pub fn increment_index(self) -> Self {
-        Self {
-            epoch_number: self.epoch_number,
-            input_index_in_epoch: self.input_index_in_epoch + 1,
-        }
-    }
-
-    pub fn increment_epoch(self) -> Self {
-        Self {
-            epoch_number: self.epoch_number + 1,
-            input_index_in_epoch: 0,
-        }
-    }
-
     pub fn validate_next(&self, next: &Self) -> bool {
         match self {
             InputId {
