@@ -14,6 +14,7 @@ use alloy::{
 };
 use alloy_chains::NamedChain;
 use anyhow::{Context, Result, ensure};
+use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 use cartesi_machine::Machine;
 use cartesi_prt_contracts::{
     cartesi_state_transition::CartesiStateTransition,
@@ -159,6 +160,28 @@ pub(crate) async fn discover_deployed_tournament(
             )
         })?;
     Ok(geometry)
+}
+
+/// Whether the signer votes as a sentry, read once at startup (a rotation
+/// later is not reported): a node whose operator expects it to vote should
+/// say so where they look first.
+async fn log_sentry_role(book: &AddressBook, signer: Address, provider: &impl Provider) {
+    match DaveConsensus::new(book.consensus, provider)
+        .getSentryId(signer)
+        .call()
+        .await
+    {
+        Ok(id) if id.is_zero() => log::info!(
+            "signer {signer} is not a sentry of consensus {}: it disputes and settles, \
+             but casts no sentry claim",
+            book.consensus
+        ),
+        Ok(id) => log::info!(
+            "signer {signer} is sentry {id} of consensus {}",
+            book.consensus
+        ),
+        Err(e) => log::warn!("could not read the signer's sentry role: {e}"),
+    }
 }
 
 #[derive(Clone, Parser)]
@@ -358,6 +381,7 @@ impl NodeConfig {
                     args.app_address, args.blockchain_id
                 )
             })?;
+        log_sentry_role(&address_book, signer_address, &provider).await;
         let geometry =
             discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
         log::info!("deployed tournament geometry (stride/height, top first): {geometry}");

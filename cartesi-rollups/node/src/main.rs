@@ -17,7 +17,12 @@ async fn main() -> ExitCode {
         error!("{info}");
         default_hook(info);
     }));
-    info!("Hello from the sling node!");
+    info!(
+        "Hello from the sling node {} (Cartesi Machine {}, MARCHID {})",
+        env!("CARGO_PKG_VERSION"),
+        cartesi_machine::format_emulator_version(cartesi_machine::Machine::version()),
+        cartesi_machine::cartesi_machine_sys::CM_MARCHID,
+    );
 
     let result = async {
         let config = NodeConfig::setup().await?;
