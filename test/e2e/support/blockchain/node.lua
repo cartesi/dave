@@ -25,6 +25,9 @@ local function start_blockchain(anvil_load_path)
     assert_port_free(blockchain_data.port)
     print(string.format("Starting blockchain with %d accounts...", default_account_number))
 
+    -- By default anvil 1.5 moves block states older than ~500 into a dir
+    -- under ~/.foundry/anvil/tmp that it never removes. No read here goes
+    -- that deep, so drop them instead.
     local anvil_args = {
         "--port",
         blockchain_data.port,
@@ -32,6 +35,8 @@ local function start_blockchain(anvil_load_path)
         slots_in_an_epoch,
         "-a",
         default_account_number,
+        "--max-persisted-states",
+        0,
     }
 
     if anvil_load_path then
