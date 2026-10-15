@@ -5,6 +5,7 @@ pub mod args;
 pub mod blockchain_reader;
 pub mod chain;
 pub mod epoch_manager;
+pub mod escalation;
 pub mod fatal;
 pub mod machine_runner;
 pub mod provider;

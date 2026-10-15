@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 
 use crate::chain::Chain;
+use crate::escalation::Persistence;
 use crate::sync::ShutdownSignal;
 use alloy::{
     eips::BlockId,
@@ -11,7 +12,7 @@ use alloy::{
     providers::Provider,
 };
 use cartesi_machine::types::Hash;
-use log::{debug, info, trace};
+use log::{Level, debug, info, trace};
 use std::{fmt, iter::Peekable, time::Duration};
 
 use crate::storage::{Epoch, Input, InputId, Storage, StorageError};
@@ -201,34 +202,39 @@ impl BlockchainReader {
     }
 
     pub async fn execution_loop(mut self, shutdown: ShutdownSignal, chain: Chain) -> Result<()> {
-        let mut failed = None;
+        let mut failing = Persistence::default();
         loop {
             // A failed tick is retried, not fatal: the tick is
             // re-derived from finalized state, so a provider hiccup
-            // costs one polling interval. This worker used to die on
-            // the first transient error - the exact failure class the
-            // epoch manager's 2026-07-10 fix addressed. A stop drops the
-            // tick in flight, which writes nothing: its one write, the
-            // chunk's commit, is synchronous and follows every await.
+            // costs one polling interval. One that persists hides new
+            // inputs and seals, so it pages. A stop drops the tick in
+            // flight, which writes nothing: its one write, the chunk's
+            // commit, is synchronous and follows every await.
             let caught_up = tokio::select! { biased;
                 _ = shutdown.requested() => break Ok(()),
                 ticked = self.tick(&chain) => match ticked {
                     Ok(caught_up) => {
-                        failed = None;
+                        failing.cleared();
                         caught_up
                     }
                     Err(e) => {
-                        let repeated;
-                        (failed, repeated) = repeated_check(failed, &e);
-                        if repeated {
-                            log::error!(
-                                "blockchain read failed the same log completeness check on \
-                                 consecutive ticks: {e:#}; point --blockchain-http-endpoint at a \
-                                 provider that serves complete logs, and if this persists, \
-                                 rebuild the data directory"
-                            );
-                        } else {
-                            log::warn!("blockchain read failed, retrying next tick: {e:#}");
+                        match failing.failed() {
+                            Level::Error => {
+                                let remedy = if LogCheck::failed_by(&e).is_some() {
+                                    "; point --blockchain-http-endpoint at a provider that \
+                                     serves complete logs, and if this persists, rebuild the \
+                                     data directory"
+                                } else {
+                                    ""
+                                };
+                                log::error!(
+                                    "blockchain read has failed for {} min: {e:#}{remedy}",
+                                    failing.minutes()
+                                );
+                            }
+                            level => {
+                                log::log!(level, "blockchain read failed, retrying next tick: {e:#}");
+                            }
                         }
                         true
                     }
@@ -256,6 +262,12 @@ impl BlockchainReader {
         let finalized = chain.finalized_block_number().await?;
         let processed = self.storage.latest_processed_block()?;
         if finalized <= processed {
+            return Ok(true);
+        }
+        // A directory started before its deployment finalized waits: below
+        // genesis the consensus has no code to answer the totals.
+        if finalized < self.address_book.genesis_block_number {
+            trace!("the deployment is not finalized yet at block {finalized}");
             return Ok(true);
         }
 
@@ -494,9 +506,9 @@ async fn onchain_totals(chain: &Chain, book: AddressBook, block: u64) -> Result<
     })
 }
 
-/// Ingestion's completeness and continuity checks. One that fails again on
-/// the next tick means the provider keeps omitting logs, or a chunk already
-/// stored lacks one, and a retry heals neither.
+/// Ingestion's completeness and continuity checks. One that keeps failing
+/// means the provider keeps omitting logs, or a chunk already stored lacks
+/// one, and a retry heals neither: its page names the remedy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LogCheck {
     /// Each InputAdded carries the next index.
@@ -529,19 +541,12 @@ impl LogCheck {
 }
 
 /// A failed [`LogCheck`] of the reader's own, typed so the tick loop can
-/// classify it.
+/// name its remedy.
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
 struct IncompleteLogs {
     check: LogCheck,
     message: String,
-}
-
-/// The check a failed tick failed, and whether the previous tick failed the
-/// same one: the epoch manager's consecutive-tick rule (`repeated_reverts`).
-fn repeated_check(previous: Option<LogCheck>, error: &anyhow::Error) -> (Option<LogCheck>, bool) {
-    let check = LogCheck::failed_by(error);
-    (check, check.is_some() && check == previous)
 }
 
 /// The tail check contiguity cannot make: once ingestion reaches the
@@ -1078,29 +1083,6 @@ mod witness_tests {
         f.rpc.push_failure_msg("connection refused");
         let error = f.reader.tick(&f.chain).await.unwrap_err();
         assert_eq!(LogCheck::failed_by(&error), None);
-    }
-
-    #[test]
-    fn a_failed_check_escalates_only_when_it_repeats_on_the_next_tick() {
-        let incomplete = |check| {
-            anyhow::Error::new(IncompleteLogs {
-                check,
-                message: String::new(),
-            })
-        };
-        let transient = anyhow::anyhow!("connection refused");
-
-        // The first failure is a warning only; the same one next tick is not.
-        let (first, repeated) = repeated_check(None, &incomplete(LogCheck::HeadInputs));
-        assert!(!repeated);
-        let (second, repeated) = repeated_check(first, &incomplete(LogCheck::HeadInputs));
-        assert!(repeated);
-        // Another check, or a transient failure between, starts over.
-        assert!(!repeated_check(second, &incomplete(LogCheck::InputIndex)).1);
-        let (cleared, repeated) = repeated_check(second, &transient);
-        assert!(!repeated);
-        assert!(!repeated_check(cleared, &incomplete(LogCheck::HeadInputs)).1);
-        assert!(!repeated_check(cleared, &transient).1);
     }
 
     /// A chunk that ends before the head cannot be checked against it: it

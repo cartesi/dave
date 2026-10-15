@@ -7,8 +7,10 @@ use self::error::Result;
 use std::time::Duration;
 
 use crate::engine::{MachineStf, Ruler, Stf, Structure};
+use crate::escalation::Persistence;
 use crate::storage::{AdvancePlan, Storage};
 use crate::sync::ShutdownSignal;
+use log::Level;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlanAction {
@@ -75,14 +77,25 @@ impl MachineRunner {
     }
 
     pub fn start(&mut self) -> Result<()> {
+        let mut failing = Persistence::default();
         loop {
             // A failed pass is retried, not fatal: the advance batch
             // is one transaction and replay absorbs re-execution, so
             // a transient failure costs one polling interval, never
             // the validator. Invariant violations are asserts and
-            // stay fatal through the panic path.
-            if let Err(e) = self.process_rollup() {
-                log::warn!("machine advance failed, retrying next tick: {e:#}");
+            // stay fatal through the panic path. One that persists (a
+            // full disk, a permission change) stops every settlement and
+            // root join, so it pages.
+            match self.process_rollup() {
+                Ok(()) => failing.cleared(),
+                Err(e) => match failing.failed() {
+                    Level::Error => log::error!(
+                        "machine advance has failed for {} min: {e:#}; the node is not \
+                         computing epochs, so it cannot settle or join their disputes",
+                        failing.minutes()
+                    ),
+                    level => log::log!(level, "machine advance failed, retrying next tick: {e:#}"),
+                },
             }
 
             // No publishable batch is ready. An open tail shorter
