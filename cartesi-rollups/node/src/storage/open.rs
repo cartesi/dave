@@ -112,8 +112,10 @@ impl Template {
     pub fn inspect(path: &Path) -> anyhow::Result<Self> {
         ensure!(
             path.is_dir(),
-            "machine template `{}` is not an existing directory",
-            path.display()
+            Fatal::terminal(format!(
+                "machine template `{}` is not an existing directory",
+                path.display()
+            ))
         );
         let mut machine = Machine::load(path, &RuntimeConfig::quiet_console())
             .with_context(|| format!("failed to load template `{}`", path.display()))?;
@@ -123,20 +125,24 @@ impl Template {
         let hash_function = machine.initial_config()?.hash_tree.hash_function;
         ensure!(
             hash_function == HashFunctionType::Keccak256,
-            "template `{}` uses a {hash_function:?} hash tree, but the uarch and the \
-             on-chain step need Keccak-256; refusing it",
-            path.display()
+            Fatal::terminal(format!(
+                "template `{}` uses a {hash_function:?} hash tree, but the uarch and the \
+                 on-chain step need Keccak-256; refusing it",
+                path.display()
+            ))
         );
         let uarch_hash = machine.node_hash(UARCH_STATE_START, UARCH_STATE_LOG2_SIZE)?;
         let linked_hash = Machine::uarch_pristine_hash();
         ensure!(
             uarch_hash == linked_hash,
-            "template `{}` does not carry the linked emulator's pristine uarch: its uarch \
-             state hash is {}, the linked emulator's {} (custom uarch code or another \
-             emulator's image); refusing it",
-            path.display(),
-            alloy::hex::encode_prefixed(uarch_hash),
-            alloy::hex::encode_prefixed(linked_hash),
+            Fatal::terminal(format!(
+                "template `{}` does not carry the linked emulator's pristine uarch: its uarch \
+                 state hash is {}, the linked emulator's {} (custom uarch code or another \
+                 emulator's image); refusing it",
+                path.display(),
+                alloy::hex::encode_prefixed(uarch_hash),
+                alloy::hex::encode_prefixed(linked_hash),
+            ))
         );
         let awaits_input = crate::engine::machine_stf::awaits_input(&mut machine)?;
         Ok(Self {

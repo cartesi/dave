@@ -502,13 +502,11 @@ impl TransactionLane {
         }
     }
 
-    /// The padded estimate at latest ([`gas_limit_for`]), or `None` when
-    /// the call reverts there. Any other estimation failure falls back to
-    /// the flat limit: a flaky endpoint must not hold back a dispute action,
-    /// and a real problem such as an underfunded signer still fails loudly
-    /// at submission.
-    /// The slot's gas limit, or the revert reason of a call that reverts at
-    /// latest and so is not sent.
+    /// The padded estimate at latest ([`gas_limit_for`]), or the revert
+    /// reason when the call reverts there (it is not sent). Any other
+    /// estimation failure falls back to the flat limit: a flaky endpoint
+    /// must not hold back a dispute action, and a real problem such as an
+    /// underfunded signer still fails loudly at submission.
     async fn gas_limit(&self, label: &str, request: &TransactionRequest) -> Result<u64, String> {
         let mut probe = request.clone();
         probe.set_from(self.signer_address);

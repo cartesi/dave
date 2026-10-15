@@ -7,7 +7,7 @@ use self::recovery::{RecoveryTree, plan_recovery};
 use alloy::primitives::{Address, B256, TxKind, U256, keccak256};
 use alloy::providers::DynProvider;
 use anyhow::Result;
-use log::{Level, error, info, trace};
+use log::{Level, debug, error, info, trace};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -200,7 +200,10 @@ impl<AS: ArenaSender> EpochManager<AS> {
                         // has a winner, its own or not: after a loss its claim
                         // is the dissent a guardian reads. Staging and
                         // acceptance follow only its own win.
-                        if matches!(result, TournamentResult::Won | TournamentResult::Lost(_)) {
+                        if matches!(
+                            result,
+                            TournamentResult::Won | TournamentResult::Lost(Loss::Root { .. })
+                        ) {
                             let consensus =
                                 DaveConsensus::new(self.consensus, chain.provider().clone());
                             let step = if result == TournamentResult::Won {
@@ -221,16 +224,20 @@ impl<AS: ArenaSender> EpochManager<AS> {
                             }
                         }
                     }
+                    Err(e) if Fatal::of(&e).is_some() => return Err(e),
                     Err(e) if self.shutdown.is_requested() => {
                         info!("dispute planning stopped by shutdown: {e:#}")
                     }
-                    Err(e) if Fatal::of(&e).is_some() => return Err(e),
                     Err(e) => self.stalled(
                         Level::Warn,
                         format_args!("dispute planning failed, retrying next tick: {e:#}"),
                     ),
                 }
-            } else {
+            } else if self
+                .storage
+                .next_input_id()
+                .is_ok_and(|next| next.epoch_number == epoch.epoch_number)
+            {
                 // Routine while the runner finishes a sealed epoch's tail; the
                 // root join waits for it.
                 self.stalled(
@@ -239,6 +246,13 @@ impl<AS: ArenaSender> EpochManager<AS> {
                         "wait for machine-runner to prepare sealed epoch {}",
                         epoch.epoch_number
                     ),
+                );
+            } else {
+                // Still replaying earlier epochs (a fresh data directory):
+                // the replay is the operator's expected wait, not a stall.
+                debug!(
+                    "wait for machine-runner to reach sealed epoch {}",
+                    epoch.epoch_number
                 );
             }
         }
@@ -600,16 +614,17 @@ impl<AS: ArenaSender> EpochManager<AS> {
                 if ours == Some(final_state) {
                     error!(
                         "epoch {e}: root tournament {} went to another commitment with this \
-                         node's final state {final_state}: the correct state settles, but this \
-                         node's commitment was not defended in time",
+                         node's final state {final_state}: the correct state settles once anyone \
+                         stages it (this node stages only its own win), but this node's \
+                         commitment was not defended in time",
                         epoch.root_tournament
                     );
                 } else {
                     error!(
                         "epoch {e} DIVERGED: root tournament {} went to a commitment ending in \
                          {final_state}, but this node computed {}. The application's guardian \
-                         can still foreclose before the staged result is accepted; this node \
-                         votes its own state as a sentry, and stops (exit 30) at the next \
+                         can still foreclose before the staged result is accepted; a sentry \
+                         node votes its own state, and the node stops (exit 30) at the next \
                          epoch, which starts from the settled state",
                         epoch.root_tournament,
                         ours.map_or_else(|| "nothing".to_string(), |ours| ours.to_string()),

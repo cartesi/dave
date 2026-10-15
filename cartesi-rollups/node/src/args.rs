@@ -385,8 +385,7 @@ impl NodeConfig {
         let geometry =
             discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
         log::info!("deployed tournament geometry (stride/height, top first): {geometry}");
-        let template = Template::inspect(&args.template_path)
-            .map_err(|e| Fatal::terminal(format!("--template-path: {e:#}")))?;
+        let template = Template::inspect(&args.template_path).context("--template-path")?;
         ensure!(
             *template.hash() == address_book.initial_hash,
             Fatal::terminal(format!(

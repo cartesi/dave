@@ -355,8 +355,8 @@ fn mutation_taxonomy_holds_at_source_level() {
             ("snapshots.rs".to_string(), 2)
         ],
         "the GC paths are the only DELETEs: the old-epoch boundary and \
-         sling_nodes prunes in advance.rs; the gap prune and the \
-         unreferenced-snapshot sweep in the boundary store"
+         sling_nodes prunes in advance.rs; the unreferenced-snapshot sweep \
+         in the boundary store, and its test's fixture"
     );
 }
 

@@ -284,6 +284,21 @@ async fn a_sentry_that_lost_its_root_still_claims_its_state() -> Result<()> {
     .await?;
     assert!(world.honest_calls(JOIN).is_empty(), "the node never joined");
     assert!(world.honest_calls(STAGE).is_empty());
+    // The vote is the node's own final state, not the winner's.
+    let ours = Storage::new(node.state_dir.path())?
+        .settlement_info(0)?
+        .expect("the node rolled epoch 0")
+        .final_state;
+    let consensus = world.consensus();
+    let ours = consensus
+        .getSentryClaimCount(U256::ZERO, ours.into())
+        .call()
+        .await?;
+    let theirs = consensus
+        .getSentryClaimCount(U256::ZERO, [0xee; 32].into())
+        .call()
+        .await?;
+    assert_eq!((ours, theirs), (U256::ONE, U256::ZERO));
     Ok(())
 }
 
