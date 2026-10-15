@@ -2,17 +2,11 @@
 -- SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 -- Create-only schema. schema.rs executes this file only for an empty database,
--- then atomically stamps its raw Keccak fingerprint, the node version, and the
--- commitment semantics version.
+-- then atomically stamps its store format and commitment semantics.
 
 CREATE TABLE node_metadata (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
-    node_version TEXT NOT NULL CHECK (node_version <> ''),
-    schema_fingerprint BLOB NOT NULL
-        CHECK (
-            typeof(schema_fingerprint) = 'blob'
-            AND length(schema_fingerprint) = 32
-        ),
+    store_format INTEGER NOT NULL CHECK (store_format > 0),
     commitment_semantics INTEGER NOT NULL CHECK (commitment_semantics > 0)
 ) WITHOUT ROWID;
 

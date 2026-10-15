@@ -205,8 +205,8 @@ The exit status tells a supervisor which of these happened (`fatal.rs`), with
 the numbers of the sequencer's contract: 0 a requested stop, 1 any other
 error (restart with backoff), 2 a usage error, 30 terminal (a flag, the
 template, the deployment or the settled chain disagrees with the node: do not
-restart, an operator must act), 40 rebuild the data directory (its schema,
-commitment semantics, emulator, consensus or geometry is another). A panic
+restart, an operator must act), 40 rebuild the data directory (its store
+format, commitment semantics, emulator, consensus or geometry is another). A panic
 exits 101: restart with backoff and page, since a restart cannot make an
 invariant violation worse and may clear a nondeterministic one while a clock
 runs. The sequencer aborts on its panics instead, because its diagnosed
@@ -299,29 +299,24 @@ against its row (the runner stops, dispute positioning skips the boundary).
 External mutation of the store is unsupported, like manual database mutation.
 
 Schema initialization owns one create-only `storage/sql/schema.sql`; there are
-no migrations or ordered schema versions. On an empty database, startup applies
-that file once and atomically records the node package version, the Keccak
-hash of the exact schema file, and the commitment semantics version. On later
-launches it executes no DDL: all three stored values must match the running
-binary, or startup refuses the data directory before applying schema changes.
-The raw file fingerprint catches schema changes between builds that share a
-package version; the semantics version catches commitment changes that alter
-neither. It attests which schema created
-this node-owned cache; manual database mutation remains unsupported rather than
-continuously audited.
+no migrations. On an empty database, startup applies that file once and
+atomically stamps two hand-bumped versions from `storage/sql/schema.rs`: the
+store format (`STORE_FORMAT`, the layout of the data directory) and the
+commitment semantics (`COMMITMENT_SEMANTICS`, leaf values and transition
+shapes). On later launches it executes no DDL: both must match the running
+binary, or startup refuses the data directory with exit status 40. A test pins
+the schema file's hash, so every edit of it decides whether to bump the store
+format; manual database mutation remains unsupported rather than continuously
+audited.
 
 The epoch-completion cursor is not bound to a signer: recovery pays the
 configured signer's bonds, and a previous signer's bonds stay recoverable by
-anyone. Incompatible schema or node versions require rebuilding a fresh data
-directory from the chain and template machine, as does a change of commitment
-semantics: a change to leaf values or transition shapes bumps
-`COMMITMENT_SEMANTICS` in `storage/sql/schema.rs`, because the frozen crate
-version would not.
+anyone. A data directory of another store format or commitment semantics is
+rebuilt from the chain and template machine, never migrated.
 
 Main schema (`storage/sql/schema.sql`):
 
-- `node_metadata(node_version, schema_fingerprint, commitment_semantics)` -
-  immutable cache identity
+- `node_metadata(store_format, commitment_semantics)` - the store's identity
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`
 - `inputs(epoch_number, input_index_in_epoch, input)`
 - `latest_processed(block)` - singleton; last finalized block ingested

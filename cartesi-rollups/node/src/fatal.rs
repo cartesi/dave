@@ -21,7 +21,7 @@ pub enum FatalKind {
     /// A flag, the template, the deployment or the settled chain disagrees
     /// with this node.
     Terminal,
-    /// The data directory belongs to another schema, commitment semantics,
+    /// The data directory belongs to another store format, commitment semantics,
     /// emulator, consensus or tournament geometry.
     Rebuild,
 }
