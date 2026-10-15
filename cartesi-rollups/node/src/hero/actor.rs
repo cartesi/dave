@@ -147,11 +147,11 @@ impl Hero {
         epoch_number: u64,
         engine_dir: std::path::PathBuf,
     ) -> Result<Self> {
-        let initial_hash = Digest::from_digest(
-            &storage
+        let initial_hash = Digest::from(
+            storage
                 .snapshot_hash(epoch_number, 0)?
                 .expect("snapshot is inserted atomically with settlement info"),
-        )?;
+        );
         let anchors = EpochAnchors {
             initial_hash,
             geometry: storage.sling_config()?.geometry,

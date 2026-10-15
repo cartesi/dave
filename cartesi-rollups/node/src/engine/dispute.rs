@@ -251,7 +251,7 @@ impl<F: RulerFactory> DisputeSource<F> {
                      corruption or version drift"
                 )
             });
-            Digest::from_digest(&hash)?
+            Digest::from(hash)
         } else {
             Digest::ZERO
         };

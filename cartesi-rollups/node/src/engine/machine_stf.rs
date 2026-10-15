@@ -767,7 +767,7 @@ impl RulerFactory for Positioner {
                 .store
                 .snapshot_hash(self.epoch, boundary.0)?
                 .expect("nearest answered from an existing row");
-            if stf.state_hash()? == Digest::from_digest(&expected)? {
+            if stf.state_hash()? == Digest::from(expected) {
                 let to = target.min(self.fed_windows);
                 if boundary.0 < to {
                     drop(stf);

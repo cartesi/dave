@@ -62,11 +62,6 @@ impl Digest {
     pub fn to_hex(&self) -> String {
         format!("0x{}", hex::encode(self.data))
     }
-
-    /// Checks if the [Digest] is zeroed.
-    pub fn is_zeroed(&self) -> bool {
-        self.data.iter().all(|&x| x == 0)
-    }
 }
 
 impl From<[u8; HASH_SIZE]> for Digest {

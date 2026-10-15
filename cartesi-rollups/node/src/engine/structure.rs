@@ -45,6 +45,7 @@ impl Structure {
         self.log2_barch_span + self.log2_uarch_span
     }
 
+    #[cfg(test)]
     pub fn window_span(&self) -> U256 {
         U256::from(1) << self.log2_window_span()
     }
@@ -88,6 +89,7 @@ impl Structure {
     }
 
     /// The inverse of [`Structure::decompose`].
+    #[cfg(test)]
     pub fn compose(&self, p: Position) -> U256 {
         assert!(p.input < self.max_inputs(), "input field out of range");
         assert!(
@@ -108,9 +110,8 @@ impl Structure {
 
 /// A ruler position in the paper's (c, b, a) coordinates: which input
 /// window, which big cycle within it, which uarch slot within that.
-/// The single authority for the meta-cycle field layout; pack and
-/// unpack through [`Structure::compose`] / [`Structure::decompose`]
-/// only at the chain boundary and quartet math.
+/// The single authority for the meta-cycle field layout: flat
+/// positions unpack through [`Structure::decompose`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub input: u64,
@@ -213,6 +214,7 @@ impl Quartet {
         (self.shift + U256::from(1)) << (self.height + self.log2_stride)
     }
 
+    #[cfg(test)]
     pub fn leaf_count(&self) -> U256 {
         U256::from(1) << self.height
     }

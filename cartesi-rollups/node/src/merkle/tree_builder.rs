@@ -2,7 +2,7 @@
 
 use crate::merkle::MerkleTree;
 
-use ruint::{UintTryFrom, aliases::U256};
+use alloy::primitives::{U256, ruint::UintTryFrom};
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -27,14 +27,6 @@ impl MerkleBuilder {
     /// leafs. Zero means 2^256 leafs.
     pub fn count(&self) -> Option<U256> {
         self.trees.last().map(|last| last.accumulated_count)
-    }
-
-    /// Returns whether the builder has a balanced (i.e. power of two) number of leaves.
-    pub fn can_build(&self) -> bool {
-        match self.count() {
-            Some(count) => is_count_pow2(count),
-            None => false,
-        }
     }
 
     /// Adds a new leaf to the merkle tree.
@@ -151,7 +143,7 @@ fn is_count_pow2(count: U256) -> bool {
 mod tests {
     use super::MerkleBuilder;
     use crate::merkle::{Digest, MerkleTree};
-    use ruint::aliases::U256;
+    use alloy::primitives::U256;
 
     fn one_digest() -> Digest {
         Digest::from_digest_hex(
@@ -239,11 +231,10 @@ mod tests {
         let mut builder = MerkleBuilder::default();
         builder.append_repeated(Digest::ZERO, 2);
         builder.append_repeated(Digest::ZERO, 6);
-        assert!(builder.can_build());
         let merkle = builder.build();
         assert_eq!(
             merkle.root_hash(),
-            MerkleTree::zeroed().iterated(3).root_hash()
+            MerkleTree::leaf(Digest::ZERO).iterated(3).root_hash()
         );
     }
 
@@ -252,11 +243,10 @@ mod tests {
         let mut builder = MerkleBuilder::default();
         builder.append_repeated(Digest::ZERO, 2);
         builder.append_repeated(Digest::ZERO, 2u128.pow(64) - 2);
-        assert!(builder.can_build());
         let merkle = builder.build();
         assert_eq!(
             merkle.root_hash(),
-            MerkleTree::zeroed().iterated(64).root_hash()
+            MerkleTree::leaf(Digest::ZERO).iterated(64).root_hash()
         );
     }
 
@@ -265,11 +255,10 @@ mod tests {
         let mut builder = MerkleBuilder::default();
         builder.append_repeated(Digest::ZERO, U256::MAX);
         builder.append(Digest::ZERO);
-        assert!(builder.can_build());
         let merkle = builder.build();
         assert_eq!(
             merkle.root_hash(),
-            MerkleTree::zeroed().iterated(256).root_hash()
+            MerkleTree::leaf(Digest::ZERO).iterated(256).root_hash()
         );
     }
 
@@ -277,12 +266,10 @@ mod tests {
     fn test_append_and_repeated() {
         let mut builder = MerkleBuilder::default();
         builder.append(Digest::ZERO);
-        assert!(builder.can_build());
         let tree_1 = builder.build();
 
         let mut builder = MerkleBuilder::default();
         builder.append_repeated(Digest::ZERO, 1);
-        assert!(builder.can_build());
         let tree_2 = builder.build();
 
         assert_eq!(tree_1, tree_2);
@@ -300,7 +287,6 @@ mod tests {
         builder.append(Digest::ZERO);
         builder.append(Digest::ZERO);
         builder.append(Digest::ZERO);
-        assert!(!builder.can_build());
         builder.build();
     }
 

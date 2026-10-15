@@ -3,7 +3,7 @@
 
 use crate::merkle::Digest;
 
-use ruint::{UintTryFrom, aliases::U256};
+use alloy::primitives::{U256, ruint::UintTryFrom};
 use std::{ops::Rem, sync::Arc};
 
 /// A [MerkleProof] is used to verify that a leaf is part of a [MerkleTree].
@@ -18,14 +18,6 @@ impl MerkleProof {
         Self {
             node,
             position,
-            siblings: Vec::new(),
-        }
-    }
-
-    pub fn empty() -> Self {
-        Self {
-            position: U256::ZERO,
-            node: Digest::ZERO,
             siblings: Vec::new(),
         }
     }
@@ -110,10 +102,6 @@ impl MerkleTree {
         })
     }
 
-    pub fn zeroed() -> Arc<Self> {
-        Self::leaf(Digest::ZERO)
-    }
-
     pub fn root_hash(&self) -> Digest {
         self.root_hash
     }
@@ -124,22 +112,6 @@ impl MerkleTree {
 
     pub fn subtrees(&self) -> Option<(Arc<MerkleTree>, Arc<MerkleTree>)> {
         self.subtrees.as_ref().map(|x| x.children())
-    }
-
-    pub fn find_child(self: &Arc<Self>, digest: &Digest) -> Option<Arc<Self>> {
-        if self.root_hash == *digest {
-            return Some(Arc::clone(self));
-        }
-
-        match &self.subtrees {
-            None => None,
-
-            Some(InnerNode::Pair { left, right }) => {
-                left.find_child(digest).or_else(|| right.find_child(digest))
-            }
-
-            Some(InnerNode::Iterated { child }) => child.find_child(digest),
-        }
     }
 
     pub fn join(self: &Arc<Self>, other: &Arc<Self>) -> Arc<Self> {
@@ -236,7 +208,6 @@ mod tests {
     #[test]
     pub fn simple_tree() {
         let zero_tree = MerkleTree::leaf(Digest::ZERO);
-        assert_eq!(zero_tree, MerkleTree::zeroed());
         assert_eq!(zero_tree.root_hash(), Digest::ZERO);
         assert_eq!(zero_tree.height(), 0);
         assert!(zero_tree.subtrees().is_none());
