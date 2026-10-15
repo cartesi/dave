@@ -313,8 +313,8 @@ impl<S: Stf> Ruler<S> {
                     self.position += cycles * big_span;
                     continue;
                 }
-                // Only an input fed at mcycle 2^64 - 2, whose budget saturates
-                // so its last cycle is its first, gets here: out of model
+                // Only an input fed at mcycle 2^64 - 1, whose saturated budget
+                // leaves no cycle to collect, gets here: out of model
                 // (docs/computation-hash.md).
                 assert!(
                     !p.is_window_start(),

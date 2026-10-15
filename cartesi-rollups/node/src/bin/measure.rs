@@ -789,8 +789,7 @@ fn measure_steady_atoms(image: &Path, scratch_root: &Path) -> Result<SteadyAtoms
 
     // The leaf build rate on the node's own path: the bulk collection
     // build_tall drives (MachineStf::load collects in bulk). Mid-input
-    // it returns every requested root: the seam-1 guard declines only
-    // the input budget's last cycle, 2^48 big cycles past delivery.
+    // it returns every requested root.
     let mut leaf = Vec::new();
     for _ in 0..LEAF_SAMPLES {
         let start = Instant::now();

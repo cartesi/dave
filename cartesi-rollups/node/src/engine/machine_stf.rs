@@ -454,13 +454,8 @@ impl Stf for MachineStf {
             self.ucycle, 0,
             "bulk collection starts at a big-cycle boundary"
         );
-        // Seam 1: v0.21.0's collector keeps the physical root when an input
-        // is rejected on its budget's last cycle, where the step reverts
-        // (computation-hash.md, seam 1). Declining that cycle leaves it to
-        // stepping.
         let start = self.machine.mcycle()?;
-        let last_budget_cycle = self.machine.imcyclemax()?.saturating_sub(1);
-        let end = add_and_clamp(start, big_cycles).min(last_budget_cycle);
+        let end = add_and_clamp(start, big_cycles);
         let mut roots = vec![];
         let mut mcycle = start;
         while mcycle < end {
@@ -1247,13 +1242,13 @@ mod tests {
         Ok(())
     }
 
-    /// Seam 1 on the bulk path: bulk collection declines a rejection on the
-    /// input budget's last cycle and the ruler steps it
-    /// (seam_witness_vectors_hold pins the stepped answer). The control pins
-    /// the collector's answer there, now the revert root as the step's reset
-    /// writes, so the guard in big_cycle_roots can go.
+    /// Seam 1 on the bulk path: for a rejection on the input budget's last
+    /// cycle, the collector's reset entry is the revert root, as the step's
+    /// UArchReset writes (seam_witness_vectors_hold pins the stepped
+    /// closing), so bulk collection takes that cycle instead of leaving it
+    /// to stepping, and the machine returns to the pre-input checkpoint.
     #[test]
-    fn bulk_collection_leaves_the_budgets_last_cycle_to_stepping() -> Result<()> {
+    fn bulk_collection_reverts_on_the_budgets_last_cycle() -> Result<()> {
         use cartesi_machine::cartesi_machine_sys::{CM_REG_IMCYCLEMAX, CM_REG_X20};
 
         let payload = b"seam".to_vec();
@@ -1279,6 +1274,13 @@ mod tests {
         };
 
         let work = tempfile::tempdir()?;
+        let (mut machine, revert_root, _, tail) = delivered(work.path())?;
+        let mcycle = machine.mcycle()?;
+        let collected = machine.collect_uarch_cycle_root_hashes(mcycle + 1, 0, Some(&tail))?;
+        let reset = *collected.periods().next().unwrap().last().unwrap();
+        assert_eq!(reset, revert_root, "the reset entry is the revert root");
+
+        let work = tempfile::tempdir()?;
         let (machine, revert_root, checkpoint, tail) = delivered(work.path())?;
         let mut stf = MachineStf {
             machine,
@@ -1293,15 +1295,8 @@ mod tests {
                 inputs: vec![payload.clone()],
             },
         };
-        let mcycle = stf.machine.mcycle()?;
-        assert!(stf.big_cycle_roots(4)?.is_empty(), "the cycle is declined");
-        assert_eq!(stf.machine.mcycle()?, mcycle);
-
-        let work = tempfile::tempdir()?;
-        let (mut machine, revert_root, _, tail) = delivered(work.path())?;
-        let collected = machine.collect_uarch_cycle_root_hashes(mcycle + 1, 0, Some(&tail))?;
-        let reset = *collected.periods().next().unwrap().last().unwrap();
-        assert_eq!(reset, revert_root, "the reset entry is the revert root");
+        assert_eq!(stf.big_cycle_roots(4)?.len(), 1, "the cycle is collected");
+        assert_eq!(stf.machine.root_hash()?, revert_root);
         Ok(())
     }
 
