@@ -212,6 +212,29 @@ Options:
   it has lasted 5 minutes, the response window past which a late response
   draws on the dispute's censorship budget, so a transient blip never pages
   and a page means the node is losing clock.
+- Run the node under a supervisor that restarts it with backoff. Its exit
+  status says why it stopped: 0 a requested stop; 1 any other error
+  (restart); 2 a usage error; 30 terminal, when a flag, the template, the
+  deployment or the settled chain disagrees with the node (do not restart:
+  an operator must act); 40 the data directory belongs to another schema,
+  emulator or deployment (start a fresh one beside it, as above); 101 a
+  panic (restart with backoff and page, since a loop means a bug or corrupt
+  local state). With systemd, `RestartPreventExitStatus=30 40`. An exit by
+  SIGKILL (137) is usually the kernel's out-of-memory killer: size memory for
+  the application's machine plus a dispute's.
+- Alert on every ERROR line, on restart loops, on free space on the data
+  directory's filesystem (the node refuses a batch below 1 GiB), and on the
+  signer's balance against the funding floor above, which the node checks
+  only when a batch is due.
+- Keep `--data-dir` on a filesystem with reflinks (XFS, Btrfs, APFS) in
+  production: an epoch keeps one machine snapshot per
+  `--snapshot-gap-inputs` inputs until it completes, a few MB each with
+  reflinks and up to the whole machine (hundreds of MB) without. Do not move
+  or copy the directory: its database records absolute snapshot paths.
+- The signer must be a plain account that accepts ETH transfers, not one
+  delegated (EIP-7702) to code that refuses or spends a payment: refunds and
+  bonds are paid to it within a fixed gas allowance, and a recovery payment it
+  refuses holds the node out of every later epoch.
 - A steady-state tick refuses an incomplete log response before committing
   and heals on the next tick. During a cold-start catch-up, a chunk that ends
   before the finalized head is checked for contiguity only, so an input or
