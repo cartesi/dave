@@ -48,7 +48,7 @@ pub(crate) mod toy;
 pub use config::EngineConfig;
 #[cfg(test)]
 pub(crate) use dispute::Tail;
-pub use dispute::{DisputeSource, LevelCoords, fold_runs};
+pub use dispute::{DisputeSource, LevelCoords, fold_runs, level0_tree};
 pub use geometry::{Level, TournamentGeometry};
 pub use machine_stf::{Collector, MachineStf, Positioner};
 pub use ruler::{Hashing, Ruler, RulerFactory, Run};
