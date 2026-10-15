@@ -230,8 +230,8 @@ Options:
 - Keep `--data-dir` on a filesystem with reflinks (XFS, Btrfs, APFS) in
   production: an epoch keeps one machine snapshot per
   `--snapshot-gap-inputs` inputs until it completes, a few MB each with
-  reflinks and up to the whole machine (hundreds of MB) without. Do not move
-  or copy the directory: its database records absolute snapshot paths.
+  reflinks and up to the whole machine (hundreds of MB) without. Move or copy
+  the directory only while the node is stopped.
 - The signer must be a plain account that accepts ETH transfers, not one
   delegated (EIP-7702) to code that refuses or spends a payment: refunds and
   bonds are paid to it within a fixed gas allowance, and a recovery payment it

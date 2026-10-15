@@ -151,8 +151,7 @@ impl Storage {
     /// boundary, whose input is the next to process.
     pub fn next_input_id(&mut self) -> Result<InputId> {
         self.read(|tx| {
-            let (_, epoch_number, input_index_in_epoch, _) =
-                super::snapshots::latest_boundary_in(tx)?;
+            let (epoch_number, input_index_in_epoch, _) = super::snapshots::latest_boundary_in(tx)?;
             Ok(InputId {
                 epoch_number,
                 input_index_in_epoch,

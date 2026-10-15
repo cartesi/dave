@@ -474,16 +474,25 @@ impl World {
         // A private copy of the node's store, as an independent sybil would
         // have: the adversary reads the node's rolled material, but its
         // event cache, quartet rows and write-backs stay out of the node's
-        // store, so the node computes and harvests everything itself.
-        // Snapshot rows keep pointing at the node's immutable snapshots.
+        // store, so the node computes and harvests everything itself. Its
+        // snapshots link the node's, which are immutable once published;
+        // linked after the copy, so every copied row finds its directory.
         let state_dir = tempfile::tempdir()?;
-        std::fs::create_dir(state_dir.path().join("snapshots"))?;
         rusqlite::Connection::open(crate::storage::open::db_path(node.state_dir.path()))?.execute(
             "VACUUM INTO ?1",
             [crate::storage::open::db_path(state_dir.path())
                 .to_string_lossy()
                 .into_owned()],
         )?;
+        let snapshots = crate::storage::open::snapshots_path(state_dir.path());
+        std::fs::create_dir(&snapshots)?;
+        for entry in std::fs::read_dir(crate::storage::open::snapshots_path(node.state_dir.path()))?
+        {
+            let entry = entry?;
+            if entry.file_name().to_string_lossy().starts_with("0x") {
+                std::os::unix::fs::symlink(entry.path(), snapshots.join(entry.file_name()))?;
+            }
+        }
         let mut storage = Storage::new(state_dir.path())?;
         let epoch = storage.unfinished_epoch()?.context("no epoch to dispute")?;
         ensure!(

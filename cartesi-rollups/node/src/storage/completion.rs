@@ -37,6 +37,7 @@ mod tests {
     use super::*;
     use crate::storage::Epoch;
     use crate::storage::queries::setup_settlement_storage;
+    use crate::storage::sql::test_helper::stub_snapshot;
     use alloy::primitives::Address;
 
     fn epochs(count: u64) -> Vec<Epoch> {
@@ -89,12 +90,12 @@ mod tests {
             .insert_consensus_data(3, [].iter(), epochs.iter().take(3))
             .unwrap();
 
+        let hash = |epoch: u64| [epoch as u8 + 1; 32];
+        let boundaries: Vec<_> = (0..=4)
+            .map(|epoch| stub_snapshot(&storage, &hash(epoch)))
+            .collect();
         for epoch in 0..=3 {
-            let boundary = dir.path().join("snapshots").join(epoch.to_string());
-            std::fs::create_dir_all(&boundary).unwrap();
-            storage
-                .insert_boundary(epoch, 0, &[epoch as u8 + 1; 32], &boundary)
-                .unwrap();
+            storage.insert_boundary(epoch, 0, &hash(epoch)).unwrap();
             storage.epoch_directory(epoch).unwrap();
             storage
                 .connection
@@ -125,13 +126,7 @@ mod tests {
             let retained = epoch >= 2;
             assert_eq!(storage.snapshot_dir(epoch, 0).unwrap().is_some(), retained);
             assert_eq!(dir.path().join(epoch.to_string()).is_dir(), retained);
-            assert_eq!(
-                dir.path()
-                    .join("snapshots")
-                    .join(epoch.to_string())
-                    .is_dir(),
-                retained
-            );
+            assert_eq!(boundaries[epoch as usize].is_dir(), retained);
             let nodes: i64 = storage
                 .connection
                 .query_row(
@@ -158,12 +153,10 @@ mod tests {
 
         // Once the runner publishes another boundary, the previously newest
         // completed epoch becomes collectible without another completion.
-        let boundary = dir.path().join("snapshots/4");
-        std::fs::create_dir_all(&boundary).unwrap();
-        storage.insert_boundary(4, 0, &[5; 32], &boundary).unwrap();
+        storage.insert_boundary(4, 0, &hash(4)).unwrap();
         storage.advance_plan().unwrap();
         assert!(storage.snapshot_dir(3, 0).unwrap().is_none());
         assert_eq!(storage.next_input_id().unwrap().epoch_number, 4);
-        assert!(boundary.is_dir());
+        assert!(boundaries[4].is_dir());
     }
 }

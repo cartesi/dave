@@ -227,13 +227,12 @@ impl Storage {
         let working = self
             .checkout(template.path())
             .map_err(anyhow::Error::from)?;
-        let dest = self
-            .commit_clone(working, template.hash())
+        self.commit_clone(working, template.hash())
             .map_err(anyhow::Error::from)?;
 
         self.write(|tx| {
             super::ingest::raise_watermark_in(tx, initial_watermark)?;
-            super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash(), &dest)?;
+            super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash())?;
             sling_config::pin(tx, config)?;
             Ok(())
         })
@@ -340,7 +339,7 @@ impl Storage {
     }
 }
 
-/// Writer connections: WAL, enforced foreign keys, FULL sync, and a
+/// Writer connections: WAL, FULL sync, and a
 /// generous busy timeout (machine work happens between transactions,
 /// never inside one, so writers only contend for row-commit bursts).
 /// Escalates the schema triggers' corruption tripwires into panics.
@@ -376,12 +375,6 @@ fn open_writer_connection(db_path: &Path) -> Result<Connection> {
 }
 
 fn configure_writer_pragmas(connection: &Connection) -> Result<()> {
-    // Foreign keys are per-connection in SQLite and default OFF in
-    // stock builds; without this pragma the schema's ON DELETE
-    // RESTRICT protections are declarative only.
-    connection
-        .pragma_update(None, "foreign_keys", "ON")
-        .map_err(anyhow::Error::from)?;
     connection
         .pragma_update(None, "journal_mode", "WAL")
         .map_err(anyhow::Error::from)?;

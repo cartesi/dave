@@ -224,18 +224,13 @@ fn sling_nodes_collision_aborts_in_the_database_itself() {
 }
 
 //
-// epoch_snapshot_info / machine_state_snapshots: prunable derived
-// stores with write-once-verify coordinates
+// epoch_snapshot_info: prunable derived store with write-once-verify
+// coordinates
 //
 
 #[test]
 fn snapshot_index_verifies_replays_and_refuses_updates() {
     let (_dir, conn) = initialized_conn();
-    conn.execute(
-        "INSERT INTO machine_state_snapshots VALUES (?1, '/a')",
-        params![[1u8; 32]],
-    )
-    .unwrap();
     let insert = "INSERT INTO epoch_snapshot_info VALUES (0, 0, ?1)
                   ON CONFLICT DO NOTHING";
     conn.execute(insert, params![[1u8; 32]]).unwrap();
@@ -246,23 +241,6 @@ fn snapshot_index_verifies_replays_and_refuses_updates() {
     );
     expect_abort(
         conn.execute("UPDATE epoch_snapshot_info SET input_number = 5", []),
-        "write-once",
-    );
-}
-
-#[test]
-fn cas_rows_pin_their_path() {
-    let (_dir, conn) = initialized_conn();
-    let insert = "INSERT INTO machine_state_snapshots VALUES (?1, ?2)
-                  ON CONFLICT DO NOTHING";
-    conn.execute(insert, params![[1u8; 32], "/a"]).unwrap();
-    conn.execute(insert, params![[1u8; 32], "/a"]).unwrap();
-    expect_abort(
-        conn.execute(insert, params![[1u8; 32], "/b"]),
-        "different path",
-    );
-    expect_abort(
-        conn.execute("UPDATE machine_state_snapshots SET file_path = '/c'", []),
         "write-once",
     );
 }
@@ -310,12 +288,11 @@ fn mutation_taxonomy_holds_at_source_level() {
     assert_eq!(
         delete_hits,
         vec![
-            ("advance.rs".to_string(), 2),
-            ("snapshots.rs".to_string(), 2)
+            ("advance.rs".to_string(), 1),
+            ("snapshots.rs".to_string(), 1)
         ],
-        "the GC paths are the only DELETEs: the old-epoch boundary and \
-         sling_nodes prunes in advance.rs; the unreferenced-snapshot sweep \
-         in the boundary store, and its test's fixture"
+        "the GC paths are the only DELETEs: the sling_nodes prune in \
+         advance.rs and the boundary release in the boundary store"
     );
 }
 

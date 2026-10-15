@@ -58,31 +58,22 @@ CREATE TABLE epoch_completion (
 ) WITHOUT ROWID;
 INSERT INTO epoch_completion (id, next_epoch) VALUES (1, 0);
 
-CREATE TABLE machine_state_snapshots (
-    state_hash  BLOB NOT NULL PRIMARY KEY,
-    file_path   TEXT NOT NULL
-);
-
+-- Snapshot boundaries: the machine before each input of an epoch, stored
+-- at snapshots/0x<state_hash> (paths are derived, never stored, so the
+-- data directory can move). Equal states share one directory.
 CREATE TABLE epoch_snapshot_info (
     epoch_number  INTEGER NOT NULL CHECK (epoch_number >= 0),
     input_number  INTEGER NOT NULL CHECK (input_number >= 0),
-    state_hash    BLOB NOT NULL,
+    state_hash    BLOB NOT NULL
+        CHECK (typeof(state_hash) = 'blob' AND length(state_hash) = 32),
 
-    PRIMARY KEY (epoch_number, input_number),
-
-    FOREIGN KEY (state_hash)
-        REFERENCES machine_state_snapshots (state_hash)
-        ON UPDATE CASCADE
-        ON DELETE RESTRICT
+    PRIMARY KEY (epoch_number, input_number)
 );
 
 -- Snapshot directory removal happens in Rust, strictly AFTER the
 -- transaction that unreferenced the rows commits (the GC deletes
--- return the orphaned paths). A trigger used to delete directories
--- mid-transaction, which inverted the crash invariant: a rollback or
--- a mid-statement crash restored rows whose directories were already
--- gone. The rule is: a crash may orphan a directory, never dangle a
--- row.
+-- return the orphaned hashes). A crash may orphan a directory, never
+-- dangle a row.
 
 -- The sling dispute schema: the quartet cache and its write-once
 -- configuration (sling/config.rs). This file is the only DDL path;
@@ -308,25 +299,4 @@ CREATE TRIGGER trg_epoch_snapshot_info_no_update
 BEFORE UPDATE ON epoch_snapshot_info
 BEGIN
     SELECT RAISE(ABORT, 'epoch_snapshot_info rows are write-once (prune-only)');
-END;
-
--- machine_state_snapshots: content-addressed store; the path is a
--- pure function of the hash, so a re-registration at a different
--- path is corruption.
-
-CREATE TRIGGER trg_snapshots_cas_immutable
-BEFORE INSERT ON machine_state_snapshots
-FOR EACH ROW
-WHEN EXISTS (
-    SELECT 1 FROM machine_state_snapshots
-    WHERE state_hash = NEW.state_hash AND file_path != NEW.file_path
-)
-BEGIN
-    SELECT RAISE(ABORT, 'content-addressed snapshot re-registered at a different path');
-END;
-
-CREATE TRIGGER trg_snapshots_no_update
-BEFORE UPDATE ON machine_state_snapshots
-BEGIN
-    SELECT RAISE(ABORT, 'machine_state_snapshots rows are write-once (prune-only)');
 END;

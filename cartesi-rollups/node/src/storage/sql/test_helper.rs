@@ -15,6 +15,7 @@ use cartesi_machine::{
         runtime::RuntimeConfig,
     },
 };
+use std::path::PathBuf;
 use tempfile::{TempDir, tempdir};
 
 /// A fully initialized Storage over a real (tiny) machine image: the
@@ -44,6 +45,14 @@ pub fn setup_storage_with(geometry: &TournamentGeometry) -> (TempDir, Storage) {
     )
     .unwrap();
     (state_dir_, storage)
+}
+
+/// A stand-in published snapshot for `hash`: an empty directory at its
+/// store path, enough for rows a test never loads.
+pub fn stub_snapshot(storage: &Storage, hash: &cartesi_machine::types::Hash) -> PathBuf {
+    let path = crate::storage::snapshots::snapshot_path(storage.state_dir(), hash);
+    std::fs::create_dir_all(&path).unwrap();
+    path
 }
 
 /// Presets a manual exception yield: the ordinary terminal state, from

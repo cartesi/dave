@@ -220,24 +220,24 @@ function Dave:root_commitment(epoch_index)
     return initial_state, commitment
 end
 
-local MACHINE_PATH_QUERY = SQLITE_DB .. [[ \
-'SELECT s.file_path FROM epoch_snapshot_info AS e
-JOIN machine_state_snapshots AS s ON s.state_hash = e.state_hash
-WHERE e.epoch_number = %d AND e.input_number = 0' 2>&1]]
+-- The node keeps an epoch's start at snapshots/0x<state hash>, in lowercase.
+local MACHINE_HASH_QUERY = SQLITE_DB .. [[ \
+'SELECT lower(hex(state_hash)) FROM epoch_snapshot_info
+WHERE epoch_number = %d AND input_number = 0' 2>&1]]
 function Dave:machine_path(epoch_index)
     local query = function()
         assert(epoch_exists(epoch_index), string.format("epoch %d not sealed yet", epoch_index))
 
-        local cmd = string.format(MACHINE_PATH_QUERY, epoch_index)
+        local cmd = string.format(MACHINE_HASH_QUERY, epoch_index)
         local handle = io.popen(cmd)
         assert(handle)
-        local path = handle:read()
+        local hash = handle:read()
         local tail = handle:read "*a"
         handle:close()
-        if path:find "Error" or tail:find "Error" then
-            error(string.format("Read machine path failed:\n%s", path))
+        if not hash or not hash:match "^%x+$" or #hash ~= 64 or tail:find "Error" then
+            error(string.format("Read machine hash failed:\n%s%s", tostring(hash), tail))
         end
-        return path
+        return "./" .. STATE_DIR .. "/snapshots/0x" .. hash
     end
 
     local path
