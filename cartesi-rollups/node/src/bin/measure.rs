@@ -236,17 +236,10 @@ fn bench_level0_fold(report: &mut String) -> Result<()> {
 }
 
 fn bench_snapshot(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
-    let (mut stf, load_template) =
-        timed(|| MachineStf::load(image, scratch(scratch_root, "snap-load")?, Hashing::Sampled))?;
+    let (mut stf, load_template) = timed(|| MachineStf::load(image, Hashing::Sampled))?;
     let store_path = scratch_root.join("stored-machine");
     let (_, store) = timed(|| stf.store(&store_path))?;
-    let (_, resume) = timed(|| {
-        MachineStf::resume(
-            &store_path,
-            scratch(scratch_root, "snap-resume")?,
-            Hashing::Sampled,
-        )
-    })?;
+    let (_, resume) = timed(|| MachineStf::resume(&store_path, Hashing::Sampled))?;
     let size_mb = dir_size(&store_path)? as f64 / (1024.0 * 1024.0);
 
     writeln!(report, "## Snapshot store and load")?;
@@ -418,8 +411,8 @@ fn free_space_kb(path: &Path) -> Result<u64> {
 /// the ustep+state_hash pair that leaf-level sampling pays per leaf.
 fn bench_atoms(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     let input = evm_advance_input(0, b"measure");
-    let mut stf = MachineStf::load(image, scratch(scratch_root, "atoms")?, Hashing::PerStep)?
-        .with_inputs(vec![input]);
+    let mut stf = MachineStf::load(image, Hashing::PerStep)?
+        .with_inputs(vec![input], scratch(scratch_root, "atoms")?);
 
     // Idle churn on the pristine yielded machine. Counts real usteps
     // (ustep is identity once the uarch halts, so drive whole cycles).
@@ -574,7 +567,7 @@ fn two_input_epoch(
         })
         .collect();
     storage.insert_consensus_data(0, rows.iter(), std::iter::empty())?;
-    DisputeSource::on_store(storage, 0, scratch(scratch_root, &format!("{tag}-work"))?)
+    DisputeSource::on_store(storage, 0)
 }
 
 /// Peak resident set size of this process so far.
@@ -718,12 +711,10 @@ impl ActiveMachine {
         let inputs: Vec<Vec<u8>> = (0..16)
             .map(|i| evm_advance_input(i, b"constants"))
             .collect();
-        let stf = MachineStf::load(
-            image,
+        let stf = MachineStf::load(image, hashing)?.with_inputs(
+            inputs.clone(),
             scratch(scratch_root, &format!("constants-{hashing:?}"))?,
-            hashing,
-        )?
-        .with_inputs(inputs.clone());
+        );
         let mut this = Self {
             stf,
             inputs,
@@ -1490,11 +1481,7 @@ mod versus {
     }
 
     fn node_join(state: &Path, base: U256, height: u64) -> Result<Value> {
-        let mut source = DisputeSource::on_store(
-            Storage::new(state)?,
-            EPOCH,
-            state.with_file_name("node-work"),
-        )?;
+        let mut source = DisputeSource::on_store(Storage::new(state)?, EPOCH)?;
         let level = LevelCoords::new(EPOCH, base, 0, height);
         let root = source.node(&level.root())?;
         source.children(&level.root())?;
@@ -1535,11 +1522,7 @@ mod versus {
     }
 
     fn node_proof(state: &Path, position: U256, pre: Digest, post: Digest) -> Result<Value> {
-        let mut source = DisputeSource::on_store(
-            Storage::new(state)?,
-            EPOCH,
-            state.with_file_name("node-work"),
-        )?;
+        let mut source = DisputeSource::on_store(Storage::new(state)?, EPOCH)?;
         let proof = source.prove_transition(position, pre, post)?;
         Ok(json!({ "proof_bytes": proof.len() }))
     }

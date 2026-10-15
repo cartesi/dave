@@ -19,7 +19,6 @@ use super::error::Result;
 use super::rollups_machine::RollupsMachine;
 use super::snapshots::{
     insert_snapshot_in, release_boundaries_in, remove_orphan_dirs, snapshot_path,
-    sweep_scratch_dirs_at_or_below,
 };
 use super::{Input, Settlement, Storage, rollups_machine};
 use crate::engine::Run;
@@ -261,7 +260,6 @@ impl Storage {
         if let Some(max_epoch) = self.read(collectable_epoch_in)? {
             let orphans = self.write(|tx| gc_old_epochs_in(tx, max_epoch))?;
             remove_orphan_dirs(&self.state_dir, &orphans);
-            sweep_scratch_dirs_at_or_below(&self.state_dir, max_epoch);
         }
         Ok(())
     }
@@ -1322,19 +1320,16 @@ mod tests {
         storage
             .insert_consensus_data(1, [].iter(), epochs.iter())
             .unwrap();
-        let scratch = storage.epoch_directory(0).unwrap();
         for _ in 0..3 {
             storage.roll_epoch().unwrap();
         }
         assert_eq!(storage.next_input_id().unwrap().epoch_number, 3);
         assert!(storage.snapshot_hash(0, 0).unwrap().is_some());
-        assert!(scratch.is_dir());
 
         storage.complete_epoch(0).unwrap();
         storage.advance_plan().unwrap();
         assert!(storage.snapshot_hash(0, 0).unwrap().is_none());
         assert!(storage.snapshot_hash(1, 0).unwrap().is_some());
-        assert!(!scratch.exists());
     }
 
     /// A seeded directory is never re-seeded: a restart neither imports the

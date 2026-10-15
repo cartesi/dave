@@ -171,7 +171,7 @@ the previous epoch. The signer's funding floor is in the
 [node architecture](node-architecture.md#mutation-scheduling-and-transaction-submission).
 
 Completion releases the old Hero before advancing the cursor. The machine
-runner then collects older snapshots and dispute scratch during its next plan,
+runner then collects older snapshots and dispute rows during its next plan,
 even when idle. It collects only epochs below both the completion cursor and
 its newest machine epoch. An incompatible schema needs a fresh data directory
 under the node's rebuild policy.

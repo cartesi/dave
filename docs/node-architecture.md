@@ -243,8 +243,6 @@ data_dir/
                       (the runner's boundaries and the disputes'); the
                       database stores hashes, never paths, so a stopped
                       node's directory may move
-  <epoch_number>/     per-epoch dispute scratch dir
-    engine/           engine machine work dirs
 ```
 
 The storage module follows the sequencer's shape: `open.rs` owns connections
@@ -347,11 +345,10 @@ remaining row names; their directories are removed only AFTER that
 transaction commits: a crash may orphan a directory, never dangle a row.
 
 The manager drops an epoch's Hero before recording completion. The runner
-collects released snapshots, dispute rows, and scratch directories while
-planning its next batch, including idle polls. It collects only epochs below
-both the completion cursor and its newest machine epoch. Neither chain
-progress nor manager catch-up can delete the runner's newest durable boundary;
-startup scratch cleanup uses the same bound.
+collects released snapshots and dispute rows while planning its next batch,
+including idle polls. It collects only epochs below both the completion cursor
+and its newest machine epoch. Neither chain progress nor manager catch-up can
+delete the runner's newest durable boundary.
 
 Directory removal is not serialized with publication, and need not be: with
 one process, a crossing never adopts a directory GC is removing. A Hero exists
@@ -387,9 +384,8 @@ One schema note to know about:
 - The dispute tables (`sling_config`, `sling_nodes`) live in the main
   database. The quartet cache is restartable state, and `Hero` opens its own
   connection to the same file (shared file, disjoint tables, private
-  connections). The per-epoch directory holds only scratch, the engine's
-  machine work directories; dispute positioning publishes boundaries into
-  the shared content-addressed store.
+  connections). Dispute positioning publishes boundaries into the shared
+  content-addressed store.
   Hero construction materializes nothing: `DisputeSource::on_store` reads the
   input count, the window-root quartet rows prepaid by the machine runner, and
   the final boundary hash. Below window granularity, disputes replay the

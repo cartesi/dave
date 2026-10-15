@@ -40,7 +40,6 @@ const SYNCHRONOUS_PRAGMA: &str = "FULL";
 /// advance-batch size: one commit per gap worth of inputs.
 pub const DEFAULT_SNAPSHOT_GAP_INPUTS: u64 = 64;
 
-/// Non-numeric, so the scratch sweep never takes it for an epoch.
 const LOCK_FILE: &str = "node.lock";
 
 /// One node process owns a state directory: a second one would sweep the
@@ -305,12 +304,6 @@ impl Storage {
         tx.commit()?;
         Ok(out)
     }
-
-    /// The per-epoch scratch directory (dispute logs and artifacts);
-    /// filesystem lifecycle, not SQL.
-    pub fn epoch_directory(&mut self, epoch_number: u64) -> Result<PathBuf> {
-        create_epoch_dir(&self.state_dir, epoch_number)
-    }
 }
 
 /// Writer connections: WAL, FULL sync, and a generous busy timeout
@@ -400,17 +393,6 @@ fn create_directory_structure(state_dir: &Path) -> Result<()> {
         .with_context(|| format!("creating `{}`", snapshots_path.display()))?;
 
     Ok(())
-}
-
-fn epoch_dir(state_dir: &Path, epoch_number: u64) -> PathBuf {
-    state_dir.join(epoch_number.to_string())
-}
-
-fn create_epoch_dir(state_dir: &Path, epoch_number: u64) -> Result<PathBuf> {
-    let path = epoch_dir(state_dir, epoch_number);
-    fs::create_dir_all(&path).with_context(|| format!("creating `{}`", path.display()))?;
-
-    Ok(path)
 }
 
 #[cfg(test)]

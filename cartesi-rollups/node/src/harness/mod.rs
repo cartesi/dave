@@ -499,14 +499,12 @@ impl World {
             "the node has not rolled epoch {}",
             epoch.epoch_number
         );
-        let engine_dir = state_dir.path().join("engine");
         let hero = Hero::with_tail(
             self.chain.clone(),
             epoch.root_tournament,
             epoch.block_created_number,
             storage,
             epoch.epoch_number,
-            engine_dir,
             tail,
         )?;
         Ok(Adversary {
@@ -544,11 +542,7 @@ pub(crate) struct Node {
 impl Node {
     fn start(world: &World, state_dir: TempDir) -> Result<Self> {
         // The startup ritual lib.rs runs before spawning the workers.
-        {
-            let mut storage = Storage::new(state_dir.path())?;
-            storage.sweep_settled_epoch_scratch()?;
-            storage.sweep_stale_staging()?;
-        }
+        Storage::new(state_dir.path())?.sweep_stale_staging()?;
         let reader =
             BlockchainReader::new(Storage::new(state_dir.path())?, world.book, Duration::ZERO);
         let runner = MachineRunner::new(

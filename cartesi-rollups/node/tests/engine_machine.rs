@@ -150,8 +150,7 @@ fn scratch() -> tempfile::TempDir {
 }
 
 fn template_hash(image: &Path) -> String {
-    let work = scratch();
-    let mut stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::Sampled).unwrap();
+    let mut stf = MachineStf::load(image, Hashing::Sampled).unwrap();
     stf.state_hash().unwrap().to_hex()
 }
 
@@ -279,12 +278,9 @@ fn engine_level_root(
         .iter()
         .map(|&collector| {
             let (state_dir, storage) = initialized_storage_under(image, inputs.clone(), geometry);
-            let work = scratch();
-            let mut source =
-                DisputeSource::on_store_with(storage, 0, work.path().to_path_buf(), collector)
-                    .unwrap();
+            let mut source = DisputeSource::on_store_with(storage, 0, collector).unwrap();
             let root = source.node(&level.root()).unwrap().to_hex();
-            drop((state_dir, work));
+            drop(state_dir);
             root
         })
         .collect();
@@ -616,11 +612,10 @@ fn prototype_commitment(
 /// A dispute source over a freshly initialized state dir: the epoch
 /// start is the only stored boundary, i.e. the template-replay
 /// behavior - until its own positioning densifies the store.
-fn machine_source(image: &Path) -> (Vec<tempfile::TempDir>, DisputeSource<Positioner>) {
+fn machine_source(image: &Path) -> (tempfile::TempDir, DisputeSource<Positioner>) {
     let (state_dir, storage) = initialized_storage(image);
-    let work = scratch();
-    let source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
-    (vec![state_dir, work], source)
+    let source = DisputeSource::on_store(storage, 0).unwrap();
+    (state_dir, source)
 }
 
 /// The increment-C differential: every query shape the Player sends
@@ -700,15 +695,14 @@ fn snapshot_resumed_source_matches_template_replay() {
     // boundary 0 (absorbed - the epoch start), feed(input 1) commits
     // boundary 1. The post-feed machine is discarded scratch.
     {
-        let work = scratch();
-        let stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled).unwrap();
-        let mut stf = stf.with_write_back(Storage::new(resumed_scratch[0].path()).unwrap(), 0, 0);
+        let stf = MachineStf::load(&image, Hashing::Sampled).unwrap();
+        let mut stf = stf.with_write_back(Storage::new(resumed_scratch.path()).unwrap(), 0, 0);
         stf.feed(0).unwrap();
         while stf.run_big(u64::MAX).unwrap() > 0 {}
         assert!(stf.yielded().unwrap());
         stf.feed(1).unwrap();
     }
-    let mut check = Storage::new(resumed_scratch[0].path()).unwrap();
+    let mut check = Storage::new(resumed_scratch.path()).unwrap();
     assert_eq!(check.nearest_boundary_at_or_before(0, 1).unwrap().0.0, 1);
 
     let level = LevelCoords::new(0, U256::from(1) << 68, 0, 20);
@@ -748,7 +742,7 @@ fn positioning_writes_back_crossed_boundaries() {
     let image = echo_image();
 
     let (guards, mut source) = machine_source(&image);
-    let mut storage = Storage::new(guards[0].path()).unwrap();
+    let mut storage = Storage::new(guards.path()).unwrap();
 
     // A fresh store has only the epoch start.
     let (floor, _) = storage.nearest_boundary_at_or_before(0, 1).unwrap();
@@ -779,9 +773,9 @@ fn idle_spans_are_periodic_and_ureset_restores_the_base() {
     let image = echo_image();
 
     let work = scratch();
-    let mut stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled)
+    let mut stf = MachineStf::load(&image, Hashing::Sampled)
         .unwrap()
-        .with_inputs(echo_inputs());
+        .with_inputs(echo_inputs(), work.path().to_path_buf());
     stf.feed(0).unwrap();
     while stf.run_big(u64::MAX).unwrap() > 0 {}
     assert!(stf.yielded().unwrap());
@@ -1180,8 +1174,7 @@ fn runner_settlement(
         .unwrap()
         .expect("the runner rolled the sealed epoch");
     let root = &geometry.levels()[0];
-    let work = scratch();
-    let served = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+    let served = DisputeSource::on_store(storage, 0)
         .unwrap()
         .node(&Quartet::level_root(0, root.log2_stride, root.height))
         .unwrap()
@@ -1268,8 +1261,7 @@ fn prove_transition_matches_prototype_get_logs() {
         // Both sides position independently from the template.
         // The state dir is a guard: storage lives inside it.
         let (_state_dir, storage) = initialized_storage(&image);
-        let work = scratch();
-        let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+        let mut source = DisputeSource::on_store(storage, 0).unwrap();
         let dir = scratch();
         let db = EpochData::new(inputs.clone(), dir.path().to_path_buf()).unwrap();
         let agree =
@@ -1297,9 +1289,9 @@ fn prove_transition_matches_prototype_get_logs() {
 /// (mirrors stf_revert's oracle-reported processing_bigs).
 fn yield_revert_closing_slot(image: &Path, inputs: &[Vec<u8>]) -> (Digest, U256) {
     let work = scratch();
-    let mut stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::Sampled)
+    let mut stf = MachineStf::load(image, Hashing::Sampled)
         .unwrap()
-        .with_inputs(inputs.to_vec());
+        .with_inputs(inputs.to_vec(), work.path().to_path_buf());
     let pre_feed = stf.state_hash().unwrap();
     stf.feed(0).unwrap();
     let bigs = stf.run_big(u64::MAX).unwrap();
@@ -1327,8 +1319,7 @@ fn revert_closing_slot_restores_the_checkpoint() {
     let inputs = yield_inputs();
 
     let (_state_dir, storage) = initialized_storage_with(&image, inputs.clone());
-    let work = scratch();
-    let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+    let mut source = DisputeSource::on_store(storage, 0).unwrap();
 
     let (pre_feed, closing) = yield_revert_closing_slot(&image, &inputs);
     let boundary = closing + U256::ONE;
@@ -1336,9 +1327,9 @@ fn revert_closing_slot_restores_the_checkpoint() {
     // The built leaf, through the plain path.
     let built = {
         let work = scratch();
-        let stf = MachineStf::load(&image, work.path().to_path_buf(), Hashing::Sampled)
+        let stf = MachineStf::load(&image, Hashing::Sampled)
             .unwrap()
-            .with_inputs(inputs.clone());
+            .with_inputs(inputs.clone(), work.path().to_path_buf());
         let mut ruler = Ruler::new(stf, structure, inputs.len() as u64);
         ruler.advance(closing).unwrap();
         let runs = ruler.collect(boundary, 0).unwrap();
@@ -1385,9 +1376,9 @@ fn node_witness(
 ) -> serde_json::Value {
     let (pre_state, post_state) = {
         let work = scratch();
-        let stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::Sampled)
+        let stf = MachineStf::load(image, Hashing::Sampled)
             .unwrap()
-            .with_inputs(inputs.to_vec());
+            .with_inputs(inputs.to_vec(), work.path().to_path_buf());
         let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
         ruler.advance(meta_cycle).unwrap();
         let pre_state = ruler.state_hash().unwrap();
@@ -1395,8 +1386,7 @@ fn node_witness(
         (pre_state, post_state)
     };
     let (state_dir, storage) = initialized_storage_with(image, inputs.to_vec());
-    let work = scratch();
-    let proof = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+    let proof = DisputeSource::on_store(storage, 0)
         .unwrap()
         .prove_transition(meta_cycle, pre_state, post_state)
         .unwrap();
@@ -1511,13 +1501,7 @@ fn positioning_resumes_from_the_nearest_gap_snapshot() {
         .unwrap();
     std::fs::rename(&start, state_dir.path().join("start-aside")).unwrap();
 
-    let work = scratch();
-    let mut source = DisputeSource::on_store(
-        Storage::new(state_dir.path()).unwrap(),
-        0,
-        work.path().to_path_buf(),
-    )
-    .unwrap();
+    let mut source = DisputeSource::on_store(Storage::new(state_dir.path()).unwrap(), 0).unwrap();
     let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(7), 0, 20);
     source.node(&level.root()).unwrap();
     assert_eq!(
@@ -1531,9 +1515,9 @@ fn positioning_resumes_from_the_nearest_gap_snapshot() {
 /// feeder: no storage, no crossing.
 fn scratch_quartet_root(image: &Path, inputs: &[Vec<u8>], level: &LevelCoords) -> Digest {
     let work = scratch();
-    let stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::PerStep)
+    let stf = MachineStf::load(image, Hashing::PerStep)
         .unwrap()
-        .with_inputs(inputs.to_vec());
+        .with_inputs(inputs.to_vec(), work.path().to_path_buf());
     let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
     ruler.advance(level.base_cycle).unwrap();
     let end = level.base_cycle + (U256::from(1) << level.height);
@@ -1585,15 +1569,10 @@ fn positioning_crosses_windows_on_clones() {
     assert_eq!(rows(&mut storage), [0, 4]);
 
     let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(3), 0, 20);
-    let work = scratch();
-    let root = DisputeSource::on_store(
-        Storage::new(state_dir.path()).unwrap(),
-        0,
-        work.path().to_path_buf(),
-    )
-    .unwrap()
-    .node(&level.root())
-    .unwrap();
+    let root = DisputeSource::on_store(Storage::new(state_dir.path()).unwrap(), 0)
+        .unwrap()
+        .node(&level.root())
+        .unwrap();
     assert_eq!(root, scratch_quartet_root(&image, &inputs, &level));
 
     assert_eq!(rows(&mut storage), [0, 3, 4]);
@@ -1623,8 +1602,7 @@ fn a_torn_revert_checkpoint_fails_loudly() {
     Machine::clone_stored(&start, &torn).unwrap();
 
     let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(3), 0, 20);
-    let work = scratch();
-    let _ = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+    let _ = DisputeSource::on_store(storage, 0)
         .unwrap()
         .node(&level.root());
 }
@@ -1638,8 +1616,7 @@ fn positioning_over_rejected_inputs_keeps_the_floor() {
     let inputs = encode_inputs(&[&b"zero"[..], b"one"]);
     let (state_dir, storage) = initialized_storage_with(&image, inputs.clone());
     let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(2), 0, 20);
-    let work = scratch();
-    let root = DisputeSource::on_store(storage, 0, work.path().to_path_buf())
+    let root = DisputeSource::on_store(storage, 0)
         .unwrap()
         .node(&level.root())
         .unwrap();
@@ -1675,13 +1652,11 @@ fn leaf_commitments_match_the_reference_cli() {
         let (image, inputs) = &epochs[case.program];
         for collector in [Collector::Bulk, Collector::Stepped] {
             let (state_dir, storage) = initialized_storage_with(image, inputs.clone());
-            let work = scratch();
-            let leaf =
-                DisputeSource::on_store_with(storage, 0, work.path().to_path_buf(), collector)
-                    .unwrap()
-                    .node(&case.level().root())
-                    .unwrap()
-                    .to_hex();
+            let leaf = DisputeSource::on_store_with(storage, 0, collector)
+                .unwrap()
+                .node(&case.level().root())
+                .unwrap()
+                .to_hex();
             drop(state_dir);
             assert_eq!(leaf, goldens[&case.key()], "{} {collector:?}", case.key());
             println!("{} {collector:?}: {leaf}", case.key());
@@ -1721,9 +1696,9 @@ fn bulk_and_stepped_leaf_runs_agree() {
         let end = level.base_cycle + (U256::from(1) << level.height);
         let [bulk, stepped] = [Collector::Bulk, Collector::Stepped].map(|collector| {
             let work = scratch();
-            let stf = MachineStf::load(image, work.path().to_path_buf(), Hashing::PerStep)
+            let stf = MachineStf::load(image, Hashing::PerStep)
                 .unwrap()
-                .with_inputs(inputs.clone())
+                .with_inputs(inputs.clone(), work.path().to_path_buf())
                 .with_collector(collector);
             let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
             ruler.advance(level.base_cycle).unwrap();
@@ -1928,8 +1903,7 @@ fn node_proof_vectors_hold() {
         settlement.get_or_insert(storage.settlement_info(0).unwrap().unwrap());
         let root = &geometry.levels()[0];
         let level = LevelCoords::new(0, U256::ZERO, root.log2_stride, root.height);
-        let work = scratch();
-        let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+        let mut source = DisputeSource::on_store(storage, 0).unwrap();
         let proof = source.prove_last(&level).unwrap();
         let root_hash = source.node(&level.root()).unwrap();
         commitments.insert(
@@ -1939,8 +1913,7 @@ fn node_proof_vectors_hold() {
     }
 
     let (state_dir, storage) = initialized_storage_with(&image, inputs);
-    let work = scratch();
-    let mut source = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+    let mut source = DisputeSource::on_store(storage, 0).unwrap();
     for (prefix, base, height) in [
         ("echo_leaf", U256::ZERO, 27),
         ("echo_two_level_leaf", U256::ONE << 44, 38),
@@ -1983,8 +1956,8 @@ fn node_proof_vectors_hold() {
 /// Recovery from a partially built level: a source that stored part of a
 /// level (rows commit per build, all or nothing) and wrote back the
 /// boundaries its positioning crossed is dropped between operations; a
-/// restarted source over the same state and work directories must serve
-/// the level exactly like a fresh store. A build stopped midway is
+/// restarted source over the same state directory must serve the level
+/// exactly like a fresh store. A build stopped midway is
 /// `a_stopped_build_resumes_after_its_stored_spans`; atomicity under
 /// injected failure is pinned by the storage tests, and process kills by
 /// the chaos e2e scenario. The level is
@@ -2002,11 +1975,10 @@ fn restarted_source_resumes_a_half_built_level() {
     let agree = fresh.prove_leaf(&level, mid).unwrap();
 
     let (state_dir, storage) = initialized_storage(&image);
-    let work = scratch();
     {
         // The killed process: the level's top stratum and one descent
         // along its left edge, so the stored rows are lopsided.
-        let mut killed = DisputeSource::on_store(storage, 0, work.path().to_path_buf()).unwrap();
+        let mut killed = DisputeSource::on_store(storage, 0).unwrap();
         killed.node(&level.root()).unwrap();
         killed.prove_leaf(&level, U256::ZERO).unwrap();
     }
@@ -2016,12 +1988,8 @@ fn restarted_source_resumes_a_half_built_level() {
         "the killed process wrote back boundary 1"
     );
 
-    let mut restarted = DisputeSource::on_store(
-        Storage::new(state_dir.path()).unwrap(),
-        0,
-        work.path().to_path_buf(),
-    )
-    .unwrap();
+    let mut restarted =
+        DisputeSource::on_store(Storage::new(state_dir.path()).unwrap(), 0).unwrap();
     assert_eq!(restarted.node(&level.root()).unwrap(), root, "root");
     let resumed = restarted.prove_last(&level).unwrap();
     assert_eq!(
@@ -2057,14 +2025,9 @@ fn a_stopped_build_resumes_after_its_stored_spans() {
     let agree = fresh.prove_leaf(&level, mid).unwrap();
 
     let (state_dir, _storage) = initialized_storage(&image);
-    let work = scratch();
     let source = |stopped: bool| {
-        let mut source = DisputeSource::on_store(
-            Storage::new(state_dir.path()).unwrap(),
-            0,
-            work.path().to_path_buf(),
-        )
-        .unwrap();
+        let mut source =
+            DisputeSource::on_store(Storage::new(state_dir.path()).unwrap(), 0).unwrap();
         if stopped {
             let shutdown = ShutdownSignal::default();
             shutdown.request();

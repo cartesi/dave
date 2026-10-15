@@ -413,11 +413,7 @@ mod tests {
         // the pinned stride: the Hero joins with one, staging asserts the
         // other.
         let state_dir = access.state_dir().to_owned();
-        let mut source = crate::engine::DisputeSource::on_store(
-            Storage::new(&state_dir)?,
-            0,
-            state_dir.join("facade-check"),
-        )?;
+        let mut source = crate::engine::DisputeSource::on_store(Storage::new(&state_dir)?, 0)?;
         let root = crate::engine::LevelCoords::new(
             0,
             alloy::primitives::U256::ZERO,

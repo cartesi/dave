@@ -524,40 +524,6 @@ pub(super) fn release_boundaries_in(tx: &Transaction, max_epoch: u64) -> Result<
     orphans.into_iter().map(blob_to_hash).collect()
 }
 
-impl Storage {
-    /// Startup cleanup uses the same manager and runner cursors as live GC;
-    /// chain progress alone does not release an unfinished epoch's scratch.
-    pub fn sweep_settled_epoch_scratch(&mut self) -> Result<()> {
-        if let Some(max_settled) = self.read(super::advance::collectable_epoch_in)? {
-            sweep_scratch_dirs_at_or_below(self.state_dir(), max_settled);
-        }
-        Ok(())
-    }
-}
-
-/// Best effort: a surviving scratch dir costs disk, never
-/// correctness, and the next sweep retries it.
-pub(super) fn sweep_scratch_dirs_at_or_below(state_dir: &Path, max_epoch: u64) {
-    let Ok(entries) = std::fs::read_dir(state_dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Some(epoch) = name.to_str().and_then(|s| s.parse::<u64>().ok()) else {
-            continue; // db, snapshots/, and anything else non-numeric
-        };
-        if epoch <= max_epoch
-            && let Err(e) = std::fs::remove_dir_all(entry.path())
-            && e.kind() != std::io::ErrorKind::NotFound
-        {
-            log::warn!(
-                "settled epoch scratch `{}` not removed: {e}",
-                entry.path().display()
-            );
-        }
-    }
-}
-
 /// Best-effort, strictly after the commit that unreferenced the rows:
 /// a failure leaves an orphan directory (harmless, re-adopted by a
 /// later identical store), never a row pointing at nothing.
@@ -788,26 +754,5 @@ mod tests {
         assert_eq!(orphans, expected);
         assert!(s.snapshot_hash(1, 0).unwrap().is_none());
         assert_eq!(s.snapshot_hash(2, 0).unwrap(), Some([1u8; 32]));
-    }
-
-    /// The scratch sweep takes numeric dirs at or below the settled
-    /// boundary and nothing else: newer epochs, the database, and the
-    /// snapshot store are untouchable.
-    #[test]
-    fn scratch_sweep_spares_live_epochs_and_non_epoch_entries() {
-        let dir = tempfile::tempdir().unwrap();
-        for name in ["0", "1", "2", "5", "snapshots"] {
-            std::fs::create_dir(dir.path().join(name)).unwrap();
-        }
-        std::fs::write(dir.path().join("db.sqlite3"), b"x").unwrap();
-
-        sweep_scratch_dirs_at_or_below(dir.path(), 2);
-
-        for gone in ["0", "1", "2"] {
-            assert!(!dir.path().join(gone).exists(), "{gone} should be swept");
-        }
-        for kept in ["5", "snapshots", "db.sqlite3"] {
-            assert!(dir.path().join(kept).exists(), "{kept} should survive");
-        }
     }
 }
