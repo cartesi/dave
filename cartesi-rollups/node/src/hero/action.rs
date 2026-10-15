@@ -1,9 +1,12 @@
 //! Fallible local fulfillment of one pure Hero intent.
 //!
-//! Preparation fulfills a decision against the same immutable context that
-//! produced it, derives every Merkle opening or machine witness, and returns
-//! one owned arena action. It performs no provider reads and sends no
-//! transaction. The join bond is resolved when the prepared join is submitted.
+//! An intent names where to act. Preparation reads the engaged match from
+//! the same immutable context that produced the intent, so a disagreement
+//! between them is a node bug and panics. It derives every Merkle opening or
+//! machine witness and returns one owned arena action. What it still checks
+//! is local material, against itself or against nodes the chain revealed.
+//! It performs no provider reads and sends no transaction. The join bond is
+//! resolved when the prepared join is submitted.
 
 use alloy::primitives::{Address, U256};
 use thiserror::Error;
@@ -14,18 +17,14 @@ use crate::{
     tournament::{
         MatchID,
         domain::{
-            BisectingMatch, Engagement, LiveMatchState, LocalCommitmentStanding, MatchSide,
-            SemanticSnapshot, TimeoutDisposition, TournamentStanding,
+            BisectingMatch, Engagement, LiveMatchState, LocalCommitmentStanding, SemanticSnapshot,
         },
     },
 };
 
 use super::{
     context::{HeroContext, LevelMaterial},
-    planner::{
-        AdvanceIntent, ChildIntent, HeroIntent, JoinIntent, ProofIntent, PropagationIntent,
-        SealIntent, TimeoutIntent,
-    },
+    planner::HeroIntent,
 };
 
 /// One completely local, owned action ready for the sender boundary.
@@ -86,43 +85,6 @@ pub enum PreparedArenaAction {
 
 #[derive(Debug, Error)]
 pub enum PrepareError {
-    #[error("Hero context does not contain tournament {tournament}")]
-    MissingSnapshot { tournament: Address },
-    #[error("Hero context does not contain local material for tournament {tournament}")]
-    MissingLevelMaterial { tournament: Address },
-    #[error("semantic and local-material descriptors disagree for tournament {tournament}")]
-    LevelDescriptorMismatch { tournament: Address },
-    #[error(
-        "commitment {observed} disagrees with local commitment {expected} in tournament {tournament}"
-    )]
-    CommitmentMismatch {
-        tournament: Address,
-        expected: Digest,
-        observed: Digest,
-    },
-    #[error("intent side {side:?} does not own commitment {commitment} in match {match_id_hash}")]
-    SideCommitmentMismatch {
-        match_id_hash: Digest,
-        commitment: Digest,
-        side: MatchSide,
-    },
-    #[error("{action} intent no longer matches the accepted state of tournament {tournament}")]
-    IntentStateMismatch {
-        action: &'static str,
-        tournament: Address,
-    },
-    #[error("{action} intent carries the wrong match in tournament {tournament}")]
-    MatchMismatch {
-        action: &'static str,
-        tournament: Address,
-    },
-    #[error("{action} intent carries the wrong local side in tournament {tournament}")]
-    SideMismatch {
-        action: &'static str,
-        tournament: Address,
-    },
-    #[error("child propagation provenance does not match the accepted context")]
-    PropagationProvenanceMismatch,
     #[error(
         "{action} root opening hashes to {observed}, not local root {expected}, in tournament {tournament}"
     )]
@@ -169,46 +131,70 @@ pub fn prepare<F: RulerFactory>(
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     match intent {
-        HeroIntent::Join(intent) => prepare_join(intent, context, source),
-        HeroIntent::ClaimTimeout(intent) => prepare_timeout(intent, context, source),
-        HeroIntent::Advance(intent) => prepare_advance(intent, context, source),
-        HeroIntent::SealLeaf(intent) => prepare_seal_leaf(intent, context, source),
-        HeroIntent::CreateChild(intent) => prepare_child(intent, context, source),
-        HeroIntent::ProveLeaf(intent) => prepare_leaf_proof(intent, context, source),
-        HeroIntent::PropagateChild(intent) => prepare_propagation(intent, context, source),
+        HeroIntent::Join(intent) => prepare_join(intent.tournament, context, source),
+        HeroIntent::ClaimTimeout(intent) => prepare_timeout(intent.tournament, context, source),
+        HeroIntent::Advance(intent) => prepare_advance(intent.tournament, context, source),
+        HeroIntent::SealLeaf(intent) => {
+            let tournament = intent.tournament;
+            let (match_id, left_leaf, right_leaf, agree_state_proof) =
+                prepare_seal("seal leaf", tournament, context, source)?;
+            Ok(PreparedArenaAction::SealLeaf {
+                tournament,
+                match_id,
+                left_leaf,
+                right_leaf,
+                agree_state_proof,
+            })
+        }
+        HeroIntent::CreateChild(intent) => {
+            let tournament = intent.tournament;
+            let (match_id, left_leaf, right_leaf, agree_state_proof) =
+                prepare_seal("create child", tournament, context, source)?;
+            Ok(PreparedArenaAction::CreateChild {
+                tournament,
+                match_id,
+                left_leaf,
+                right_leaf,
+                agree_state_proof,
+            })
+        }
+        HeroIntent::ProveLeaf(intent) => prepare_leaf_proof(intent.tournament, context, source),
+        HeroIntent::PropagateChild(intent) => {
+            let parent_tournament = intent.parent_tournament;
+            let (_, material) = level(context, parent_tournament);
+            let (left_node, right_node) =
+                root_children("propagate child", parent_tournament, material, source)?;
+            Ok(PreparedArenaAction::PropagateChild {
+                parent_tournament,
+                child_tournament: intent.child_tournament,
+                left_node,
+                right_node,
+            })
+        }
     }
 }
 
 fn prepare_join<F: RulerFactory>(
-    intent: JoinIntent,
+    tournament: Address,
     context: &HeroContext,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "join";
-    let (snapshot, material) = local_level(context, intent.tournament, intent.commitment)?;
-    if snapshot.local_standing() != LocalCommitmentStanding::NotJoined
-        || !snapshot.standing().accepts_joins()
-    {
-        return Err(PrepareError::IntentStateMismatch {
-            action: ACTION,
-            tournament: intent.tournament,
-        });
-    }
-
-    let (left_child, right_child) = root_children(ACTION, intent.tournament, material, source)?;
+    let (_, material) = level(context, tournament);
+    let (left_child, right_child) = root_children(ACTION, tournament, material, source)?;
     let proof_last = source
         .prove_last(material.coords())
-        .map_err(|source| source_error(ACTION, intent.tournament, source))?;
+        .map_err(|source| source_error(ACTION, tournament, source))?;
     let expected_position = (U256::from(1) << material.descriptor().height().get()) - U256::ONE;
     if proof_last.position != expected_position || !proof_last.verify_root(material.root()) {
         return Err(PrepareError::ProofRootMismatch {
             action: ACTION,
-            tournament: intent.tournament,
+            tournament,
         });
     }
 
     Ok(PreparedArenaAction::Join {
-        tournament: intent.tournament,
+        tournament,
         proof_last,
         left_child,
         right_child,
@@ -216,73 +202,49 @@ fn prepare_join<F: RulerFactory>(
 }
 
 fn prepare_timeout<F: RulerFactory>(
-    intent: TimeoutIntent,
+    tournament: Address,
     context: &HeroContext,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
-    const ACTION: &str = "claim timeout";
-    let (snapshot, material) = local_level(context, intent.tournament, intent.commitment)?;
-    let engagement = validate_engagement(
-        ACTION,
-        intent.tournament,
-        snapshot,
-        intent.match_id,
-        intent.commitment,
-        intent.survivor,
-    )?;
-    if engagement.live().timeout().winner() != Some((intent.survivor, intent.deferred_charge)) {
-        return Err(PrepareError::IntentStateMismatch {
-            action: ACTION,
-            tournament: intent.tournament,
-        });
-    }
-
-    let (left_node, right_node) = root_children(ACTION, intent.tournament, material, source)?;
+    let (snapshot, material) = level(context, tournament);
+    let (left_node, right_node) = root_children("claim timeout", tournament, material, source)?;
     Ok(PreparedArenaAction::ClaimTimeout {
-        tournament: intent.tournament,
-        match_id: intent.match_id,
+        tournament,
+        match_id: engagement(snapshot).match_id(),
         left_node,
         right_node,
     })
 }
 
 fn prepare_advance<F: RulerFactory>(
-    intent: AdvanceIntent,
+    tournament: Address,
     context: &HeroContext,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "advance";
-    let (snapshot, material) = context_level(context, intent.tournament)?;
-    let LocalCommitmentStanding::Engaged(engagement) = snapshot.local_standing() else {
-        return Err(PrepareError::IntentStateMismatch {
-            action: ACTION,
-            tournament: intent.tournament,
-        });
-    };
+    let (snapshot, material) = level(context, tournament);
+    let engagement = engagement(snapshot);
     let LiveMatchState::Bisecting(state) = engagement.live().state() else {
-        return Err(PrepareError::IntentStateMismatch {
-            action: ACTION,
-            tournament: intent.tournament,
-        });
+        unreachable!("an advance is planned only on a bisecting match");
     };
 
     let (left_node, right_node, selected) =
-        unresolved_opening(ACTION, intent.tournament, material, state, source)?;
+        unresolved_opening(ACTION, tournament, material, state, source)?;
     let (new_left_node, new_right_node) = source
         .children(&selected)
-        .map_err(|source| source_error(ACTION, intent.tournament, source))?;
+        .map_err(|source| source_error(ACTION, tournament, source))?;
     require_opening(
         ACTION,
-        intent.tournament,
+        tournament,
         source
             .node(&selected)
-            .map_err(|source| source_error(ACTION, intent.tournament, source))?,
+            .map_err(|source| source_error(ACTION, tournament, source))?,
         new_left_node,
         new_right_node,
     )?;
 
     Ok(PreparedArenaAction::Advance {
-        tournament: intent.tournament,
+        tournament,
         match_id: engagement.match_id(),
         left_node,
         right_node,
@@ -291,318 +253,123 @@ fn prepare_advance<F: RulerFactory>(
     })
 }
 
-fn prepare_seal_leaf<F: RulerFactory>(
-    intent: SealIntent,
-    context: &HeroContext,
-    source: &mut DisputeSource<F>,
-) -> PrepareResult<PreparedArenaAction> {
-    const ACTION: &str = "seal leaf";
-    let (left_leaf, right_leaf, agree_state_proof) =
-        prepare_seal_material(ACTION, &intent, context, source, false)?;
-    Ok(PreparedArenaAction::SealLeaf {
-        tournament: intent.tournament,
-        match_id: intent.match_id,
-        left_leaf,
-        right_leaf,
-        agree_state_proof,
-    })
-}
-
-fn prepare_child<F: RulerFactory>(
-    intent: ChildIntent,
-    context: &HeroContext,
-    source: &mut DisputeSource<F>,
-) -> PrepareResult<PreparedArenaAction> {
-    const ACTION: &str = "create child";
-    let seal = SealIntent {
-        tournament: intent.tournament,
-        match_id: intent.match_id,
-        commitment: intent.commitment,
-        side: intent.side,
-        match_state: intent.match_state,
-    };
-    let (left_leaf, right_leaf, agree_state_proof) =
-        prepare_seal_material(ACTION, &seal, context, source, true)?;
-    Ok(PreparedArenaAction::CreateChild {
-        tournament: intent.tournament,
-        match_id: intent.match_id,
-        left_leaf,
-        right_leaf,
-        agree_state_proof,
-    })
-}
-
-fn prepare_seal_material<F: RulerFactory>(
+/// The leaves under a ready match's contested node and the proof of the last
+/// state both sides agree on, shared by leaf sealing and child creation.
+fn prepare_seal<F: RulerFactory>(
     action: &'static str,
-    intent: &SealIntent,
+    tournament: Address,
     context: &HeroContext,
     source: &mut DisputeSource<F>,
-    child: bool,
-) -> PrepareResult<(Digest, Digest, MerkleProof)> {
-    let (snapshot, material) = local_level(context, intent.tournament, intent.commitment)?;
-    let engagement = validate_engagement(
-        action,
-        intent.tournament,
-        snapshot,
-        intent.match_id,
-        intent.commitment,
-        intent.side,
-    )?;
-    let expected_state = if child {
-        LiveMatchState::ReadyToDelegate(intent.match_state)
-    } else {
-        LiveMatchState::ReadyToSealLeaf(intent.match_state)
+) -> PrepareResult<(MatchID, Digest, Digest, MerkleProof)> {
+    let (snapshot, material) = level(context, tournament);
+    let engagement = engagement(snapshot);
+    let (LiveMatchState::ReadyToSealLeaf(state) | LiveMatchState::ReadyToDelegate(state)) =
+        engagement.live().state()
+    else {
+        unreachable!("a seal is planned only on a match ready to seal");
     };
-    if engagement.live().timeout() != TimeoutDisposition::None
-        || engagement.live().state() != expected_state
-        || intent.match_state.responder() != intent.side
-    {
-        return Err(PrepareError::IntentStateMismatch {
-            action,
-            tournament: intent.tournament,
-        });
-    }
 
     let contested = material
         .coords()
-        .node(1, intent.match_state.coordinate().leaf_position());
+        .node(1, state.coordinate().leaf_position());
     let observed_parent = source
         .node(&contested)
-        .map_err(|source| source_error(action, intent.tournament, source))?;
-    if observed_parent != intent.match_state.revealing_parent() {
+        .map_err(|source| source_error(action, tournament, source))?;
+    if observed_parent != state.revealing_parent() {
         return Err(PrepareError::RevealingParentMismatch {
             action,
-            tournament: intent.tournament,
-            expected: intent.match_state.revealing_parent(),
+            tournament,
+            expected: state.revealing_parent(),
             observed: observed_parent,
         });
     }
     let (left_leaf, right_leaf) = source
         .children(&contested)
-        .map_err(|source| source_error(action, intent.tournament, source))?;
-    require_opening(
-        action,
-        intent.tournament,
-        observed_parent,
-        left_leaf,
-        right_leaf,
-    )?;
+        .map_err(|source| source_error(action, tournament, source))?;
+    require_opening(action, tournament, observed_parent, left_leaf, right_leaf)?;
 
-    let waiting = intent.match_state.waiting_children();
+    let waiting = state.waiting_children();
     let left_diverges = left_leaf != waiting.left();
     let divergence_position = if left_diverges {
-        intent.match_state.coordinate().leaf_position()
+        state.coordinate().leaf_position()
     } else if right_leaf != waiting.right() {
-        intent.match_state.coordinate().leaf_position() + U256::ONE
+        state.coordinate().leaf_position() + U256::ONE
     } else {
-        return Err(PrepareError::NoDivergentBranch {
-            action,
-            tournament: intent.tournament,
-        });
+        return Err(PrepareError::NoDivergentBranch { action, tournament });
     };
 
     let agree_state_proof = if divergence_position.is_zero() {
         MerkleProof::leaf(material.descriptor().initial_hash(), U256::ZERO)
     } else {
-        source
-            .prove_leaf(material.coords(), divergence_position - U256::ONE)
-            .map_err(|source| source_error(action, intent.tournament, source))?
-    };
-    if divergence_position.is_zero() {
-        if agree_state_proof.node != material.descriptor().initial_hash()
-            || !agree_state_proof.siblings.is_empty()
-        {
-            return Err(PrepareError::ProofRootMismatch {
-                action,
-                tournament: intent.tournament,
-            });
-        }
-    } else {
-        let proof_mismatch = agree_state_proof.position != divergence_position - U256::ONE
-            || !agree_state_proof.verify_root(material.root());
-        let right_branch_mismatch = !left_diverges && agree_state_proof.node != left_leaf;
+        let agree_position = divergence_position - U256::ONE;
+        let proof = source
+            .prove_leaf(material.coords(), agree_position)
+            .map_err(|source| source_error(action, tournament, source))?;
+        let proof_mismatch =
+            proof.position != agree_position || !proof.verify_root(material.root());
+        let right_branch_mismatch = !left_diverges && proof.node != left_leaf;
         if proof_mismatch || right_branch_mismatch {
-            return Err(PrepareError::ProofRootMismatch {
-                action,
-                tournament: intent.tournament,
-            });
+            return Err(PrepareError::ProofRootMismatch { action, tournament });
         }
-    }
+        proof
+    };
 
-    Ok((left_leaf, right_leaf, agree_state_proof))
+    Ok((
+        engagement.match_id(),
+        left_leaf,
+        right_leaf,
+        agree_state_proof,
+    ))
 }
 
 fn prepare_leaf_proof<F: RulerFactory>(
-    intent: ProofIntent,
+    tournament: Address,
     context: &HeroContext,
     source: &mut DisputeSource<F>,
 ) -> PrepareResult<PreparedArenaAction> {
     const ACTION: &str = "prove leaf";
-    let (snapshot, material) = local_level(context, intent.tournament, intent.commitment)?;
-    let engagement = validate_engagement(
-        ACTION,
-        intent.tournament,
-        snapshot,
-        intent.match_id,
-        intent.commitment,
-        intent.side,
-    )?;
-    if engagement.live().timeout() != TimeoutDisposition::None
-        || engagement.live().state() != LiveMatchState::SealedLeaf(intent.match_state)
-    {
-        return Err(PrepareError::IntentStateMismatch {
-            action: ACTION,
-            tournament: intent.tournament,
-        });
-    }
+    let (snapshot, material) = level(context, tournament);
+    let engagement = engagement(snapshot);
+    let LiveMatchState::SealedLeaf(state) = engagement.live().state() else {
+        unreachable!("a leaf proof is planned only on a sealed leaf match");
+    };
 
-    let (left_node, right_node) = root_children(ACTION, intent.tournament, material, source)?;
-    let divergence = intent.match_state.divergence();
+    let (left_node, right_node) = root_children(ACTION, tournament, material, source)?;
+    let divergence = state.divergence();
     let proof = source
         .prove_transition(
             divergence.coordinate().cycle(),
             divergence.agree_state(),
-            divergence.final_state(intent.side),
+            divergence.final_state(engagement.local_side()),
         )
-        .map_err(|source| source_error(ACTION, intent.tournament, source))?;
+        .map_err(|source| source_error(ACTION, tournament, source))?;
 
     Ok(PreparedArenaAction::ProveLeaf {
-        tournament: intent.tournament,
-        match_id: intent.match_id,
+        tournament,
+        match_id: engagement.match_id(),
         left_node,
         right_node,
         proof,
     })
 }
 
-fn prepare_propagation<F: RulerFactory>(
-    intent: PropagationIntent,
-    context: &HeroContext,
-    source: &mut DisputeSource<F>,
-) -> PrepareResult<PreparedArenaAction> {
-    const ACTION: &str = "propagate child";
-    let child_snapshot =
-        context
-            .snapshot_at(intent.child_tournament)
-            .ok_or(PrepareError::MissingSnapshot {
-                tournament: intent.child_tournament,
-            })?;
-    let (parent_snapshot, parent_material) =
-        local_level(context, intent.parent_tournament, intent.parent_commitment)?;
-
-    let parent_link = child_snapshot
-        .parent()
-        .ok_or(PrepareError::PropagationProvenanceMismatch)?;
-    let winner = match child_snapshot.standing() {
-        TournamentStanding::InnerWinner(winner) => winner,
-        _ => return Err(PrepareError::PropagationProvenanceMismatch),
-    };
-    let parent_engagement = match parent_snapshot.local_standing() {
-        LocalCommitmentStanding::Engaged(engagement) => engagement,
-        _ => return Err(PrepareError::PropagationProvenanceMismatch),
-    };
-    let child_address = match parent_engagement.live().state() {
-        LiveMatchState::AwaitingChild(awaiting) => awaiting.child_tournament(),
-        _ => return Err(PrepareError::PropagationProvenanceMismatch),
-    };
-    let retained_child = parent_snapshot
-        .child()
-        .map(|child| child.descriptor().address());
-
-    if parent_link.parent_tournament() != intent.parent_tournament
-        || parent_link.parent_match() != intent.parent_match
-        || parent_link.parent_commitment() != intent.parent_commitment
-        || parent_link.parent_side() != intent.parent_side
-        || winner.parent_commitment() != intent.parent_commitment
-        || winner.child_commitment() != intent.child_winner
-        || parent_engagement.match_id() != intent.parent_match
-        || parent_engagement.local_side() != intent.parent_side
-        || intent.parent_side.commitment(intent.parent_match) != intent.parent_commitment
-        || child_address != intent.child_tournament
-        || retained_child != Some(intent.child_tournament)
-    {
-        return Err(PrepareError::PropagationProvenanceMismatch);
-    }
-
-    let (left_node, right_node) =
-        root_children(ACTION, intent.parent_tournament, parent_material, source)?;
-    Ok(PreparedArenaAction::PropagateChild {
-        parent_tournament: intent.parent_tournament,
-        child_tournament: intent.child_tournament,
-        left_node,
-        right_node,
-    })
-}
-
-fn local_level(
-    context: &HeroContext,
-    tournament: Address,
-    commitment: Digest,
-) -> PrepareResult<(&SemanticSnapshot, &LevelMaterial)> {
-    let (snapshot, material) = context_level(context, tournament)?;
-    let expected = snapshot.local_commitment();
-    if commitment != expected {
-        return Err(PrepareError::CommitmentMismatch {
-            tournament,
-            expected,
-            observed: commitment,
-        });
-    }
-    Ok((snapshot, material))
-}
-
-fn context_level(
-    context: &HeroContext,
-    tournament: Address,
-) -> PrepareResult<(&SemanticSnapshot, &LevelMaterial)> {
+/// The planned level. Assembly builds a snapshot and its material from one
+/// descriptor for every tournament on the path, and the intent names one.
+fn level(context: &HeroContext, tournament: Address) -> (&SemanticSnapshot, &LevelMaterial) {
     let snapshot = context
         .snapshot_at(tournament)
-        .ok_or(PrepareError::MissingSnapshot { tournament })?;
+        .expect("an intent names a tournament on the planned path");
     let material = context
         .level(&tournament)
-        .ok_or(PrepareError::MissingLevelMaterial { tournament })?;
-    if snapshot.descriptor() != material.descriptor()
-        || snapshot.descriptor().address() != tournament
-    {
-        return Err(PrepareError::LevelDescriptorMismatch { tournament });
-    }
-    let expected = snapshot.local_commitment();
-    if material.root() != expected {
-        return Err(PrepareError::CommitmentMismatch {
-            tournament,
-            expected,
-            observed: material.root(),
-        });
-    }
-    Ok((snapshot, material))
+        .expect("assembly builds material for every level on the path");
+    (snapshot, material)
 }
 
-fn validate_engagement(
-    action: &'static str,
-    tournament: Address,
-    snapshot: &SemanticSnapshot,
-    match_id: MatchID,
-    commitment: Digest,
-    side: MatchSide,
-) -> PrepareResult<Engagement> {
-    if side.commitment(match_id) != commitment {
-        return Err(PrepareError::SideCommitmentMismatch {
-            match_id_hash: match_id.hash(),
-            commitment,
-            side,
-        });
-    }
-    let engagement = match snapshot.local_standing() {
-        LocalCommitmentStanding::Engaged(engagement) => engagement,
-        _ => return Err(PrepareError::IntentStateMismatch { action, tournament }),
+fn engagement(snapshot: &SemanticSnapshot) -> Engagement {
+    let LocalCommitmentStanding::Engaged(engagement) = snapshot.local_standing() else {
+        unreachable!("a match action is planned only on an engaged level");
     };
-    if engagement.match_id() != match_id {
-        return Err(PrepareError::MatchMismatch { action, tournament });
-    }
-    if engagement.local_side() != side {
-        return Err(PrepareError::SideMismatch { action, tournament });
-    }
-    Ok(engagement)
+    engagement
 }
 
 fn root_children<F: RulerFactory>(
@@ -697,8 +464,9 @@ mod tests {
         },
         tournament::domain::{
             AwaitingChildMatch, BlockDuration, InnerWinner, JoinDisposition, LiveMatch,
-            MatchCoordinate, ParentLink, ReadyToSealMatch, SealedDivergence, SealedLeafMatch,
-            TournamentDescriptor, TournamentKind, WaitingChildren,
+            MatchCoordinate, MatchSide, ParentLink, ReadyToSealMatch, SealedDivergence,
+            SealedLeafMatch, TimeoutDisposition, TournamentDescriptor, TournamentKind,
+            TournamentStanding, WaitingChildren,
         },
     };
 
@@ -1136,32 +904,20 @@ mod tests {
     }
 
     #[test]
-    fn timeout_revalidates_both_match_orientations_and_exact_charge() {
+    fn timeout_prepares_both_match_orientations() {
         for side in [MatchSide::One, MatchSide::Two] {
             let mut fixture = timeout_fixture(side);
-            let intent = planned(&fixture.context);
-            let HeroIntent::ClaimTimeout(mut stale) = intent else {
-                panic!("timeout fixture must plan timeout");
-            };
-            stale.deferred_charge = BlockDuration::from_blocks(5);
-            assert!(matches!(
-                prepare(
-                    HeroIntent::ClaimTimeout(stale),
-                    &fixture.context,
-                    &mut fixture.source
-                ),
-                Err(PrepareError::IntentStateMismatch {
-                    action: "claim timeout",
-                    ..
-                })
-            ));
-
             let PreparedArenaAction::ClaimTimeout {
                 tournament,
                 match_id,
                 left_node,
                 right_node,
-            } = prepare(intent, &fixture.context, &mut fixture.source).unwrap()
+            } = prepare(
+                planned(&fixture.context),
+                &fixture.context,
+                &mut fixture.source,
+            )
+            .unwrap()
             else {
                 panic!("timeout intent must prepare timeout settlement");
             };
@@ -1349,40 +1105,26 @@ mod tests {
     }
 
     #[test]
-    fn child_propagation_revalidates_both_parent_orientations() {
+    fn child_propagation_prepares_both_parent_orientations() {
         for side in [MatchSide::One, MatchSide::Two] {
             let mut fixture = propagation_fixture(side);
-            let HeroIntent::PropagateChild(intent) = planned(&fixture.context) else {
-                panic!("finished child must plan propagation");
-            };
             let PreparedArenaAction::PropagateChild {
                 parent_tournament,
                 child_tournament,
                 left_node,
                 right_node,
             } = prepare(
-                HeroIntent::PropagateChild(intent),
+                planned(&fixture.context),
                 &fixture.context,
                 &mut fixture.source,
             )
             .unwrap()
             else {
-                panic!("propagation intent must prepare parent settlement");
+                panic!("a finished child must prepare parent settlement");
             };
             assert_eq!(parent_tournament, ROOT);
             assert_eq!(child_tournament, CHILD);
             assert_eq!(left_node.join(&right_node), fixture.commitment);
-
-            let mut stale = intent;
-            stale.child_winner = digest(0xfa);
-            assert!(matches!(
-                prepare(
-                    HeroIntent::PropagateChild(stale),
-                    &fixture.context,
-                    &mut fixture.source
-                ),
-                Err(PrepareError::PropagationProvenanceMismatch)
-            ));
         }
     }
 
@@ -1435,20 +1177,6 @@ mod tests {
                 action: "advance",
                 ..
             })
-        ));
-
-        let mut join = join_fixture();
-        let HeroIntent::Join(mut wrong_commitment) = planned(&join.context) else {
-            panic!("join fixture must plan join");
-        };
-        wrong_commitment.commitment = digest(0xfe);
-        assert!(matches!(
-            prepare(
-                HeroIntent::Join(wrong_commitment),
-                &join.context,
-                &mut join.source
-            ),
-            Err(PrepareError::CommitmentMismatch { .. })
         ));
     }
 }
