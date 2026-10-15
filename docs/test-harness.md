@@ -394,8 +394,10 @@ against settlement.
 - Hero policy, context assembly, fulfillment, dispatch, and GC are separate
   unit surfaces. Table-driven planner tests cover terminal, join, timeout,
   phase, and recursive-child decisions; action tests cover proof/opening
-  preparation; the recording sender proves that each prepared variant invokes
-  exactly one mutation. Cleanup and concurrent matches run against a chain in
+  preparation; the dispatch test runs the real request builders over a
+  recording provider, pinning each prepared variant's verb, selector and
+  target, and that the join's bond read, the only read, is pinned to the
+  action head. Cleanup and concurrent matches run against a chain in
   the node harness (`the_node_collects_an_abandoned_match`,
   `the_node_collects_an_abandoned_child_tournament`,
   `three_sybils_lose_and_the_node_recovers_its_bond_first`).
