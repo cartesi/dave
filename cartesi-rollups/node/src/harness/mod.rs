@@ -14,10 +14,8 @@
 //! errors, so honest correctness is asserted through outcomes on chain,
 //! not through tick results.
 //!
-//! The tests are ignored by plain cargo runs and run serially, in their own
-//! process, by `just test-node-harness`: the v0.21 emulator takes exclusive
-//! flocks on files it creates without close-on-exec, so an anvil spawned by
-//! a concurrent test inherits them and later machine loads fail.
+//! The tests are ignored by plain cargo runs and run in their own process by
+//! `just test-node-harness`.
 
 mod tests;
 

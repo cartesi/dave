@@ -203,15 +203,13 @@ test-engine-machine: bind
     {{ RAISE_OPEN_FILES }} cargo test -p cartesi-sling-node --test engine_machine -- \
       --ignored --skip computation_hash_corpus --skip reference_cli_goldens_hold
 
-# the node's workers against a deterministic anvil, serially (see
+# the node's workers against a deterministic anvil (see
 # cartesi-rollups/node/src/harness/mod.rs; needs the devnet bundle), with
-# every other test that spawns anvil: the emulator flocks machine files
-# without O_CLOEXEC, so an anvil spawned while another test stores a
-# machine keeps that machine locked
+# every other test that spawns anvil
 test-node-harness: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/devnet-fingerprint.sh verify
-    cargo test -p cartesi-sling-node --lib -- --ignored --test-threads 1 \
+    cargo test -p cartesi-sling-node --lib -- --ignored \
       harness:: blockchain_reader:: provider:: args::
 
 # eth_getLogs splitting against live providers, outside check and CI: export
