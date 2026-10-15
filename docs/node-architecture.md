@@ -145,8 +145,8 @@ level below its parent, on one of the parent's leaves; and every level's
 stride and height must match the pinned table, which tiles the machine
 coordinate.
 Nothing checks that the root's base cycle is 0; the trusted factory sets it.
-The observer's standing decoders likewise front its own `expect`s on
-candidate and parent-match data. The engine's asserts behind them
+The observer's standing decoder likewise fronts its own `expect` on
+parent-match data. The engine's asserts behind them
 (`LevelCoords`, `Quartet`, the ruler) are tripwires for node bugs, so a prune
 must keep these validators or first turn the asserts they front into errors.
 The settle asserts compare the local result with one block's views after the
