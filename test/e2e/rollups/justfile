@@ -14,6 +14,9 @@ preflight PROGRAM SCENARIO:
 # isolated parallel run (own anvil port, _state-<id>, dave-<id>.log,
 # anvil-<id>.log, _oracle-<id>); Dave:new resets the instance's own
 # state dir, so no recipe-level rm - it would race a parallel sibling.
+# An unattended macOS run is throttled by idle sleep (echo simple took
+# 1,669 s instead of 121 s, and stf_all hit its deadline), so on Darwin
+# the scenario holds the machine awake while it runs.
 # run one PRT rollups scenario: just test <program> <scenario>
 test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
   ANVIL_LOAD_PATH=`realpath {{ANVIL_LOAD_PATH}}` \
@@ -21,7 +24,7 @@ test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
   TEMPLATE_MACHINE_HASH=`cartesi-machine-stored-hash "../../../test/programs/$1/machine-image"` \
   DAVE_APP_FACTORY=`cat {{DEPLOYMENTS_DIR}}/DaveAppFactory.txt` \
   INPUT_BOX=`cat {{DEPLOYMENTS_DIR}}/InputBox.txt` \
-  lua5.4 "scenarios/$2.lua"
+  {{ if os() == "macos" { "caffeinate -ims" } else { "" } }} lua5.4 "scenarios/$2.lua"
 
 # The black-box smoke the in-crate harness (just test-node-harness) leaves to
 # e2e: the node as a process against Lua sybils, under real signals. CI runs
