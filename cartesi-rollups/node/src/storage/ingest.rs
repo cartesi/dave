@@ -3,8 +3,8 @@
 
 //! The blockchain reader's writer role: consensus data. One public
 //! operation - the tick's atomic append of watermark, inputs, and
-//! epochs. The Rust-side sequencing checks produce the typed errors;
-//! the schema triggers back them against raw writers.
+//! epochs. Its sequencing checks keep both logs dense and return
+//! typed errors.
 
 use super::error::{Result, StorageError};
 use super::{Epoch, Input, InputId, Storage};

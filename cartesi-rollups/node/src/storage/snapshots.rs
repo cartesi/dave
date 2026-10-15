@@ -13,8 +13,8 @@
 //! hash is its path), which is what makes registration idempotent:
 //! identical states dedup,
 //! store races are benign, and a recomputation that disagrees with
-//! its row fails loudly (write-once cell semantics, enforced by the
-//! schema triggers).
+//! its row fails loudly (write-once cell semantics, checked by
+//! insert_snapshot_in).
 //!
 //! Dispute-positioning reads are best-effort floors: any stored point
 //! at or before the target only shortens replays, so an unavailable
@@ -306,8 +306,8 @@ impl Storage {
     /// Registers the published machine `state_hash` names as the boundary
     /// before `input_number` of `epoch_number`, in its own transaction.
     /// Idempotent by the write-once cell: an identical registration
-    /// absorbs, a disagreeing hash fails loudly (schema triggers). Callers
-    /// never check before writing.
+    /// absorbs, a disagreeing hash panics. Callers never check before
+    /// writing.
     pub fn insert_boundary(
         &mut self,
         epoch_number: u64,
@@ -515,29 +515,40 @@ pub(super) fn snapshot_hash_in(
 // Row registration (transaction-level, for the writer roles)
 //
 
-/// Indexes a published machine as a boundary. An identical replay
-/// absorbs; the schema triggers abort a disagreeing hash.
+/// Indexes a published machine as a boundary: the write-once cell. An
+/// identical replay absorbs; a disagreeing hash is nondeterminism and
+/// panics, since the tick loops retry an error forever.
 pub(super) fn insert_snapshot_in(
     tx: &Transaction,
     epoch_number: u64,
     input_number: u64,
     state_hash: &Hash,
 ) -> Result<()> {
-    tx.prepare_cached(
-        r#"
+    let inserted = tx
+        .prepare_cached(
+            r#"
         INSERT INTO epoch_snapshot_info(epoch_number, input_number, state_hash)
         VALUES(?1, ?2, ?3)
         ON CONFLICT(epoch_number, input_number) DO NOTHING
         "#,
-    )
-    .map_err(anyhow::Error::from)?
-    .execute(params![
-        u64_to_i64(epoch_number),
-        u64_to_i64(input_number),
-        state_hash
-    ])
-    .map_err(anyhow::Error::from)?;
+        )
+        .map_err(anyhow::Error::from)?
+        .execute(params![
+            u64_to_i64(epoch_number),
+            u64_to_i64(input_number),
+            state_hash
+        ])
+        .map_err(anyhow::Error::from)?;
 
+    if inserted == 0 {
+        let stored = snapshot_hash_in(tx, epoch_number, input_number)?
+            .expect("conflicting boundary row exists by the conflict clause");
+        assert_eq!(
+            stored, *state_hash,
+            "snapshot boundary (epoch {epoch_number}, input {input_number}) disagrees with \
+             its stored row: nondeterminism or corruption"
+        );
+    }
     Ok(())
 }
 
@@ -663,7 +674,7 @@ mod tests {
     /// the write-once cell PANICS (the tick loops retry errors
     /// forever; only a panic reaches the node's loud exit).
     #[test]
-    #[should_panic(expected = "tripwire")]
+    #[should_panic(expected = "disagrees with its stored row")]
     fn insert_boundary_disagreement_panics() {
         let (_handle, mut s) = setup_storage();
 
@@ -714,7 +725,7 @@ mod tests {
     /// A divergent hash for a written boundary is nondeterminism (the
     /// cross-regime tripwire): PANIC, never a retryable error.
     #[test]
-    #[should_panic(expected = "tripwire")]
+    #[should_panic(expected = "disagrees with its stored row")]
     fn commit_boundary_machine_divergence_panics() {
         let (_handle, mut s) = setup_storage();
         let template = s.snapshot_dir(0, 0).unwrap().unwrap();
