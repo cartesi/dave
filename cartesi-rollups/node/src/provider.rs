@@ -415,7 +415,10 @@ impl TransactionLane {
         let mut reports = self.submit_wave(vec![(label.to_string(), request)]).await?;
         let report = reports.pop().expect("one request yields one report");
         ensure!(
-            report.verdict != SendVerdict::Failed,
+            !matches!(
+                report.verdict,
+                SendVerdict::Failed | SendVerdict::Unanswered
+            ),
             "failed to submit {} transaction {} at nonce {}",
             report.label,
             report.tx_hash,
@@ -668,11 +671,11 @@ pub struct SendReport {
     pub revert: Option<String>,
 }
 
-/// The pool's verdict on one send. Everything short of `Failed` is a
-/// healthy lane: submitted and pending, an identical transaction
-/// already pending, a pending transaction that outbids even the max-tip
-/// retry and so is includable at the current base fee, or a plan built
-/// on an observation inclusion already advanced past.
+/// The pool's verdict on one send. Everything but `Unanswered` and
+/// `Failed` is a healthy lane: submitted and pending, an identical
+/// transaction already pending, a pending transaction that outbids even the
+/// max-tip retry and so is includable at the current base fee, or a plan
+/// built on an observation inclusion already advanced past.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SendVerdict {
     Submitted,
@@ -682,6 +685,10 @@ pub enum SendVerdict {
     /// Not sent: the call reverts at latest. The report has a zero hash,
     /// and its nonce went to the next request.
     Reverts,
+    /// No JSON-RPC verdict: a timeout, a refused connection, an HTTP error
+    /// without a JSON-RPC body, or a rate limit that outlasted the resends.
+    /// The endpoint may hold the transaction; the next tick sends it again.
+    Unanswered,
     Failed,
 }
 
@@ -694,6 +701,8 @@ enum SubmissionErrorKind {
     /// bare "transaction underpriced") or a minimum tip (the same words on
     /// geth 1.13 and erigon). It takes the max-tip retry, then fails.
     Underpriced,
+    /// No JSON-RPC verdict ([`SendVerdict::Unanswered`]).
+    Unanswered,
     Other,
 }
 
@@ -734,6 +743,13 @@ fn judge(
                  the next tick replans"
             );
             SendVerdict::Stale
+        }
+        SubmissionErrorKind::Unanswered => {
+            warn!(
+                "{label} transaction {tx_hash} at nonce {nonce} got no answer from the \
+                 submit endpoint ({error}); the next tick sends it again"
+            );
+            SendVerdict::Unanswered
         }
         SubmissionErrorKind::Underpriced | SubmissionErrorKind::Other => {
             // Loud on purpose: a persistent rejection here (an underfunded
@@ -783,11 +799,17 @@ fn is_revert(error: &TransportError) -> bool {
 }
 
 fn classify_submission_error(error: &TransportError) -> SubmissionErrorKind {
-    let message = error
-        .as_error_resp()
-        .map(|payload| payload.message.as_ref())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
+    // A transport error carries no answer; any other error without a payload
+    // is an answer that is not a hash (a malformed or null result), from an
+    // endpoint to fix rather than wait out.
+    let Some(payload) = error.as_error_resp() else {
+        return if matches!(error, RpcError::Transport(_)) {
+            SubmissionErrorKind::Unanswered
+        } else {
+            SubmissionErrorKind::Other
+        };
+    };
+    let message = payload.message.to_ascii_lowercase();
     let known_transaction = message
         .strip_prefix("known transaction")
         .is_some_and(|suffix| {
@@ -1222,6 +1244,56 @@ mod tests {
             )),
             SubmissionErrorKind::Other
         );
+
+        // No JSON-RPC verdict: the endpoint may hold the transaction.
+        for unanswered in [
+            TransportErrorKind::custom_str("operation timed out"),
+            TransportErrorKind::http_error(403, "Forbidden".into()),
+            TransportErrorKind::custom_str("Max retries exceeded HTTP error 429"),
+        ] {
+            assert_eq!(
+                classify_submission_error(&unanswered),
+                SubmissionErrorKind::Unanswered,
+                "{unanswered}"
+            );
+        }
+        // An answer that is not a hash comes from an endpoint to fix.
+        let garbled = serde_json::from_str::<B256>("1").unwrap_err();
+        assert_eq!(
+            classify_submission_error(&TransportError::deser_err(garbled, "1")),
+            SubmissionErrorKind::Other
+        );
+    }
+
+    /// A submit endpoint that does not answer neither aborts the wave nor
+    /// shifts its nonces: every slot goes out, and the next tick sends them
+    /// again.
+    #[tokio::test]
+    async fn a_send_without_an_answer_keeps_the_wave() -> Result<()> {
+        const GWEI: u128 = 1_000_000_000;
+        let reads = Asserter::new();
+        let mut lane = TransactionLane::new(
+            ProviderBuilder::new()
+                .disable_recommended_fillers()
+                .connect_mocked_client(reads.clone())
+                .erased(),
+            rpc_provider(&"http://127.0.0.1:1".parse()?, NamedChain::Mainnet)?,
+            1,
+            EthereumWallet::from(PrivateKeySigner::random()),
+        );
+        reads.push_success(&U64::from(7));
+        reads.push_success(&fee_history(10 * GWEI, GWEI));
+        reads.push_success(&U256::MAX);
+
+        let reports = lane
+            .submit_wave(wave(&[("first", 0x11), ("second", 0x22)]))
+            .await?;
+        assert_eq!(
+            verdicts(&reports),
+            vec![(7, SendVerdict::Unanswered), (8, SendVerdict::Unanswered)]
+        );
+        assert!(reads.read_q().is_empty());
+        Ok(())
     }
 
     fn payment(to_byte: u8) -> TransactionRequest {

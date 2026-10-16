@@ -157,7 +157,11 @@ impl EpochManager {
                 let to = to.and_then(|kind| kind.to().copied()).unwrap_or_default();
                 let why = match &report.revert {
                     Some(reason) => format!("it reverts at latest: {reason}"),
-                    None => format!("last verdict {:?}", report.verdict),
+                    // The hash finds a held transaction on a relay's status page.
+                    None => format!(
+                        "last verdict {:?} for transaction {} at nonce {}",
+                        report.verdict, report.tx_hash, report.nonce
+                    ),
                 };
                 error!(
                     "{label} to {to} has been planned for {} min without landing ({why}): \
@@ -624,9 +628,10 @@ fn call_key((label, request): &LaneRequest) -> CallKey {
 /// it was first planned on consecutive ticks, and those planned for
 /// PAGE_AFTER or longer. Planning reads latest and drops a call once it
 /// lands, so a call planned tick after tick has not landed: it reverts at
-/// estimation, a relay holds or dropped it, it is outbid, or it mines
-/// without effect. A repeat or two is routine: inclusion takes a block or
-/// two, and another honest node's copy of a step can land first.
+/// estimation, the submit endpoint does not answer, a relay holds or dropped
+/// it, it is outbid, or it mines without effect. A repeat or two is routine:
+/// inclusion takes a block or two, and another honest node's copy of a step
+/// can land first.
 fn track_planned<'r>(
     previous: &[(CallKey, Instant)],
     calls: Vec<CallKey>,
