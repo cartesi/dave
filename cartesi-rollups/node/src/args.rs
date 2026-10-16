@@ -26,7 +26,6 @@ use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 use crate::provider::{TransactionLane, create_rpc_provider, create_signer, rpc_provider};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
-const ANVIL_URL: &str = "http://127.0.0.1:8545";
 const POLLING_INTERVAL: u64 = 30;
 
 /// One `tournamentParameters(level)` row: (levels, log2step, height).
@@ -204,7 +203,7 @@ pub struct PRTArgs {
     pub template_path: PathBuf,
 
     /// blockchain read gateway endpoint URL
-    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT", default_value = ANVIL_URL)]
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT")]
     pub blockchain_http_endpoint: Url,
 
     /// raw-transaction submission endpoint URL; defaults to the read gateway
@@ -212,7 +211,7 @@ pub struct PRTArgs {
     pub blockchain_http_submit_endpoint: Option<Url>,
 
     /// blockchain chain id
-    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_ID", default_value_t = ANVIL_CHAIN_ID)]
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_ID")]
     pub blockchain_id: u64,
 
     #[clap(subcommand)]
@@ -487,18 +486,43 @@ mod tests {
     use alloy::{node_bindings::Anvil, providers::ProviderBuilder};
     use std::path::Path;
 
-    /// The flags every start needs, then `rest`.
+    /// The flags every start needs.
+    const REQUIRED: [&str; 11] = [
+        "cartesi-sling-node",
+        "--app-address",
+        "0x0000000000000000000000000000000000000000",
+        "--template-path",
+        "/tmp/machine",
+        "--blockchain-http-endpoint",
+        "http://127.0.0.1:8545",
+        "--blockchain-id",
+        "31337",
+        "--data-dir",
+        "/tmp/state",
+    ];
+
+    /// [`REQUIRED`], then `rest`.
     fn parse(rest: &[&str]) -> std::result::Result<PRTArgs, clap::Error> {
-        let required = [
-            "cartesi-sling-node",
-            "--app-address",
-            "0x0000000000000000000000000000000000000000",
-            "--template-path",
-            "/tmp/machine",
-            "--data-dir",
-            "/tmp/state",
-        ];
-        PRTArgs::try_parse_from(required.iter().chain(rest))
+        PRTArgs::try_parse_from(REQUIRED.iter().chain(rest))
+    }
+
+    /// A production start never wants anvil's endpoint or chain.
+    #[test]
+    fn the_chain_flags_have_no_default() {
+        for flag in ["--blockchain-http-endpoint", "--blockchain-id"] {
+            let at = REQUIRED.iter().position(|arg| *arg == flag).unwrap();
+            let mut args = REQUIRED.to_vec();
+            args.drain(at..at + 2);
+            args.extend(["pk", "--auth-private-key-file", "/tmp/unread-by-the-parser"]);
+            let error = PRTArgs::try_parse_from(args)
+                .err()
+                .unwrap_or_else(|| panic!("a start without {flag} must not parse"));
+            assert_eq!(
+                error.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument
+            );
+            assert!(error.to_string().contains(flag), "{error}");
+        }
     }
 
     fn parse_with_snapshot_gap(gap: &str) -> std::result::Result<PRTArgs, clap::Error> {

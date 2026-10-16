@@ -33,9 +33,11 @@ local function start_dave_node(machine_path, app_address, db_path, sleep_duratio
         CARTESI_SLING_DATA_DIR='%s' CARTESI_SLING_AUTH_PRIVATE_KEY='%s' \
         RUST_BACKTRACE='%s' RUST_LOG='info',cartesi_sling_node='%s' \
         ../../../target/debug/cartesi-sling-node --polling-interval %s \
-        --snapshot-gap-inputs %d --blockchain-http-endpoint %s pk >> %s 2>&1]],
+        --snapshot-gap-inputs %d --blockchain-http-endpoint %s --blockchain-id %d \
+        pk >> %s 2>&1]],
         machine_path, app_address, db_path, blockchain_constants.node_pk, trace_level, verbosity,
-        sleep_duration, snapshot_gap, blockchain_constants.endpoint, DAVE_LOG
+        sleep_duration, snapshot_gap, blockchain_constants.endpoint, blockchain_constants.chain_id,
+        DAVE_LOG
     )
 
     local reader = io.popen(cmd)
