@@ -392,7 +392,7 @@ fn run_corpus_cli_case(
 /// release-package conformance, not a Dave differential: all mcycle and uarch
 /// cases, including nonzero exits and the no-hash failure, belong here.
 #[test]
-#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus"]
+#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus; run `just test-computation-hash-corpus-cli`"]
 fn computation_hash_corpus_cli_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
     let cli = corpus_cli();
@@ -508,7 +508,7 @@ fn refused_as_non_pristine(image: &Path) -> bool {
 /// template is out of model (docs/computation-hash.md). The node refuses
 /// that template at startup, and the test asserts the refusal.
 #[test]
-#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus"]
+#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus; run `just test-computation-hash-corpus-dave`"]
 fn computation_hash_corpus_dave_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
     let structure = Structure::PRODUCTION;
