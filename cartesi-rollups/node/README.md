@@ -264,9 +264,11 @@ Options:
   epoch, between disputes. Across an emulator archive change (v0.22 refuses archive 7) an
   older release's snapshot does not load: the first node of the new release
   replays from a template stored by that release, and the others seed from
-  it. The node takes the image's root from its stored hash tree, so take the
-  image from a source you trust like the template, such as your own node's
-  store.
+  it. The node takes the image's root from its stored hash tree and cannot
+  check that tree against the contents until an emulator release supports
+  hash-tree verification ([todo.md](../../docs/todo.md)), so until then take
+  the image from a source you trust like the template, such as your own
+  node's store.
 - To upgrade across a change that requires a fresh data directory, start the
   new node on a new directory with its own funded signer, let it catch up,
   then stop the old one; never wipe the only node's directory in place. The
