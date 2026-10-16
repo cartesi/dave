@@ -601,12 +601,7 @@ Root settlement implies every linked descendant has finished. Creating a child
 pauses the parent match's clocks, and resolving that match requires the child
 to finish; the same constraint applies recursively regardless of bond
 ownership. The `TOURNAMENT_RUNNING` check therefore adds no separate wait after
-finalized settlement, and recovery walks a settled epoch's tree only to its
-successor's seal, after which none of its tournaments creates a child: a
-catch-up over many settled epochs costs each epoch a walk of its own
-lifetime, not one to the head, behind a provider that caps log ranges. An
-epoch first walked while still unsettled (the manager ahead of a catching-up
-reader) still walks to the head once.
+finalized settlement.
 
 For the current epoch, each tick combines the Hero's action or one cleanup,
 an applicable settlement step, and every available bond recovery in one batch.

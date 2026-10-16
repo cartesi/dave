@@ -22,11 +22,8 @@
 //! tick walks only the newly finalized blocks. A tournament leaves it once
 //! it can no longer owe us a payment (recovered, without a winner, or
 //! another claimer's): any of those means it has finished, so it never
-//! creates another child. A settled epoch's tree is walked only to its
-//! successor's seal, after which none of its tournaments creates a child,
-//! so catching up over many settled epochs costs each a walk of its own
-//! lifetime, not one to the head. This scan runs before the tick's wave is
-//! sent, so its cost must not grow with the dispute's age or with the
+//! creates another child. This scan runs before the tick's wave is sent,
+//! so its cost must not grow with the dispute's age or with the
 //! tournaments an adversary has created and resolved.
 
 use alloy::primitives::Address;
@@ -107,17 +104,13 @@ impl RecoveryTree {
 
 /// Plan outstanding recoveries from finalized chain state, keeping `tree`
 /// for the next tick. Only finalized classifications may complete an
-/// epoch; mined payments suppress retries. The tree is walked through
-/// `walk_end`, a settled epoch's last block that can create a child, or
-/// through `finalized` when `None`; bonds are read at `finalized` either
-/// way.
+/// epoch; mined payments suppress retries.
 pub async fn plan_recovery(
     chain: &Chain,
     tree: &mut Option<RecoveryTree>,
     epoch: &Epoch,
     claimant: Address,
     finalized: ChainHead,
-    walk_end: Option<u64>,
 ) -> Result<RecoveryTick> {
     if epoch.block_created_number > finalized.number {
         return Ok(RecoveryTick {
@@ -130,8 +123,7 @@ pub async fn plan_recovery(
         Some(tree) if tree.epoch_number == epoch.epoch_number => tree,
         _ => tree.insert(RecoveryTree::new(epoch)),
     };
-    tree.walk_to(chain, walk_end.unwrap_or(finalized.number))
-        .await?;
+    tree.walk_to(chain, finalized.number).await?;
 
     let tournaments = tree.tournaments.clone();
     let recoveries = stream::iter(tournaments.into_iter().map(|address| async move {
@@ -344,7 +336,7 @@ mod tests {
         // recovered, but it is intentionally never queried here.
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, TOURNAMENT_RUNNING, Address::ZERO);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1, None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1)
             .await
             .unwrap();
         assert!(tick.wave.is_empty());
@@ -359,7 +351,7 @@ mod tests {
         asserter.push_success(&Some(block(latest)));
         push_bond(&asserter, RECOVERABLE, us);
 
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f2, None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f2)
             .await
             .unwrap();
         assert_eq!(tick.wave.len(), 1);
@@ -384,7 +376,7 @@ mod tests {
         push_bond(&asserter, RECOVERABLE, us);
         asserter.push_success(&Some(block(h1)));
         push_bond(&asserter, RECOVERED, Address::ZERO);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1, None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1)
             .await
             .unwrap();
         assert!(tick.wave.is_empty());
@@ -396,7 +388,7 @@ mod tests {
         asserter.push_success(&Some(block(h2)));
         push_bond(&asserter, RECOVERABLE, us);
 
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1, None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f1)
             .await
             .unwrap();
         assert_eq!(tick.wave.len(), 1);
@@ -405,7 +397,7 @@ mod tests {
 
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERED, Address::ZERO);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f2, None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, f2)
             .await
             .unwrap();
         assert!(tick.wave.is_empty());
@@ -436,7 +428,7 @@ mod tests {
             push_bond(&asserter, RECOVERABLE, us);
             push_bond(&asserter, RECOVERABLE, us);
 
-            let tick = plan_recovery(&chain, &mut tree, &epoch, us, finalized, None)
+            let tick = plan_recovery(&chain, &mut tree, &epoch, us, finalized)
                 .await
                 .unwrap();
             assert_eq!(tick.wave.len(), 2);
@@ -464,7 +456,7 @@ mod tests {
         push_bond(&asserter, RECOVERABLE, address(5));
         push_bond(&asserter, NO_WINNER, Address::ZERO);
 
-        let tick = plan_recovery(&chain, &mut None, &epoch, us, finalized, None)
+        let tick = plan_recovery(&chain, &mut None, &epoch, us, finalized)
             .await
             .unwrap();
         assert!(tick.wave.is_empty());
@@ -480,7 +472,7 @@ mod tests {
         for disposition in [TOURNAMENT_RUNNING, 9] {
             asserter.push_success(&Vec::<Log>::new());
             push_bond(&asserter, disposition, Address::ZERO);
-            let tick = plan_recovery(&chain, &mut None, &epoch, address(1), head(30, 0x30), None)
+            let tick = plan_recovery(&chain, &mut None, &epoch, address(1), head(30, 0x30))
                 .await
                 .unwrap();
             assert!(tick.wave.is_empty());
@@ -494,7 +486,7 @@ mod tests {
         let (chain, asserter) = mocked_chain();
         let epoch = epoch(9, address(2), 31);
 
-        let tick = plan_recovery(&chain, &mut None, &epoch, address(1), head(30, 0x30), None)
+        let tick = plan_recovery(&chain, &mut None, &epoch, address(1), head(30, 0x30))
             .await
             .unwrap();
         assert!(tick.wave.is_empty());
@@ -527,7 +519,7 @@ mod tests {
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, RECOVERED, Address::ZERO);
         push_bond(&asserter, TOURNAMENT_RUNNING, Address::ZERO);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(30, 0x30), None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(30, 0x30))
             .await
             .unwrap();
         assert!(!tick.complete);
@@ -536,7 +528,7 @@ mod tests {
         // child is walked over the new blocks and read again.
         asserter.push_success(&Vec::<Log>::new());
         push_bond(&asserter, NO_WINNER, Address::ZERO);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(40, 0x40), None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(40, 0x40))
             .await
             .unwrap();
         assert!(tick.complete);
@@ -544,46 +536,6 @@ mod tests {
         let (logs, calls) = requested(&requests);
         assert_eq!(logs, [(5, 30, 1), (5, 30, 1), (31, 40, 1)]);
         assert_eq!(calls, 3);
-        assert!(asserter.read_q().is_empty());
-    }
-
-    /// A settled epoch's tree is walked only to its successor's seal, and
-    /// only once: later ticks read its bonds at their finalized head but
-    /// walk nothing, however far finality moves.
-    #[tokio::test]
-    async fn a_settled_epoch_is_walked_only_to_its_successors_seal() {
-        let us = address(1);
-        let root = address(2);
-        let child = address(3);
-        let (provider, asserter, requests) = recording_provider();
-        let chain = Chain::new(provider);
-        let epoch = epoch(9, root, 10);
-        let mut tree = None;
-
-        asserter.push_success(&vec![child_log(root, child, head(15, 0x15))]);
-        asserter.push_success(&Vec::<Log>::new());
-        push_bond(&asserter, RECOVERED, Address::ZERO);
-        push_bond(&asserter, RECOVERABLE, us);
-        asserter.push_success(&Some(block(head(101, 0x01))));
-        push_bond(&asserter, RECOVERABLE, us);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(100, 0x10), Some(20))
-            .await
-            .unwrap();
-        assert_eq!(tick.wave.len(), 1);
-        assert_recovers(&tick.wave[0], child);
-
-        push_bond(&asserter, RECOVERABLE, us);
-        asserter.push_success(&Some(block(head(201, 0x02))));
-        push_bond(&asserter, RECOVERED, Address::ZERO);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(200, 0x20), Some(20))
-            .await
-            .unwrap();
-        assert!(tick.wave.is_empty(), "the payment already mined");
-        assert!(!tick.complete);
-
-        let (logs, calls) = requested(&requests);
-        assert_eq!(logs, [(10, 20, 1), (10, 20, 1)]);
-        assert_eq!(calls, 5);
         assert!(asserter.read_q().is_empty());
     }
 
@@ -606,7 +558,7 @@ mod tests {
         asserter.push_failure_msg("getLogs unavailable");
         asserter.push_failure_msg("getLogs unavailable");
         assert!(
-            plan_recovery(&chain, &mut tree, &epoch, us, head(30, 0x30), None)
+            plan_recovery(&chain, &mut tree, &epoch, us, head(30, 0x30))
                 .await
                 .is_err()
         );
@@ -620,7 +572,7 @@ mod tests {
         push_bond(&asserter, RECOVERED, Address::ZERO);
         push_bond(&asserter, NO_WINNER, Address::ZERO);
         push_bond(&asserter, TOURNAMENT_RUNNING, Address::ZERO);
-        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(30, 0x30), None)
+        let tick = plan_recovery(&chain, &mut tree, &epoch, us, head(30, 0x30))
             .await
             .unwrap();
         assert!(!tick.complete);
@@ -655,7 +607,6 @@ mod tests {
             &epoch(9, address(2), 5),
             us,
             head(30, 0x30),
-            None,
         )
         .await
         .unwrap();
@@ -669,7 +620,6 @@ mod tests {
             &epoch(10, address(4), 25),
             us,
             head(30, 0x30),
-            None,
         )
         .await
         .unwrap();
