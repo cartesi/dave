@@ -44,18 +44,23 @@ pub struct AddressBook {
     pub genesis_block_number: u64,
 }
 
+/// One line, as part of the startup config record (NodeConfig).
 impl fmt::Display for AddressBook {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "App Address: {}", self.app)?;
-        writeln!(f, "Consensus Address: {}", self.consensus)?;
-        writeln!(f, "Tournament Factory Address: {}", self.tournament_factory)?;
-        writeln!(f, "Input Box Address: {}", self.input_box)?;
-        writeln!(
+        write!(f, "App Address: {}", self.app)?;
+        write!(f, ", Consensus Address: {}", self.consensus)?;
+        write!(
             f,
-            "Initial Hash: 0x{}",
+            ", Tournament Factory Address: {}",
+            self.tournament_factory
+        )?;
+        write!(f, ", Input Box Address: {}", self.input_box)?;
+        write!(
+            f,
+            ", Initial Hash: 0x{}",
             alloy::hex::encode(self.initial_hash)
         )?;
-        writeln!(f, "Genesis Block Number: {}", self.genesis_block_number)?;
+        write!(f, ", Genesis Block Number: {}", self.genesis_block_number)?;
         Ok(())
     }
 }

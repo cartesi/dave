@@ -31,7 +31,7 @@ async fn main() -> ExitCode {
 
     let result = async {
         let config = NodeConfig::setup().await?;
-        info!("Running with config:\n{}", config);
+        info!("Running with config: {config}");
         run(config, ShutdownSignal::default()).await
     }
     .await;

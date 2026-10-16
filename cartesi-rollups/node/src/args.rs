@@ -308,13 +308,19 @@ pub struct NodeConfig {
     _state_lock: Arc<StateDirLock>,
 }
 
+/// One line: a line-oriented log pipeline splits a multi-line record into
+/// lines without a level.
 impl fmt::Display for NodeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.address_book)?;
-        writeln!(f, "Template path: {}", self.machine_path.display())?;
-        writeln!(f, "Signer address: {}", self.signer_address)?;
-        writeln!(f, "Chain Id: {} ({})", self.chain_id, self.chain_id as u64)?;
-        writeln!(f, "Ethereum read gateway: <redacted>")?;
+        write!(f, ", Template path: {}", self.machine_path.display())?;
+        write!(f, ", Signer address: {}", self.signer_address)?;
+        write!(
+            f,
+            ", Chain Id: {} ({})",
+            self.chain_id, self.chain_id as u64
+        )?;
+        write!(f, ", Ethereum read gateway: <redacted>")?;
         // The URLs stay redacted, but whether submissions have their own
         // endpoint (a revert-protecting relay) still shows.
         let submit_gateway = if self.ethereum_submit_gateway == self.ethereum_gateway {
@@ -322,14 +328,14 @@ impl fmt::Display for NodeConfig {
         } else {
             "<redacted>"
         };
-        writeln!(f, "Ethereum submit gateway: {submit_gateway}")?;
-        writeln!(f, "Data directory: {}", self.state_dir.display())?;
-        writeln!(
+        write!(f, ", Ethereum submit gateway: {submit_gateway}")?;
+        write!(f, ", Data directory: {}", self.state_dir.display())?;
+        write!(
             f,
-            "Polling interval: {} seconds",
+            ", Polling interval: {} seconds",
             self.sleep_duration.as_secs()
         )?;
-        write!(f, "Snapshot gap inputs: {}", self.snapshot_gap_inputs)?;
+        write!(f, ", Snapshot gap inputs: {}", self.snapshot_gap_inputs)?;
         Ok(())
     }
 }
@@ -781,6 +787,13 @@ mod tests {
         assert!(
             format!("{error:#}").contains("in use by another node process"),
             "unexpected error: {error:#}"
+        );
+
+        // The startup record: one line, the endpoint redacted.
+        let shown = config.to_string();
+        assert!(
+            !shown.contains('\n') && !shown.contains(&endpoint),
+            "{shown}"
         );
 
         // The restart path: the pinned directory reopens without a re-import.
