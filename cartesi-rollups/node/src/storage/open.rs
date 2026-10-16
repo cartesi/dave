@@ -124,6 +124,21 @@ impl Template {
         );
         let mut machine = Machine::load(path, &RuntimeConfig::quiet_console())
             .with_context(|| format!("failed to load template `{}`", path.display()))?;
+        // The root hash comes from the image's stored hash tree, which a load
+        // does not check against pages marked clean.
+        // TODO: uncomment after the emulator release that supports
+        // cm_verify_hash_tree (docs/todo.md), un-ignore its test below, and
+        // then drop the notes that say to trust the seed image's source (the
+        // node README's operator notes and docs/node-architecture.md's
+        // startup section).
+        // ensure!(
+        //     machine.verify_hash_tree()?,
+        //     Fatal::terminal(format!(
+        //         "--template-path `{}`: the image's stored hash tree does not match \
+        //          its contents (a corrupt or forged image); refusing it",
+        //         path.display()
+        //     ))
+        // );
         let hash = machine.root_hash()?;
         let config = machine.initial_config()?;
         // Under any other hash function the comparison below fails for that
@@ -572,6 +587,51 @@ mod tests {
             format!("{error:#}").contains("uses a Sha256 hash tree"),
             "unexpected error: {error:#}"
         );
+    }
+
+    /// A load takes the root hash from the stored tree on pages marked clean,
+    /// so contents edited behind a clean tree keep the old root.
+    #[test]
+    #[ignore = "enable with the commented-out cm_verify_hash_tree check in Template::inspect, \
+                after the emulator release that supports it (docs/todo.md)"]
+    fn template_inspection_refuses_a_stale_hash_tree() {
+        use std::os::unix::fs::FileExt;
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        // A shared load whose root hash is taken leaves the stored tree
+        // exact and every page clean.
+        let ram = {
+            let mut machine = Machine::load_with_sharing(
+                &template,
+                &RuntimeConfig::quiet_console(),
+                cartesi_machine::types::SharingMode::All,
+            )
+            .unwrap();
+            machine.root_hash().unwrap();
+            machine
+                .initial_config()
+                .unwrap()
+                .ram
+                .backing_store
+                .data_filename
+        };
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&ram)
+            .unwrap();
+        let mut bytes = [0; 32];
+        file.read_exact_at(&mut bytes, 0).unwrap();
+        file.write_all_at(&bytes.map(|byte| !byte), 0).unwrap();
+        drop(file);
+
+        let error = Template::inspect(&template).expect_err("a stale hash tree must be refused");
+        assert!(
+            format!("{error:#}").contains("stored hash tree does not match"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(crate::fatal::exit_code(&error), 30);
     }
 
     /// A read-only template seeds (cloning hard-links its files into the

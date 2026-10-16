@@ -43,6 +43,11 @@ carry no backlog (reviews/README.md).
   (computation-hash.md)
 - Track upstream PR #390 (new pristine uarch hash and proof format) as its own
   coordinated generation. (build-system.md)
+- On the emulator release that supports `cm_verify_hash_tree` (v0.22.0
+  documents it as for internal tests only): bump the emulator, uncomment the
+  check in `Template::inspect`, un-ignore its test, and drop the notes that
+  say to trust a seed image's source, since the node takes the image's root
+  from its stored hash tree. (node-architecture.md)
 
 ## Node
 

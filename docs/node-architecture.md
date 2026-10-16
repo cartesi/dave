@@ -52,8 +52,10 @@ a root allowance. Any other image is refused with exit 30, naming
 `snapshots/0x<hash>`, where every node working on epoch k keeps the state to
 take; a state settled after the sampled head is refused until its settlement
 finalizes, since the finalized-only reader could not execute its epoch
-anyway. The root hash comes from the image's stored hash tree, so a seed
-image is trusted like the template: take it from a store you trust. A
+anyway. The root hash comes from the image's stored hash tree, which the
+node cannot check against the contents until an emulator release supports
+hash-tree verification (todo.md tracks it), so until then a seed image is
+trusted like the template: take it from a store you trust. A
 matching image paused elsewhere is still refused: the engine starts every
 epoch from a state awaiting input, so the node could not defend any of its
 epochs (for a settled state this cannot happen, since staging requires the
