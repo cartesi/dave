@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use cartesi_sling_node::{args::NodeConfig, fatal, run, sync::ShutdownSignal};
+use cartesi_sling_node::{args::NodeConfig, fatal, run};
 
 use env_logger::Env;
 use log::{error, info};
@@ -32,7 +32,7 @@ async fn main() -> ExitCode {
     let result = async {
         let config = NodeConfig::setup().await?;
         info!("Running with config: {config}");
-        run(config, ShutdownSignal::default()).await
+        run(config).await
     }
     .await;
     match result {

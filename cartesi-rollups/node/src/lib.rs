@@ -54,10 +54,11 @@ use crate::sync::{ShutdownSignal, StopSignals};
 /// crash recovery exists to mop up. A worker that returns before
 /// shutdown was requested has stopped unexpectedly: silence is a
 /// failure, not a success.
-pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
+pub async fn run(config: NodeConfig) -> Result<()> {
     // Listening first, so a stop during the sweep or the spawns is caught
     // rather than taking the signal's default action.
     let mut stop_signals = StopSignals::listen().context("failed to listen for stop signals")?;
+    let shutdown = ShutdownSignal::default();
 
     // Startup hygiene, before any worker spawns: sweep the snapshot
     // store's staging leftovers a crash left behind. Grows into the
@@ -129,10 +130,7 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
         r = &mut epoch_manager => { finished.2 = true; Some(("epoch manager", r)) }
     };
 
-    // Evaluated before the request below: a worker exit under an
-    // externally requested shutdown is graceful, one before it is not.
-    let failure =
-        first_exit.and_then(|(name, joined)| worker_failure(name, joined, shutdown.is_requested()));
+    let failure = first_exit.map(|(name, joined)| worker_failure(name, joined));
     // Logged now, not only at exit: the drain can take an input's run.
     if let Some(e) = &failure {
         error!("{e:#}; stopping the other workers");
@@ -176,19 +174,13 @@ pub async fn run(config: NodeConfig, shutdown: ShutdownSignal) -> Result<()> {
     }
 }
 
-fn worker_failure(
-    name: &str,
-    joined: std::result::Result<Result<()>, JoinError>,
-    shutdown_requested: bool,
-) -> Option<anyhow::Error> {
+/// The first worker exit, which comes before any shutdown request, so even
+/// a clean return is a failure.
+fn worker_failure(name: &str, joined: std::result::Result<Result<()>, JoinError>) -> anyhow::Error {
     match joined {
-        Ok(Ok(())) if shutdown_requested => {
-            info!("{name} shutdown gracefully");
-            None
-        }
-        Ok(Ok(())) => Some(anyhow!("{name} stopped unexpectedly")),
-        Ok(Err(e)) => Some(e.context(format!("{name} failed"))),
-        Err(join_error) => Some(Panicked(format!("{name} panicked: {join_error}")).into()),
+        Ok(Ok(())) => anyhow!("{name} stopped unexpectedly"),
+        Ok(Err(e)) => e.context(format!("{name} failed")),
+        Err(join_error) => Panicked(format!("{name} panicked: {join_error}")).into(),
     }
 }
 
