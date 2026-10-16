@@ -74,9 +74,9 @@ invalid key, an endpoint on another chain, an address that is not a Dave
 application) are errors that name their flag too, and add no key material;
 no error quotes an endpoint's URL (RPC client). An unknown chain id and an
 endpoint on another chain are terminal (exit 30). Before any read above,
-startup asks each endpoint its chain, once: the workers build their clients
-without asking again. A submit endpoint that does not answer only warns,
-since reads and execution need no relay and its sends retry every tick. The
+startup asks each endpoint its chain, once, and one that does not answer
+fails the start (exit 1, which the supervisor retries): the workers build
+their clients without asking again. The
 initial hash comes from epoch 0's `EpochSealed` in the consensus's deployment
 block, which the consensus records as `block.number`: where that is not the log
 block coordinate (Arbitrum reports the parent chain's), the node cannot locate
