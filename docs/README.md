@@ -48,6 +48,11 @@ PRT contract engineering:
   - the maintained procedure for measuring action allocations and tracing their
   effects into bonds and deployment artifacts.
 
+Node operation:
+
+- [runbooks/submit-relay.md](runbooks/submit-relay.md) - what a submit relay
+  must do, the procedure that qualifies one, and its dated results.
+
 Historical internal reviews live under [reviews/](reviews/README.md). They preserve
 findings and evidence, but they are not current specifications or third-party
 assurance reports. The completed 2026-07 PRT campaign is archived at

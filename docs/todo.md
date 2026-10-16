@@ -54,10 +54,15 @@ carry no backlog (reviews/README.md).
   (dimensioning.md, prt-delay-bound.md)
 - Take the contracts' composition contract for the honest node
   (reviews/2026-10-13-prt-cyber-verification/HONEST-NODE-CONTRACT.md) as
-  the node campaign's brief: the revert-protecting endpoint as required,
-  superseding a pending transaction when intent changes, planning the
+  the node campaign's brief: the revert-protecting endpoint as required once
+  a relay passes runbooks/submit-relay.md, superseding a pending transaction
+  only if no relay operators use frees a held nonce within G, planning the
   timeout claim when the opponent's leaf clock cannot outlive the proof, and
   the two planner leads recorded there. (node-architecture.md)
+- Qualify Flashbots Protect (Sepolia; mainnet `/fast`) and MEV Blocker
+  `/noreverts` (mainnet) with a dedicated funded key, record the results and
+  update the node README's candidate list: no relay is measured yet.
+  (runbooks/submit-relay.md)
 
 ## Contracts and assurance
 

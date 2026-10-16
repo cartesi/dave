@@ -674,8 +674,9 @@ pub struct SendReport {
 /// The pool's verdict on one send. Everything but `Unanswered` and
 /// `Failed` is a healthy lane: submitted and pending, an identical
 /// transaction already pending, a pending transaction that outbids even the
-/// max-tip retry and so is includable at the current base fee, or a plan
-/// built on an observation inclusion already advanced past.
+/// max-tip retry (includable at the current base fee on a public pool; see
+/// [`replacement_fees`] behind a relay), or a plan built on an observation
+/// inclusion already advanced past.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SendVerdict {
     Submitted,
@@ -732,8 +733,8 @@ fn judge(
         }
         SubmissionErrorKind::ReplacementUnderpriced => {
             trace!(
-                "{label} at nonce {nonce} waits: the pending transaction \
-                 outbids the quote's max fee, so it is includable"
+                "{label} at nonce {nonce} waits behind a pending transaction \
+                 that outbids the quote's max fee"
             );
             SendVerdict::Underpriced
         }
@@ -774,7 +775,10 @@ fn reserve(gas_limit: u64, max_fee_per_gas: u128, value: U256) -> U256 {
 /// below the next base fee, at most 1.125 times the latest, while the
 /// quote's max fee is twice the latest, so the retry displaces it. A
 /// pending transaction that survives the retry has a fee cap above
-/// 1.8 times the latest base fee, so it is includable and is waited out.
+/// 1.8 times the latest base fee, so on a public pool it is includable and
+/// is waited out. Behind a revert-protecting relay, one that can no longer
+/// succeed is never included: it holds its nonce until the relay admits
+/// another transaction there or drops it (docs/node-architecture.md).
 fn replacement_fees(quote: Eip1559Estimation) -> Eip1559Estimation {
     Eip1559Estimation {
         max_fee_per_gas: quote.max_fee_per_gas,
