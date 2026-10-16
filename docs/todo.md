@@ -64,6 +64,10 @@ carry no backlog (reviews/README.md).
   only if no relay operators use frees a held nonce within G, planning the
   timeout claim when the opponent's leaf clock cannot outlive the proof, and
   the two planner leads recorded there. (node-architecture.md)
+- Once the branch that edits `args.rs` merges, one cleanup pull request for
+  the node's known debts, with args.rs's two `#[ignore]` reasons that still
+  blame the v0.21 lock leak and a test-harness.md line for
+  `harness/settled_start.rs`. (node-architecture.md, Known debts)
 - Qualify Flashbots Protect (default and `/fast`) and MEV Blocker
   `/noreverts` on mainnet with a small dedicated funded key, record the results and
   update the node README's candidate list: no relay is measured yet.
@@ -102,6 +106,10 @@ carry no backlog (reviews/README.md).
   string, which cannot tell the release from its pre-releases or from an
   unreleased upstream build.
   (test-harness.md)
+- A reader unit test for one log chunk carrying several seals around an
+  empty epoch: only the ignored anvil test crosses epochs, one block per
+  chunk, and a regression would misnumber inputs on every catch-up.
+  (node-architecture.md, Chain ingestion stance)
 - Optional: a steered divergence point for the harness's tail adversary, to
   dispute active spans in-process. (test-harness.md)
 - Release-candidate hardening: a harness test in which a terminal
@@ -134,3 +142,20 @@ carry no backlog (reviews/README.md).
   staging and sentries, and the branch is kept for its `ITask` genericity.
 - Open: the external audit's scope, firm and date, and whether R19 gates it
   (plans/audit-readiness.md).
+- Open: a torn snapshot's fallback crosses the windows above it through the
+  store's write-back, up to snapshot gap - 1 full machine stores: stop on a
+  torn boundary as corrupt local state instead, or keep the fallback and
+  document its disk bound. (node-architecture.md, Storage)
+- Open: whether the node compares its own latency with `G`: it drops
+  `responseBudget` at startup, so a poll, preparation or inclusion that
+  outgrows `G` draws on `C` silently. (dimensioning.md)
+- Open: decode the revert reason an overdue call's ERROR quotes against the
+  bindings' error enums; it quotes the raw RPC error, a custom error as hex.
+  (node-architecture.md, Mutation scheduling and transaction submission)
+- Open: whether AWS KMS signs deterministically. The lane re-signs a pending
+  slot every tick and expects the pool to answer already known, which only a
+  local key (RFC 6979) is tested for: one manual check against real KMS, then
+  a sentence in the lane paragraph. (node-architecture.md, Mutation
+  scheduling and transaction submission)
+- Open: a `--version` flag; the startup line, which names the release tag,
+  stands in for it. (node README, operator notes)

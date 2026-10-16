@@ -738,4 +738,27 @@ logs each action's preparation time, commitment builds included.
 
 ## Known debts
 
-None open. A new debt is listed here with the doc that owns its reasoning.
+A new debt is listed here with the doc that owns its reasoning. These are
+small, and wait for one cleanup pull request once another branch's edits to
+`args.rs` merge (todo.md, Node):
+
+- `--blockchain-id` must be a chain alloy names, but the name only sets a
+  client poll interval that no production path polls with. The `eth_chainId`
+  check is the guard, so the gate refuses unnamed chains for nothing.
+- The read endpoint and chain id default to anvil's, which a production
+  start never wants (the chain check makes a forgotten flag fail loudly).
+- `--auth-private-key` takes the key on the command line, where other local
+  users can read it from the process list; the README does not steer
+  operators to `--auth-private-key-file` or the environment.
+- `--aws-region` defaults to `us-east-1` and the node always passes an
+  explicit KMS endpoint, overriding the AWS SDK's own region and endpoint
+  resolution (a profile or instance region, FIPS endpoints, other
+  partitions).
+- `run` takes a `ShutdownSignal` that `main` always creates fresh, so
+  `worker_failure`'s requested-shutdown arm is dead outside tests.
+- `Chain::finalized_block_number` duplicates `finalized_head` without its
+  zero-hash check.
+- Every `Storage` handle carries `snapshot_gap_inputs`, which only the
+  runner uses.
+- An aspiration in `lib.rs`'s startup hygiene and history in `sync.rs`'s
+  module doc are comment noise.
