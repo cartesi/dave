@@ -41,12 +41,12 @@ use crate::{
         test_utils::{Deploy, deploy_app, program_path, spawn_anvil, wallet_provider},
     },
     chain::Chain,
-    engine::{Tail, TournamentGeometry},
+    engine::{EngineConfig, Tail, TournamentGeometry},
     epoch_manager::EpochManager,
     hero::Hero,
     machine_runner::MachineRunner,
     provider::{SendVerdict, TransactionLane},
-    storage::{Storage, Template},
+    storage::{Seed, Storage, Template},
     sync::ShutdownSignal,
 };
 
@@ -445,17 +445,22 @@ impl World {
     /// The honest node over a fresh state directory.
     pub async fn honest_node(&self) -> Result<Node> {
         let state_dir = tempfile::tempdir()?;
-        Storage::initialize(
-            state_dir.path(),
-            &Template::inspect(&program_path().join("machine-image"))?,
+        let seed = Seed {
+            image: Template::inspect(&program_path().join("machine-image"))?,
+            epoch: 0,
             // Anvil does not reorg, so a sample after discovery is as good.
-            self.book
+            watermark: self
+                .book
                 .initial_watermark(self.chain.finalized_block_number().await?),
+        };
+        let config = EngineConfig::for_deployment(
+            self.anvil.chain_id(),
             self.book.app,
             self.book.consensus,
-            self.anvil.chain_id(),
-            &self.geometry,
-        )?;
+            self.book.initial_hash,
+            self.geometry.clone(),
+        );
+        Storage::initialize(state_dir.path(), Some(&seed), &config)?;
         Node::start(self, state_dir)
     }
 

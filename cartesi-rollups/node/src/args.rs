@@ -3,9 +3,9 @@
 
 use crate::blockchain_reader::AddressBook;
 use crate::chain::Chain;
-use crate::engine::{Level, Structure, TournamentGeometry};
+use crate::engine::{EngineConfig, Level, Structure, TournamentGeometry};
 use crate::fatal::Fatal;
-use crate::storage::{StateDirLock, Storage, StorageError, Template};
+use crate::storage::{Seed, StateDirLock, Storage, StorageError, Template};
 use alloy::{
     network::EthereumWallet,
     primitives::{Address, B256},
@@ -356,10 +356,11 @@ impl NodeConfig {
     }
 
     /// Validates everything it can before the first local write: the
-    /// deployment, then the template against the chain's initial hash,
-    /// then, under the state-directory lock, the directory's pins. A refused
-    /// deployment or template creates nothing, and a refused pin leaves the
-    /// existing directory untouched.
+    /// deployment; then, unless a probe that creates nothing finds the data
+    /// directory seeded, the --template-path image against the chain; then,
+    /// under the state-directory lock, the directory's pins. A refused
+    /// deployment or image creates nothing, a refused pin leaves the existing
+    /// directory untouched, and a seeded directory never reads its image.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = named_chain(args.blockchain_id)?;
 
@@ -385,28 +386,43 @@ impl NodeConfig {
         let geometry =
             discover_deployed_tournament(address_book.tournament_factory, &provider).await?;
         log::info!("deployed tournament geometry (stride/height, top first): {geometry}");
-        let template = Template::inspect(&args.template_path).context("--template-path")?;
-        ensure!(
-            *template.hash() == address_book.initial_hash,
-            Fatal::terminal(format!(
-                "--template-path holds template {}, but application {} starts from {}: fix \
-                 --template-path, or check --app-address",
-                alloy::hex::encode_prefixed(template.hash()),
-                address_book.app,
-                alloy::hex::encode_prefixed(address_book.initial_hash),
-            ))
-        );
-        // The engine loads every epoch's initial state as a template awaiting
-        // input; from any other one the Hero would only warn every tick.
-        ensure!(
-            template.awaits_input(),
-            Fatal::terminal(format!(
-                "--template-path matches application {}'s template, but the template is not \
-                 paused at a manual accepted yield (awaiting input), so no epoch can start from \
-                 it: the deployed application's template is unusable for the node",
-                address_book.app,
-            ))
-        );
+        let seed = if Storage::is_seeded(&args.data_dir)
+            .context("could not open the data directory")?
+        {
+            log::info!(
+                "data directory `{}` is seeded; --template-path is not read",
+                args.data_dir.display()
+            );
+            None
+        } else {
+            let template = Template::inspect(&args.template_path).context("--template-path")?;
+            ensure!(
+                *template.hash() == address_book.initial_hash,
+                Fatal::terminal(format!(
+                    "--template-path holds template {}, but application {} starts from {}: fix \
+                     --template-path, or check --app-address",
+                    alloy::hex::encode_prefixed(template.hash()),
+                    address_book.app,
+                    alloy::hex::encode_prefixed(address_book.initial_hash),
+                ))
+            );
+            // The engine loads every epoch's initial state as a template awaiting
+            // input; from any other one the Hero would only warn every tick.
+            ensure!(
+                template.awaits_input(),
+                Fatal::terminal(format!(
+                    "--template-path matches application {}'s template, but the template is not \
+                     paused at a manual accepted yield (awaiting input), so no epoch can start from \
+                     it: the deployed application's template is unusable for the node",
+                    address_book.app,
+                ))
+            );
+            Some(Seed {
+                image: template,
+                epoch: 0,
+                watermark: address_book.initial_watermark(finalized),
+            })
+        };
         let ethereum_submit_gateway = args
             .blockchain_http_submit_endpoint
             .unwrap_or_else(|| args.blockchain_http_endpoint.clone());
@@ -420,12 +436,14 @@ impl NodeConfig {
         let state_lock = StateDirLock::acquire(&args.data_dir)?;
         let storage = Storage::initialize(
             &args.data_dir,
-            &template,
-            address_book.initial_watermark(finalized),
-            address_book.app,
-            address_book.consensus,
-            chain_id as u64,
-            &geometry,
+            seed.as_ref(),
+            &EngineConfig::for_deployment(
+                chain_id as u64,
+                address_book.app,
+                address_book.consensus,
+                address_book.initial_hash,
+                geometry,
+            ),
         )
         .context("could not open the data directory")?;
 
@@ -697,6 +715,8 @@ mod tests {
         // The restart path: the pinned directory reopens without a re-import.
         drop(config);
         NodeConfig::setup_with(args(&image)).await?;
+        // A seeded directory restarts without its image (COMP-3).
+        NodeConfig::setup_with(args(&dir.path().join("vanished"))).await?;
 
         // A new signer reopens the same directory: a previous signer's bonds
         // stay recoverable by anyone, so rotating keys needs no replay.

@@ -9,21 +9,19 @@
 use super::error::Result;
 use super::sql::schema;
 use crate::engine::constants::{UARCH_STATE_LOG2_SIZE, UARCH_STATE_START};
-use crate::engine::{EngineConfig, Structure, TournamentGeometry, config as sling_config};
+use crate::engine::{EngineConfig, config as sling_config};
 use crate::fatal::Fatal;
-use crate::merkle::Digest;
-use alloy::primitives::Address;
 use anyhow::{Context, ensure};
 use cartesi_machine::{
     config::{machine::HashFunctionType, runtime::RuntimeConfig},
-    format_emulator_version,
     machine::Machine,
     types::Hash,
 };
-use rusqlite::{Connection, Transaction, TransactionBehavior};
+use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 /// SQLite `synchronous` pragma for every connection. FULL, because a
@@ -88,9 +86,8 @@ pub struct Storage {
     pub(super) snapshot_gap_inputs: u64,
 }
 
-/// The operator's template image, inspected once per start through a private
-/// load that leaves the image untouched. Initialization stores it only into a
-/// fresh state directory; a seeded one compares its hash.
+/// The operator's machine image, inspected only to seed a new state
+/// directory, through a private load that leaves the image untouched.
 #[derive(Debug, Clone)]
 pub struct Template {
     path: PathBuf,
@@ -166,23 +163,66 @@ impl Template {
     }
 }
 
+/// What a new state directory starts from: the image of `epoch`'s start
+/// and the initial watermark, the last block ingestion treats as processed
+/// (below epoch 0's seal).
+#[derive(Debug, Clone)]
+pub struct Seed {
+    pub image: Template,
+    pub epoch: u64,
+    pub watermark: u64,
+}
+
 impl Storage {
+    /// Whether the state directory holds a seeded database, probed before
+    /// the lock without creating anything: startup reads its image only
+    /// when it does not. A database without a pin (a crash inside seeding)
+    /// is not seeded, so the next start seeds it and adopts the orphaned
+    /// clone. `initialize` decides again under the lock.
+    pub fn is_seeded(state_dir: &Path) -> Result<bool> {
+        let path = db_path(state_dir);
+        if !path
+            .try_exists()
+            .with_context(|| format!("probing `{}`", path.display()))?
+        {
+            return Ok(false);
+        }
+        // Read-write without create: a read-only open of a WAL database is
+        // fragile after a crash.
+        let connection = Connection::open_with_flags(
+            &path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        connection.busy_timeout(Duration::from_secs(10))?;
+        let has_pins: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema
+                           WHERE type = 'table' AND name = 'sling_config')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_pins {
+            return Ok(false);
+        }
+        // Names no column, so a store of another shape reaches the
+        // format refusal under the lock instead of an error here.
+        let pinned =
+            connection.query_row("SELECT EXISTS(SELECT 1 FROM sling_config)", [], |row| {
+                row.get(0)
+            })?;
+        Ok(pinned)
+    }
+
     /// Opens the state directory, creating and seeding it when it is new.
     /// A directory already pinned to an engine configuration is compared
     /// with this start's before anything is written, so a wrong flag leaves
-    /// it untouched: no watermark raise, no template import. A new one gets
-    /// the template stored (filesystem first), then one transaction for the
-    /// initial watermark (the last block treated as processed, below epoch
-    /// 0's seal), the epoch-0 boundary and the pin, so a pinned directory is
-    /// always a seeded one.
+    /// it untouched, and its image is never read again. A new one gets the
+    /// seed image stored (filesystem first), then one transaction for the
+    /// seed's watermark, its epoch's start boundary and the pin, so a pinned
+    /// directory is always a seeded one.
     pub fn initialize(
         state_dir: &Path,
-        template: &Template,
-        initial_watermark: u64,
-        app_address: Address,
-        consensus_address: Address,
-        chain_id: u64,
-        geometry: &TournamentGeometry,
+        seed: Option<&Seed>,
+        config: &EngineConfig,
     ) -> Result<Self> {
         create_directory_structure(state_dir)?;
         let state_dir = state_dir.canonicalize().map_err(anyhow::Error::from)?;
@@ -196,42 +236,53 @@ impl Storage {
             snapshot_gap_inputs: DEFAULT_SNAPSHOT_GAP_INPUTS,
         };
 
-        let config = EngineConfig {
-            structure: Structure::PRODUCTION,
-            chain_id,
-            app: app_address.as_slice().to_vec(),
-            consensus: consensus_address.as_slice().to_vec(),
-            template_hash: Digest::from(*template.hash()),
-            emulator_version: format_emulator_version(Machine::version()),
-            geometry: geometry.clone(),
-        };
-        match sling_config::stored(&storage.connection)? {
-            Some(pinned) => check_pinned(&storage.state_dir, &pinned, &config)?,
-            None => storage.seed(template, initial_watermark, &config)?,
+        match (sling_config::stored(&storage.connection)?, seed) {
+            (Some(pinned), seed) => {
+                check_pinned(&storage.state_dir, &pinned, config)?;
+                if seed.is_some() {
+                    log::info!(
+                        "data directory `{}` was seeded after the startup probe; the given \
+                         image is not used",
+                        storage.state_dir.display()
+                    );
+                }
+            }
+            (None, Some(seed)) => storage.seed(seed, config)?,
+            (None, None) => {
+                return Err(anyhow::anyhow!(
+                    "data directory `{}` lost its seed after the startup probe found one: \
+                     restart the node",
+                    storage.state_dir.display()
+                )
+                .into());
+            }
         }
 
         Ok(storage)
     }
 
-    fn seed(
-        &mut self,
-        template: &Template,
-        initial_watermark: u64,
-        config: &EngineConfig,
-    ) -> Result<()> {
+    fn seed(&mut self, seed: &Seed, config: &EngineConfig) -> Result<()> {
+        let image = &seed.image;
         // Clone the image into the store - no 500 MB re-serialization
         // through machine memory. Cross-filesystem imports degrade to a
         // sparse copy inside the clone. A crash before the commit below
         // orphans the directory, which the next seed adopts.
-        let working = self.checkout(template.path())?;
-        self.commit_clone(working, template.hash())?;
+        let working = self.checkout(image.path())?;
+        self.commit_clone(working, image.hash())?;
 
         self.write(|tx| {
-            super::ingest::raise_watermark_in(tx, initial_watermark)?;
-            super::snapshots::insert_snapshot_in(tx, 0, 0, template.hash())?;
+            super::ingest::raise_watermark_in(tx, seed.watermark)?;
+            super::snapshots::insert_snapshot_in(tx, seed.epoch, 0, image.hash())?;
             sling_config::pin(tx, config)?;
             Ok(())
-        })
+        })?;
+        log::info!(
+            "seeded data directory `{}` at epoch {} from image {}",
+            self.state_dir.display(),
+            seed.epoch,
+            alloy::hex::encode_prefixed(image.hash()),
+        );
+        Ok(())
     }
 
     /// A writer handle onto an already-initialized database. One
@@ -326,9 +377,10 @@ fn configure_writer_pragmas(connection: &Connection) -> Result<()> {
 // State directory layout
 //
 
-/// The template was already checked against the chain, so a pinned one that
-/// differs means the directory is not this deployment's: a foreign or old one.
-/// App and chain mismatches are likelier a wrong flag.
+/// Both initial hashes are the deployment's, read from chain, so with the
+/// same app and chain a differing one means the directory is another
+/// deployment's: an old one at the same addresses. App and chain mismatches
+/// are likelier a wrong flag.
 fn check_pinned(
     state_dir: &Path,
     pinned: &EngineConfig,
@@ -355,10 +407,12 @@ fn check_pinned(
     ensure!(
         pinned.template_hash == given.template_hash,
         Fatal::terminal(format!(
-            "data directory `{dir}` was seeded from template {}, but the given template is \
-             {}: the directory belongs to another deployment or is an old one; use another \
-             --data-dir or wipe it",
-            pinned.template_hash, given.template_hash,
+            "data directory `{dir}` belongs to a deployment starting from {}, but application \
+             {} on this chain starts from {}: the directory is another deployment's or an old \
+             one (a redeployment at the same addresses); use another --data-dir or wipe it",
+            pinned.template_hash,
+            alloy::hex::encode_prefixed(&given.app),
+            given.template_hash,
         ))
     );
     ensure!(
@@ -398,7 +452,9 @@ fn create_directory_structure(state_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::TournamentGeometry;
     use crate::storage::sql::test_helper::{store_template, yield_exception};
+    use alloy::primitives::Address;
     use cartesi_machine::cartesi_machine_sys::CM_REG_UARCH_PC;
 
     #[test]
@@ -480,6 +536,18 @@ mod tests {
         );
     }
 
+    fn config(app: Address, chain_id: u64, initial_hash: Hash) -> EngineConfig {
+        EngineConfig::for_deployment(
+            chain_id,
+            app,
+            Address::ZERO,
+            initial_hash,
+            TournamentGeometry::two_level(),
+        )
+    }
+
+    /// Opens `state_dir`, seeding it at epoch 0 from `template` when new;
+    /// the template stands for the deployment's initial state.
     fn initialize_at(
         state_dir: &Path,
         template: &Path,
@@ -487,21 +555,76 @@ mod tests {
         app: Address,
         chain_id: u64,
     ) -> Result<Storage> {
-        Storage::initialize(
-            state_dir,
-            &Template::inspect(template).unwrap(),
-            initial_watermark,
-            app,
-            Address::ZERO,
-            chain_id,
-            &TournamentGeometry::two_level(),
-        )
+        let image = Template::inspect(template).unwrap();
+        let config = config(app, chain_id, *image.hash());
+        let seed = Seed {
+            image,
+            epoch: 0,
+            watermark: initial_watermark,
+        };
+        Storage::initialize(state_dir, Some(&seed), &config)
     }
 
-    /// The template matched the chain before initialization, so a pinned
-    /// one that differs is a foreign or old directory, not a wrong flag.
     #[test]
-    fn a_different_template_on_a_pinned_dir_is_an_error() {
+    fn the_probe_finds_only_a_seeded_directory_and_creates_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_dir = dir.path().join("state");
+        assert!(!Storage::is_seeded(&state_dir).unwrap());
+        assert!(
+            !state_dir.exists(),
+            "the probe must not create the directory"
+        );
+
+        // A crash between schema creation and the seed's commit.
+        fs::create_dir(&state_dir).unwrap();
+        schema::initialize(&Connection::open(db_path(&state_dir)).unwrap()).unwrap();
+        assert!(!Storage::is_seeded(&state_dir).unwrap());
+
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
+        assert!(Storage::is_seeded(&state_dir).unwrap());
+    }
+
+    /// A seeded directory never reads its image again (COMP-3).
+    #[test]
+    fn a_seeded_directory_reopens_without_its_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        let state_dir = dir.path().join("state");
+        let hash = *Template::inspect(&template).unwrap().hash();
+        initialize_at(&state_dir, &template, 1000, Address::ZERO, 1).unwrap();
+        fs::remove_dir_all(&template).unwrap();
+
+        let mut storage =
+            Storage::initialize(&state_dir, None, &config(Address::ZERO, 1, hash)).unwrap();
+        assert_eq!(storage.latest_processed_block().unwrap(), 1000);
+        assert_eq!(storage.snapshot_hash(0, 0).unwrap(), Some(hash));
+    }
+
+    /// The probe found a seed the locked open does not: another process
+    /// raced it, so the start fails and a restart seeds.
+    #[test]
+    fn an_unseeded_directory_needs_a_seed() {
+        let dir = tempfile::tempdir().unwrap();
+        let error = Storage::initialize(
+            &dir.path().join("state"),
+            None,
+            &config(Address::ZERO, 1, [0; 32]),
+        )
+        .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("lost its seed"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(crate::fatal::exit_code(&error.into()), 1);
+    }
+
+    /// Both hashes come from chain, so a pinned one that differs is another
+    /// deployment's directory, not a wrong flag; nothing is written.
+    #[test]
+    fn another_deployment_on_a_pinned_dir_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let (first, second) = (dir.path().join("first"), dir.path().join("second"));
         store_template(&first, |_| {});
@@ -511,20 +634,19 @@ mod tests {
                 .unwrap();
         });
         let state_dir = dir.path().join("state");
-        initialize_at(&state_dir, &first, 0, Address::ZERO, 1).unwrap();
+        let mut storage = initialize_at(&state_dir, &first, 0, Address::ZERO, 1).unwrap();
 
-        let error = initialize_at(&state_dir, &second, 0, Address::ZERO, 1).unwrap_err();
+        // A nonzero watermark, so a stray seed would show.
+        let error = initialize_at(&state_dir, &second, 1000, Address::ZERO, 1).unwrap_err();
         assert!(
             format!("{error:#}").contains("--data-dir"),
             "unexpected error: {error:#}"
         );
         assert_eq!(crate::fatal::exit_code(&error.into()), 30);
+        assert_eq!(storage.latest_processed_block().unwrap(), 0);
         let second_hash = Template::inspect(&second).unwrap().hash;
         let imported = snapshots_path(&state_dir).join(format!("0x{}", hex::encode(second_hash)));
-        assert!(
-            !imported.exists(),
-            "a refused template must not be imported"
-        );
+        assert!(!imported.exists(), "a refused image must not be imported");
     }
 
     #[test]
@@ -573,7 +695,7 @@ mod tests {
         assert_eq!(storage.latest_processed_block().unwrap(), 0);
     }
 
-    /// Drift in the pinned row past app, chain and template (here the
+    /// Drift in the pinned row past app, chain and initial hash (here the
     /// consensus or the geometry) asks for a rebuild, and writes nothing
     /// first. The emulator is linked, so a test cannot drift it.
     #[test]
@@ -588,17 +710,16 @@ mod tests {
             (Address::repeat_byte(0xcc), TournamentGeometry::two_level()),
             (Address::ZERO, TournamentGeometry::three_level()),
         ] {
+            let image = Template::inspect(&template).unwrap();
+            let config =
+                EngineConfig::for_deployment(1, Address::ZERO, consensus, *image.hash(), geometry);
             // A nonzero watermark, so a stray seed would show.
-            let error = Storage::initialize(
-                &state_dir,
-                &Template::inspect(&template).unwrap(),
-                1000,
-                Address::ZERO,
-                consensus,
-                1,
-                &geometry,
-            )
-            .unwrap_err();
+            let seed = Seed {
+                image,
+                epoch: 0,
+                watermark: 1000,
+            };
+            let error = Storage::initialize(&state_dir, Some(&seed), &config).unwrap_err();
             assert_eq!(crate::fatal::exit_code(&error.into()), 40);
         }
         assert_eq!(storage.latest_processed_block().unwrap(), 0);

@@ -1283,16 +1283,12 @@ mod tests {
             machine.write_reg(CM_REG_IFLAGS_Y, 0).unwrap();
             machine.write_reg(CM_REG_IFLAGS_H, 1).unwrap();
         });
-        let mut s = Storage::initialize(
+        let mut s = super::super::sql::test_helper::seed_storage(
             state_dir.path(),
-            &super::super::Template::inspect(&template).unwrap(),
-            0,
-            Address::ZERO,
-            Address::ZERO,
+            &template,
             0,
             &TournamentGeometry::two_level(),
-        )
-        .unwrap();
+        );
         seal_epoch_zero(&mut s);
 
         s.roll_epoch().unwrap();
@@ -1327,8 +1323,8 @@ mod tests {
         assert!(storage.snapshot_hash(1, 0).unwrap().is_some());
     }
 
-    /// A seeded directory is never re-seeded: a restart neither imports the
-    /// template again nor resurrects the collected epoch-0 boundary.
+    /// A seeded directory is never re-seeded: a restart needs no image, and
+    /// it neither imports one nor resurrects the collected epoch-0 boundary.
     #[test]
     fn restart_skips_the_template_import() {
         let (handle, mut storage) = setup_storage();
@@ -1353,19 +1349,11 @@ mod tests {
             .read(super::super::snapshots::latest_boundary_in)
             .unwrap();
 
-        // The same arguments test_helper's setup_storage seeded with.
-        let template =
-            super::super::Template::inspect(&handle.path().join("_my_machine_image")).unwrap();
-        let mut restarted = Storage::initialize(
-            handle.path(),
-            &template,
-            0,
-            Address::ZERO,
-            Address::ZERO,
-            0,
-            &TournamentGeometry::two_level(),
-        )
-        .unwrap();
+        // The configuration test_helper's setup_storage pinned, and no
+        // image at all.
+        let config = storage.sling_config().unwrap();
+        std::fs::remove_dir_all(handle.path().join("_my_machine_image")).unwrap();
+        let mut restarted = Storage::initialize(handle.path(), None, &config).unwrap();
         assert!(restarted.snapshot_hash(0, 0).unwrap().is_none());
         assert_eq!(
             restarted

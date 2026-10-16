@@ -1178,16 +1178,12 @@ mod blockchain_reader_tests {
         .unwrap();
         machine.store(&machine_path).unwrap();
 
-        let acc = Storage::initialize(
+        let acc = crate::storage::sql::test_helper::seed_storage(
             state_dir,
-            &crate::storage::Template::inspect(&machine_path).unwrap(),
-            0,
-            Address::ZERO,
-            Address::ZERO,
+            &machine_path,
             0,
             &crate::engine::TournamentGeometry::two_level(),
-        )
-        .unwrap();
+        );
 
         (state_dir_, acc)
     }
@@ -1379,15 +1375,19 @@ mod blockchain_reader_tests {
         let dir = tempfile::tempdir()?;
         let template = dir.path().join("_template");
         crate::storage::sql::test_helper::store_template(&template, |_| {});
-        let storage = Storage::initialize(
-            dir.path(),
-            &crate::storage::Template::inspect(&template)?,
+        let seed = crate::storage::Seed {
+            image: crate::storage::Template::inspect(&template)?,
+            epoch: 0,
             watermark,
+        };
+        let config = crate::engine::EngineConfig::for_deployment(
+            0,
             address_book.app,
             address_book.consensus,
-            0,
-            &crate::engine::TournamentGeometry::two_level(),
-        )?;
+            address_book.initial_hash,
+            crate::engine::TournamentGeometry::two_level(),
+        );
+        let storage = Storage::initialize(dir.path(), Some(&seed), &config)?;
         let mut reader = BlockchainReader::new(storage, address_book, Duration::ZERO);
         while !reader.tick(&chain).await? {}
 
