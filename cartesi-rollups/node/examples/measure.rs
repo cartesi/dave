@@ -20,10 +20,9 @@ use cartesi_sling_node::engine::{
     DisputeSource, EngineConfig, Hashing, Level, MachineStf, Positioner, Quartet, Stf, Structure,
     TournamentGeometry, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
 };
+use cartesi_sling_node::machine_runner::DEFAULT_SNAPSHOT_GAP_INPUTS;
 use cartesi_sling_node::merkle::Digest;
-use cartesi_sling_node::storage::{
-    DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Seed, Storage, Template,
-};
+use cartesi_sling_node::storage::{Input as StorageInput, InputId, Seed, Storage, Template};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 enum BaselineProfile {

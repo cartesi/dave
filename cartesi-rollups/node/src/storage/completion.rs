@@ -56,6 +56,7 @@ pub(super) fn seed_cursor_in(tx: &Transaction, seed_epoch: u64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::machine_runner::DEFAULT_SNAPSHOT_GAP_INPUTS;
     use crate::storage::Epoch;
     use crate::storage::queries::setup_settlement_storage;
     use crate::storage::sql::test_helper::stub_snapshot;
@@ -128,7 +129,7 @@ mod tests {
 
         // Both ingestion and execution are ahead of the manager. An idle
         // runner may not discard its epoch zero.
-        let plan = storage.advance_plan().unwrap();
+        let plan = storage.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert!(plan.inputs.is_empty());
         assert!(!plan.sealed);
         for epoch in 0..=3 {
@@ -139,7 +140,7 @@ mod tests {
         storage.complete_epoch(1).unwrap();
         // Cursor publication itself does not delete the runner's files.
         assert!(storage.snapshot_dir(0, 0).unwrap().is_some());
-        storage.advance_plan().unwrap();
+        storage.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         for epoch in 0..=3 {
             let retained = epoch >= 2;
             assert_eq!(storage.snapshot_dir(epoch, 0).unwrap().is_some(), retained);
@@ -161,7 +162,7 @@ mod tests {
         for epoch in 2..=4 {
             storage.complete_epoch(epoch).unwrap();
         }
-        storage.advance_plan().unwrap();
+        storage.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert!(storage.snapshot_dir(2, 0).unwrap().is_none());
         assert!(storage.snapshot_dir(3, 0).unwrap().is_some());
         assert_eq!(storage.next_input_id().unwrap().epoch_number, 3);
@@ -169,7 +170,7 @@ mod tests {
         // Once the runner publishes another boundary, the previously newest
         // completed epoch becomes collectible without another completion.
         storage.insert_boundary(4, 0, &hash(4)).unwrap();
-        storage.advance_plan().unwrap();
+        storage.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert!(storage.snapshot_dir(3, 0).unwrap().is_none());
         assert_eq!(storage.next_input_id().unwrap().epoch_number, 4);
         assert!(boundaries[4].is_dir());

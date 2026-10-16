@@ -171,12 +171,11 @@ fn roll_ready_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
 }
 
 impl Storage {
-    /// Plans at most one publication batch from one SQLite snapshot.
-    /// Open short tails return no payloads, avoiding copies on every
-    /// poll; a sealed tail is materialized so it can publish before
-    /// the roll.
-    pub(crate) fn advance_plan(&mut self) -> Result<AdvancePlan> {
-        let gap = self.snapshot_gap_inputs;
+    /// Plans at most one publication batch of `gap` inputs from one
+    /// SQLite snapshot. Open short tails return no payloads, avoiding
+    /// copies on every poll; a sealed tail is materialized so it can
+    /// publish before the roll.
+    pub(crate) fn advance_plan(&mut self, gap: u64) -> Result<AdvancePlan> {
         let plan = self.read(|tx| {
             let (epoch, boundary_input, boundary_hash) = super::snapshots::latest_boundary_in(tx)?;
             let input_count = input_count_in(tx, epoch)?;
@@ -681,6 +680,7 @@ mod tests {
     use super::super::sql::test_helper::{setup_storage, setup_storage_with};
     use super::*;
     use crate::engine::TournamentGeometry;
+    use crate::machine_runner::DEFAULT_SNAPSHOT_GAP_INPUTS;
     use crate::merkle::MerkleBuilder;
     use crate::storage::Epoch;
     use crate::storage::open::snapshots_path;
@@ -801,7 +801,7 @@ mod tests {
 
         // Boundary equals input count in an open epoch: this plan
         // would be idle if the durable cursor still existed.
-        let _ = s.advance_plan();
+        let _ = s.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS);
     }
 
     /// A plan only pins database identity. The loader checks the
@@ -810,7 +810,7 @@ mod tests {
     #[should_panic(expected = "durable runner boundary vanished: epoch 0, input 0")]
     fn planned_boundary_that_vanishes_before_load_is_fatal() {
         let (_handle, mut s) = setup_storage();
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert!(plan.inputs.is_empty());
 
         std::fs::remove_dir_all(s.snapshot_dir(0, 0).unwrap().unwrap()).unwrap();
@@ -830,7 +830,7 @@ mod tests {
         let misfiled = snapshot_path(&s.state_dir, &wrong);
         Machine::clone_stored(&path, &misfiled).unwrap();
         s.insert_boundary(42, 0, &wrong).unwrap();
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
 
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = s.begin_planned_advances(&plan);
@@ -933,20 +933,18 @@ mod tests {
     #[test]
     fn gap_three_plan_waits_open_and_materializes_the_sealed_tail() {
         let (_handle, mut s) = setup_storage();
-        s.set_snapshot_gap_inputs(3);
-
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(3).unwrap();
         assert_eq!((plan.boundary_input, plan.input_count), (0, 0));
         assert!(!plan.sealed);
         assert!(plan.inputs.is_empty());
 
         append_inputs(&mut s, 0, 2);
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(3).unwrap();
         assert_eq!(plan.input_count, 2);
         assert!(plan.inputs.is_empty(), "an open short tail must idle");
 
         append_inputs(&mut s, 2, 1);
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(3).unwrap();
         assert_eq!(
             plan.inputs
                 .iter()
@@ -958,7 +956,7 @@ mod tests {
         let start_hash = s.snapshot_hash(0, 0).unwrap().unwrap();
         s.insert_boundary(0, 3, &start_hash).unwrap();
         append_inputs(&mut s, 3, 1);
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(3).unwrap();
         assert_eq!((plan.boundary_input, plan.input_count), (3, 4));
         assert!(plan.inputs.is_empty());
 
@@ -980,7 +978,7 @@ mod tests {
         };
         s.insert_consensus_data(2, [&last].into_iter(), [&epoch].into_iter())
             .unwrap();
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(3).unwrap();
         assert!(plan.sealed);
         assert_eq!(
             plan.inputs
@@ -991,7 +989,7 @@ mod tests {
         );
 
         s.insert_boundary(0, 5, &start_hash).unwrap();
-        let plan = s.advance_plan().unwrap();
+        let plan = s.advance_plan(3).unwrap();
         assert!(plan.sealed);
         assert_eq!((plan.boundary_input, plan.input_count), (5, 5));
         assert!(plan.inputs.is_empty());
@@ -1000,7 +998,6 @@ mod tests {
     #[test]
     fn gap_three_mixed_accept_reject_publishes_only_final_boundary() {
         let (_handle, mut s) = setup_storage();
-        s.set_snapshot_gap_inputs(3);
         append_inputs(&mut s, 0, 3);
 
         let (mut machine, mut batch) = s.begin_advances().unwrap();
@@ -1132,7 +1129,6 @@ mod tests {
     #[test]
     fn gap_three_all_rejected_reuses_the_durable_checkpoint() {
         let (_handle, mut s) = setup_storage();
-        s.set_snapshot_gap_inputs(3);
         append_inputs(&mut s, 0, 3);
         let start_path = s.snapshot_dir(0, 0).unwrap().unwrap();
         let start_hash = s.snapshot_hash(0, 0).unwrap().unwrap();
@@ -1318,7 +1314,7 @@ mod tests {
         assert!(storage.snapshot_hash(0, 0).unwrap().is_some());
 
         storage.complete_epoch(0).unwrap();
-        storage.advance_plan().unwrap();
+        storage.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert!(storage.snapshot_hash(0, 0).unwrap().is_none());
         assert!(storage.snapshot_hash(1, 0).unwrap().is_some());
     }
@@ -1343,7 +1339,7 @@ mod tests {
             storage.roll_epoch().unwrap();
         }
         storage.complete_epoch(0).unwrap();
-        storage.advance_plan().unwrap();
+        storage.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert!(storage.snapshot_hash(0, 0).unwrap().is_none());
         let latest = storage
             .read(super::super::snapshots::latest_boundary_in)
@@ -1432,24 +1428,27 @@ mod tests {
             s.complete_epoch(2),
             Err(super::super::StorageError::DataNotFound { .. })
         ));
-        assert!(!s.advance_plan().unwrap().sealed);
+        assert!(!s.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap().sealed);
         assert_eq!(s.snapshot_hash(2, 0).unwrap(), Some(start));
 
         s.insert_consensus_data(2, [].iter(), epochs[2..].iter())
             .unwrap();
         assert_eq!(s.unfinished_epoch().unwrap().unwrap().epoch_number, 2);
-        assert_eq!(s.advance_plan().unwrap().epoch, 2);
+        assert_eq!(
+            s.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap().epoch,
+            2
+        );
         s.roll_epoch().unwrap();
         assert!(s.settlement_info(2).unwrap().is_some());
         assert_eq!(s.snapshot_hash(3, 0).unwrap(), Some(start));
         assert!(s.settlement_info(0).unwrap().is_none());
         assert!(s.settlement_info(1).unwrap().is_none());
 
-        s.advance_plan().unwrap();
+        s.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert_eq!(s.snapshot_hash(2, 0).unwrap(), Some(start));
 
         s.complete_epoch(2).unwrap();
-        s.advance_plan().unwrap();
+        s.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert!(s.snapshot_hash(2, 0).unwrap().is_none());
         assert!(
             snapshot_path(s.state_dir(), &start).exists(),
@@ -1523,7 +1522,6 @@ mod tests {
     #[test]
     fn commit_advances_is_atomic_under_injected_failure() {
         let (_handle, mut s) = setup_storage();
-        s.set_snapshot_gap_inputs(3);
         append_inputs(&mut s, 0, 3);
 
         let raw = rusqlite::Connection::open(crate::storage::open::db_path(s.state_dir())).unwrap();

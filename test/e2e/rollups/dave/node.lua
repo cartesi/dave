@@ -70,7 +70,7 @@ function Dave:new(machine_path, app_address, sender, sleep_duration, snapshot_ga
     -- positioning's replay past a boundary. Gap 2 exercises all
     -- three in every scenario for at most one input of extra replay.
     -- kill_catchup_batched raises it to put a full batch under the
-    -- kill; production defaults to 64 (storage/open.rs).
+    -- kill; production defaults to 64 (machine_runner/mod.rs).
     snapshot_gap = snapshot_gap or 2
 
     -- trace, debug, info, warn, error

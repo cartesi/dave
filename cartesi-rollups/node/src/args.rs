@@ -227,7 +227,7 @@ pub struct PRTArgs {
     #[arg(
         long,
         env = "CARTESI_SLING_SNAPSHOT_GAP_INPUTS",
-        default_value_t = crate::storage::DEFAULT_SNAPSHOT_GAP_INPUTS,
+        default_value_t = crate::machine_runner::DEFAULT_SNAPSHOT_GAP_INPUTS,
         value_parser = clap::value_parser!(u64).range(1..)
     )]
     pub snapshot_gap_inputs: u64,
@@ -342,9 +342,7 @@ impl fmt::Display for NodeConfig {
 
 impl NodeConfig {
     pub fn storage(&self) -> Result<Storage, StorageError> {
-        let mut access = Storage::new(&self.state_dir)?;
-        access.set_snapshot_gap_inputs(self.snapshot_gap_inputs);
-        Ok(access)
+        Storage::new(&self.state_dir)
     }
 
     // Setup checked both endpoints' chains, so the workers ask nothing.
