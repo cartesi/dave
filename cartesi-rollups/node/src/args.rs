@@ -147,8 +147,6 @@ pub(crate) async fn discover_deployed_tournament(
                 "failed to query the pristine uarch hash from state transition {state_transition} configured by tournament factory {tournament_factory}"
             )
         })?;
-    // Read outside the context below: a local fault must never be reported
-    // as an incompatible deployment.
     let linked_uarch_hash = B256::from(Machine::uarch_pristine_hash());
 
     validate_state_transition_marchid(deployed_marchid)
