@@ -276,8 +276,15 @@ impl Storage {
             sling_config::pin(tx, config)?;
             Ok(())
         })?;
+        // Below the seed the runner writes no settlement row, so the manager
+        // reaches no Hero there: it only recovers this signer's bonds.
+        let below = if seed.epoch > 0 {
+            "; earlier epochs are not executed, only their bonds recovered"
+        } else {
+            ""
+        };
         log::info!(
-            "seeded data directory `{}` at epoch {} from image {}",
+            "seeded data directory `{}` at epoch {} from image {}{below}",
             self.state_dir.display(),
             seed.epoch,
             alloy::hex::encode_prefixed(image.hash()),

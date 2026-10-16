@@ -17,6 +17,7 @@
 //! The tests are ignored by plain cargo runs and run in their own process by
 //! `just test-node-harness`.
 
+mod settled_start;
 mod tests;
 
 use alloy::{
@@ -444,6 +445,12 @@ impl World {
 
     /// The honest node over a fresh state directory.
     pub async fn honest_node(&self) -> Result<Node> {
+        self.node(HONEST).await
+    }
+
+    /// An honest node on anvil key `key` over a fresh state directory,
+    /// seeded from the application's template.
+    pub async fn node(&self, key: usize) -> Result<Node> {
         let state_dir = tempfile::tempdir()?;
         let seed = Seed {
             image: Template::inspect(&program_path().join("machine-image"))?,
@@ -461,7 +468,7 @@ impl World {
             self.geometry.clone(),
         );
         Storage::initialize(state_dir.path(), Some(&seed), &config)?;
-        Node::start(self, state_dir)
+        Node::start(self, state_dir, key)
     }
 
     /// An adversary on anvil key `key` for the honest node's current
@@ -535,17 +542,18 @@ impl World {
     }
 }
 
-/// The honest node's three workers over one state directory, driven tick
-/// by tick in lib.rs order.
+/// An honest node's three workers over one state directory, signing with
+/// anvil key `key`, driven tick by tick in lib.rs order.
 pub(crate) struct Node {
     state_dir: TempDir,
+    key: usize,
     reader: BlockchainReader,
     runner: MachineRunner,
     manager: EpochManager,
 }
 
 impl Node {
-    fn start(world: &World, state_dir: TempDir) -> Result<Self> {
+    fn start(world: &World, state_dir: TempDir, key: usize) -> Result<Self> {
         // The startup ritual lib.rs runs before spawning the workers.
         Storage::new(state_dir.path())?.sweep_stale_staging()?;
         let reader =
@@ -556,15 +564,16 @@ impl Node {
             ShutdownSignal::default(),
         )?;
         let manager = EpochManager::new(
-            world.lane(HONEST),
+            world.lane(key),
             world.book.consensus,
-            world.address(HONEST),
+            world.address(key),
             Storage::new(state_dir.path())?,
             Duration::ZERO,
             ShutdownSignal::default(),
         );
         Ok(Self {
             state_dir,
+            key,
             reader,
             runner,
             manager,
@@ -655,8 +664,8 @@ impl Node {
     /// Drops every worker and starts them again over the same state, as
     /// a process restart would.
     pub fn restart(self, world: &World) -> Result<Self> {
-        let Node { state_dir, .. } = self;
-        Node::start(world, state_dir)
+        let Node { state_dir, key, .. } = self;
+        Node::start(world, state_dir, key)
     }
 }
 

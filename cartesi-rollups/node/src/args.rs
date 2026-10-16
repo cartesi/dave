@@ -197,7 +197,9 @@ pub struct PRTArgs {
     #[arg(long, env = "CARTESI_SLING_APP_ADDRESS")]
     pub app_address: Address,
 
-    /// path to machine template image
+    /// machine image a new data directory starts from: the application's
+    /// template, or the state its current sealed epoch starts from; a seeded
+    /// directory does not read it
     #[arg(long, env = "CARTESI_SLING_TEMPLATE_PATH")]
     pub template_path: PathBuf,
 
@@ -396,16 +398,9 @@ impl NodeConfig {
             None
         } else {
             let template = Template::inspect(&args.template_path).context("--template-path")?;
-            ensure!(
-                *template.hash() == address_book.initial_hash,
-                Fatal::terminal(format!(
-                    "--template-path holds template {}, but application {} starts from {}: fix \
-                     --template-path, or check --app-address",
-                    alloy::hex::encode_prefixed(template.hash()),
-                    address_book.app,
-                    alloy::hex::encode_prefixed(address_book.initial_hash),
-                ))
-            );
+            let epoch = address_book
+                .seed_epoch(&Chain::new(provider.clone()), template.hash())
+                .await?;
             // The engine loads every epoch's initial state as a template awaiting
             // input; from any other one the Hero would only warn every tick.
             ensure!(
@@ -419,7 +414,7 @@ impl NodeConfig {
             );
             Some(Seed {
                 image: template,
-                epoch: 0,
+                epoch,
                 watermark: address_book.initial_watermark(finalized),
             })
         };

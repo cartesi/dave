@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 
 use crate::chain::Chain;
 use crate::escalation::{PAGE_AFTER, Persistence};
+use crate::fatal::Fatal;
 use crate::sync::ShutdownSignal;
 use alloy::{
     eips::BlockId,
@@ -138,6 +139,100 @@ impl AddressBook {
     /// 0 holds no transactions, so saturating is exact.
     pub fn initial_watermark(&self, finalized: u64) -> u64 {
         self.genesis_block_number.saturating_sub(1).min(finalized)
+    }
+
+    /// The epoch whose start `image` is, for seeding a new state directory:
+    /// 0 for the application's initial state, which reads nothing, so
+    /// genesis wins even when a settled state equals it. Otherwise the
+    /// current sealed epoch k, when `image` is the state k starts from, read
+    /// by number at a finalized head sampled now: newer than startup's
+    /// sample, and still inside a pruning provider's state window after a
+    /// long image load. Any other image is terminal.
+    pub async fn seed_epoch(&self, chain: &Chain, image: &Hash) -> Result<u64> {
+        if *image == self.initial_hash {
+            return Ok(0);
+        }
+        let at = chain
+            .finalized_block_number()
+            .await
+            .context("--blockchain-http-endpoint: failed to read the finalized block")?;
+        // Below genesis the consensus has no code to answer.
+        let settled = if at < self.genesis_block_number {
+            None
+        } else {
+            let block = BlockId::number(at);
+            let consensus = DaveConsensus::new(self.consensus, chain.provider());
+            let sealed = consensus
+                .getCurrentSealedEpoch()
+                .block(block)
+                .call()
+                .await
+                .with_context(|| {
+                    format!(
+                        "--blockchain-http-endpoint: failed to read the sealed epoch at block {at}"
+                    )
+                })?;
+            let epoch =
+                u64::try_from(sealed.epochNumber).context("the sealed epoch exceeds u64")?;
+            if epoch == 0 {
+                None
+            } else {
+                let state = consensus
+                    .getLastFinalizedMachineMerkleRoot(self.app)
+                    .block(block)
+                    .call()
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "--blockchain-http-endpoint: failed to read the last settled state \
+                             at block {at}"
+                        )
+                    })?;
+                Some((epoch, state.into()))
+            }
+        };
+        self.settled_epoch(image, settled, at)
+    }
+
+    /// `image`'s epoch against `settled`, the current sealed epoch and the
+    /// state it starts from at finalized block `at` (`None` before the first
+    /// settlement). Only that last settled state is accepted: an older one
+    /// would need a log search, and an image stays current for at least one
+    /// root allowance.
+    fn settled_epoch(&self, image: &Hash, settled: Option<(u64, Hash)>, at: u64) -> Result<u64> {
+        let app = self.app;
+        let initial = alloy::hex::encode_prefixed(self.initial_hash);
+        let finality = format!(
+            "a state settled after block {at} is accepted once its settlement is finalized"
+        );
+        match settled {
+            Some((epoch, state)) if state == *image => {
+                info!(
+                    "--template-path holds the state epoch {epoch} starts from; the node \
+                     executes from epoch {epoch} and only recovers bonds below it"
+                );
+                Ok(epoch)
+            }
+            Some((epoch, state)) => {
+                let state = alloy::hex::encode_prefixed(state);
+                Err(Fatal::terminal(format!(
+                    "--template-path holds state {}, which is neither application {app}'s \
+                     initial state {initial} nor the state its current sealed epoch {epoch} \
+                     starts from, {state}, at finalized block {at}: point it at the template or \
+                     at snapshots/{state} in the data directory of a node working on epoch \
+                     {epoch}, or check --app-address; {finality}",
+                    alloy::hex::encode_prefixed(image),
+                ))
+                .into())
+            }
+            None => Err(Fatal::terminal(format!(
+                "--template-path holds state {}, but application {app} starts from {initial}, \
+                 and no epoch has settled at finalized block {at}, so only the template starts \
+                 a new data directory: fix --template-path, or check --app-address; {finality}",
+                alloy::hex::encode_prefixed(image),
+            ))
+            .into()),
+        }
     }
 
     /// The initial state from epoch 0's EpochSealed, which the consensus
@@ -688,6 +783,106 @@ mod address_book_tests {
             ..book
         };
         assert_eq!(at_zero.initial_watermark(5000), 0);
+    }
+
+    const INITIAL: Hash = [0x11; 32];
+    const SETTLED: Hash = [0x22; 32];
+
+    fn book() -> AddressBook {
+        AddressBook {
+            app: Address::repeat_byte(0xaa),
+            consensus: Address::repeat_byte(0xcc),
+            tournament_factory: Address::ZERO,
+            input_box: Address::ZERO,
+            initial_hash: INITIAL,
+            genesis_block_number: 1000,
+        }
+    }
+
+    #[test]
+    fn the_last_settled_state_seeds_its_epoch() {
+        assert_eq!(
+            book()
+                .settled_epoch(&SETTLED, Some((3, SETTLED)), 5000)
+                .unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn another_image_names_the_state_to_take() {
+        let image = [0x33; 32];
+        let error = book()
+            .settled_epoch(&image, Some((3, SETTLED)), 5000)
+            .unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 30);
+        let message = error.to_string();
+        let settled = alloy::hex::encode_prefixed(SETTLED);
+        for expected in [
+            "--template-path".to_owned(),
+            alloy::hex::encode_prefixed(image),
+            alloy::hex::encode_prefixed(INITIAL),
+            "epoch 3".to_owned(),
+            "block 5000".to_owned(),
+            format!("snapshots/{settled}"),
+        ] {
+            assert!(message.contains(&expected), "{expected} missing: {message}");
+        }
+    }
+
+    #[test]
+    fn before_the_first_settlement_only_the_template_seeds() {
+        let error = book().settled_epoch(&SETTLED, None, 5000).unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 30);
+        assert!(
+            error
+                .to_string()
+                .contains("no epoch has settled at finalized block 5000"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn only_a_settled_image_reads_the_chain_at_one_finalized_block() {
+        use crate::chain::recording::recording_provider;
+        use alloy::{primitives::Bytes, rpc::types::Block, sol_types::SolCall};
+
+        let (provider, rpc, requests) = recording_provider();
+        let chain = Chain::new(provider);
+        assert_eq!(book().seed_epoch(&chain, &INITIAL).await.unwrap(), 0);
+        assert!(requests.lock().unwrap().is_empty(), "genesis reads nothing");
+
+        let mut block: Block = Block::default();
+        block.header.inner.number = 5000;
+        rpc.push_success(&Some(block));
+        rpc.push_success(&Bytes::from(
+            DaveConsensus::getCurrentSealedEpochCall::abi_encode_returns(
+                &DaveConsensus::getCurrentSealedEpochReturn {
+                    epochNumber: U256::from(3),
+                    inputIndexLowerBound: U256::ZERO,
+                    inputIndexUpperBound: U256::ZERO,
+                    tournament: Address::ZERO,
+                    isTournamentResultStaged: false,
+                    stagingBlockNumber: U256::ZERO,
+                    stagedPostEpochMachineStateHash: B256::ZERO,
+                    stagedPostEpochOutputsMerkleRoot: B256::ZERO,
+                },
+            ),
+        ));
+        rpc.push_success(&Bytes::from(
+            DaveConsensus::getLastFinalizedMachineMerkleRootCall::abi_encode_returns(&B256::from(
+                SETTLED,
+            )),
+        ));
+        assert_eq!(book().seed_epoch(&chain, &SETTLED).await.unwrap(), 3);
+
+        let requests = requests.lock().unwrap();
+        let methods: Vec<_> = requests.iter().map(|r| r["method"].clone()).collect();
+        assert_eq!(methods, ["eth_getBlockByNumber", "eth_call", "eth_call"]);
+        assert_eq!(requests[0]["params"][0], "finalized");
+        for call in &requests[1..] {
+            assert_eq!(call["params"][1], "0x1388", "read at the sampled number");
+        }
     }
 }
 

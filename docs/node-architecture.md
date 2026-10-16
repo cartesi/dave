@@ -36,24 +36,38 @@ the operator's and the geometry's concern. It refuses to start unless
 linked Cartesi Machine library and `UARCH_PRISTINE_STATE_HASH()` equals the
 library's pristine uarch hash (computation-hash.md says how it is read). It
 then probes the data directory, creating nothing. Unless the probe finds it
-seeded, it inspects the `--template-path` template (one private load: its root
+seeded, it inspects the `--template-path` image (one private load: its root
 hash; its hash function, which must be Keccak-256; its uarch state's hash,
 which must be that pristine uarch hash; and whether it is paused at a manual
-accepted yield) and requires the root hash to equal the consensus's initial
-hash. A matching template paused elsewhere is the deployed application's own
-and still refused: the engine starts every epoch from a state awaiting input,
-so the node could not defend any of its epochs. Only then does it take the
-data-directory lock and open the directory, which decides again whether it is
-seeded. A seeded directory is compared with its `sling_config` pins (app,
-chain, consensus, the deployment's initial hash, emulator and table) before
-anything is written. A restart compares pins and never reads
-`--template-path`, so a moved image or one an emulator upgrade can no longer
-load does not stop it. A mismatch names the flag to fix (`--app-address`,
-`--blockchain-id`), calls the directory another deployment's or an old one
-(the initial hash), or asks for a rebuild (consensus, emulator, table). A new
-directory is seeded in one transaction: the initial watermark, the epoch-0
-boundary and the pins. So a deployment or flag these checks reject cannot
-create or alter local state. The runner samples each window at the pinned
+accepted yield), and the root hash alone decides which epoch the image
+starts. The consensus's initial hash makes it the template, starting epoch 0
+with no further read. Otherwise it must be the state the current sealed epoch
+k starts from, `getLastFinalizedMachineMerkleRoot(app)` beside
+`getCurrentSealedEpoch()`, both read by number at a finalized head sampled
+just before, and it starts epoch k. Only that last settled state is accepted:
+an older one would need a log search, and an image stays current for at least
+a root allowance. Any other image is refused with exit 30, naming
+`snapshots/0x<hash>`, where every node working on epoch k keeps the state to
+take; a state settled after the sampled head is refused until its settlement
+finalizes, since the finalized-only reader could not execute its epoch
+anyway. The root hash comes from the image's stored hash tree, so a seed
+image is trusted like the template: take it from a store you trust. A
+matching image paused elsewhere is still refused: the engine starts every
+epoch from a state awaiting input, so the node could not defend any of its
+epochs (for a settled state this cannot happen, since staging requires the
+same yield). Only then does it take the data-directory lock and open the
+directory, which decides again whether it is seeded. A seeded directory is
+compared with its `sling_config` pins (app, chain, consensus, the
+deployment's initial hash, emulator and table) before anything is written.
+The pin holds the deployment's initial hash whatever image seeded the
+directory, so a restart compares pins and never reads `--template-path` or
+the moving last settled state, and a moved image or one an emulator upgrade
+can no longer load does not stop it. A mismatch names the flag to fix
+(`--app-address`, `--blockchain-id`), calls the directory another
+deployment's or an old one (the initial hash), or asks for a rebuild
+(consensus, emulator, table). A new directory is seeded in one transaction:
+the initial watermark, the seed epoch's start boundary and the pins. So a
+deployment or flag these checks reject cannot create or alter local state. The runner samples each window at the pinned
 root stride. Other operator mistakes (an unknown chain id, an unreadable or
 invalid key, an endpoint on another chain, an address that is not a Dave
 application) are errors that name their flag too; they add no URL or key
@@ -208,7 +222,7 @@ is the alarm. A panic stops every worker, refunds included (`lib.rs`,
 The exit status tells a supervisor which of these happened (`fatal.rs`), with
 the numbers of the sequencer's contract: 0 a requested stop, 1 any other
 error (restart with backoff), 2 a usage error, 30 terminal (a flag, the
-template, the deployment or the settled chain disagrees with the node: do not
+seed image, the deployment or the settled chain disagrees with the node: do not
 restart, an operator must act), 40 rebuild the data directory (its store
 format, commitment semantics, emulator, consensus or geometry is another). A panic
 exits 101: restart with backoff and page, since a restart cannot make an
@@ -316,7 +330,7 @@ audited.
 The epoch-completion cursor is not bound to a signer: recovery pays the
 configured signer's bonds, and a previous signer's bonds stay recoverable by
 anyone. A data directory of another store format or commitment semantics is
-rebuilt from the chain and template machine, never migrated.
+rebuilt from the chain and a seed image, never migrated.
 
 Main schema (`storage/sql/schema.sql`):
 
@@ -329,7 +343,7 @@ Main schema (`storage/sql/schema.sql`):
   sibling blobs for iflags_Y, HTIF tohost, and the TX buffer)` - the TX data
   block is the outputs Merkle root
 - `epoch_snapshot_info(epoch_number, input_number, state_hash)` - which
-  machine sits before each stored input; the template is epoch 0's start
+  machine sits before each stored input; the seed image is its epoch's start
 
 Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
@@ -467,7 +481,10 @@ stays above the watermark; with no application or consensus log before the
 deployment, a lower start only adds empty blocks to the first log query. The
 initial hash is read at the consensus's deployment block (Process layout).
 Both are `block.number` values, read as RPC block numbers, which is why the
-node does not start on Arbitrum.
+node does not start on Arbitrum. Ingestion starts at genesis whatever the
+seed: a directory seeded at epoch k still stores every earlier epoch and
+input, since the node numbers inputs from the application's first and the
+bond-recovery walk needs the earlier roots, and never executes them.
 
 Ingestion commits at most 10,000 finalized blocks at a time, with their
 watermark, so catch-up holds one chunk's inputs in memory and a restart
@@ -564,6 +581,10 @@ claimant. A recovered bond, a foreign claimant, or a no-winner tournament is
 complete; running and unknown dispositions are not. Restart resumes that
 cursor. The manager handles settled historical epochs using recovery reads
 and calls alone, without constructing a Hero or waiting for local execution.
+A directory seeded at epoch k has no settlement row below k, since only the
+runner writes them and its cursor starts at k, so the manager takes that path
+for every epoch below k: it recovers this signer's bonds there and reaches no
+Hero, sentry claim or settlement call.
 
 Root settlement implies every linked descendant has finished. Creating a child
 pauses the parent match's clocks, and resolving that match requires the child

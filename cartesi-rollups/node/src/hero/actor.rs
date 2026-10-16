@@ -143,7 +143,7 @@ impl Hero {
         let initial_hash = Digest::from(
             storage
                 .snapshot_hash(epoch_number, 0)?
-                .expect("snapshot is inserted atomically with settlement info"),
+                .expect("an epoch start is seeded or inserted with its predecessor's settlement"),
         );
         let anchors = EpochAnchors {
             initial_hash,

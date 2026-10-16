@@ -147,7 +147,10 @@ Three worker threads share one SQLite database (see
   agreement or the staging period. These calls target only the cursor's
   epoch. Every available refund joins the same batch, even while the root is
   running. Settled historical epochs need no Hero or local execution before
-  the manager can finish their refund obligations and advance.
+  the manager can finish their refund obligations and advance. A data
+  directory seeded from the state its current sealed epoch k starts from
+  (node README) still starts the cursor at 0: every epoch below k is such a
+  settled epoch, whose inputs the runner never executes.
 
 Recovery starts from the ingested epoch root and follows that tournament's
 `NewInnerTournament` descendants. It reads their bond dispositions at one
