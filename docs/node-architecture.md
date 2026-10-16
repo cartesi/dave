@@ -38,8 +38,10 @@ library's pristine uarch hash (computation-hash.md says how it is read). It
 then probes the data directory, creating nothing. Unless the probe finds it
 seeded, it inspects the `--template-path` image (one private load: its root
 hash; its hash function, which must be Keccak-256; its uarch state's hash,
-which must be that pristine uarch hash; and whether it is paused at a manual
-accepted yield), and the root hash alone decides which epoch the image
+which must be that pristine uarch hash; the owner write bit on every file a
+runner batch maps for writing, since seeding clones the image keeping file
+modes; and whether it is paused at a manual accepted yield), and the root
+hash alone decides which epoch the image
 starts. The consensus's initial hash makes it the template, starting epoch 0
 with no further read. Otherwise it must be the state the current sealed epoch
 k starts from, `getLastFinalizedMachineMerkleRoot(app)` beside

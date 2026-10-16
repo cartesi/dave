@@ -13,13 +13,17 @@ use crate::engine::{EngineConfig, config as sling_config};
 use crate::fatal::Fatal;
 use anyhow::{Context, ensure};
 use cartesi_machine::{
-    config::{machine::HashFunctionType, runtime::RuntimeConfig},
+    config::{
+        machine::{HashFunctionType, MachineConfig},
+        runtime::RuntimeConfig,
+    },
     machine::Machine,
     types::Hash,
 };
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
 use std::{
     fs,
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -105,6 +109,11 @@ impl Template {
     /// template would be silently wrong. A template is a big-cycle boundary,
     /// so its uarch state's node must hash to the linked emulator's pristine
     /// uarch hash.
+    ///
+    /// It also refuses an image whose files the runner maps shared for
+    /// writing lack the owner write bit: seeding clones the image keeping
+    /// each file's mode (hard-linking one without write bits), so such an
+    /// image seeds fine and then fails every advance batch.
     pub fn inspect(path: &Path) -> anyhow::Result<Self> {
         ensure!(
             path.is_dir(),
@@ -116,17 +125,35 @@ impl Template {
         let mut machine = Machine::load(path, &RuntimeConfig::quiet_console())
             .with_context(|| format!("failed to load template `{}`", path.display()))?;
         let hash = machine.root_hash()?;
+        let config = machine.initial_config()?;
         // Under any other hash function the comparison below fails for that
         // reason alone, and would blame the uarch.
-        let hash_function = machine.initial_config()?.hash_tree.hash_function;
+        let hash_function = &config.hash_tree.hash_function;
         ensure!(
-            hash_function == HashFunctionType::Keccak256,
+            *hash_function == HashFunctionType::Keccak256,
             Fatal::terminal(format!(
                 "template `{}` uses a {hash_function:?} hash tree, but the uarch and the \
                  on-chain step need Keccak-256; refusing it",
                 path.display()
             ))
         );
+        for file in shared_writable_files(&config) {
+            let mode = fs::metadata(file)
+                .with_context(|| format!("reading `{}`", file.display()))?
+                .permissions()
+                .mode();
+            ensure!(
+                mode & 0o200 != 0,
+                Fatal::terminal(format!(
+                    "template `{}`: `{}` lacks the owner write bit, but every advance batch \
+                     maps it shared for writing, and seeding keeps file modes; make the \
+                     template's files writable (e.g. `chmod -R u+w {}`); refusing it",
+                    path.display(),
+                    file.display(),
+                    path.display(),
+                ))
+            );
+        }
         let uarch_hash = machine.node_hash(UARCH_STATE_START, UARCH_STATE_LOG2_SIZE)?;
         let linked_hash = Machine::uarch_pristine_hash();
         ensure!(
@@ -161,6 +188,39 @@ impl Template {
     pub fn awaits_input(&self) -> bool {
         self.awaits_input
     }
+}
+
+/// The files of a stored machine that a `SharingMode::All` load (every
+/// runner batch) opens for writing: each range's data and dirty-tree files
+/// and the hash tree's, except the data of ranges the host maps read-only
+/// (the PMAs and read-only drives), which the emulator itself stores
+/// read-only. The ranges are those the emulator's `machine::clone_stored`
+/// clones.
+fn shared_writable_files(config: &MachineConfig) -> Vec<&Path> {
+    let fixed = [
+        (&config.processor.backing_store, false),
+        (&config.pmas.backing_store, true),
+        (&config.dtb.backing_store, false),
+        (&config.ram.backing_store, false),
+        (&config.cmio.rx_buffer.backing_store, false),
+        (&config.cmio.tx_buffer.backing_store, false),
+        (&config.uarch.processor.backing_store, false),
+        (&config.uarch.ram.backing_store, false),
+    ];
+    let drives = (config.flash_drive.iter())
+        .chain(&config.nvram)
+        .map(|drive| (&drive.backing_store, drive.read_only));
+    let mut files = vec![
+        config.hash_tree.sht_filename.as_path(),
+        config.hash_tree.phtc_filename.as_path(),
+    ];
+    for (store, host_read_only) in fixed.into_iter().chain(drives) {
+        if !host_read_only {
+            files.push(&store.data_filename);
+        }
+        files.extend([store.dht_filename.as_path(), store.dpt_filename.as_path()]);
+    }
+    files
 }
 
 /// What a new state directory starts from: the image of `epoch`'s start
@@ -512,6 +572,72 @@ mod tests {
             format!("{error:#}").contains("uses a Sha256 hash tree"),
             "unexpected error: {error:#}"
         );
+    }
+
+    /// A read-only template seeds (cloning hard-links its files into the
+    /// store) and then fails every batch, so inspection refuses it first.
+    #[test]
+    fn template_inspection_refuses_files_the_runner_must_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        let hash = *Template::inspect(&template).unwrap().hash();
+        // chmod a-w on the files; the directory stays traversable.
+        for entry in fs::read_dir(&template).unwrap() {
+            let path = entry.unwrap().path();
+            let mode = fs::metadata(&path).unwrap().permissions().mode();
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode & !0o222)).unwrap();
+        }
+
+        let error = Template::inspect(&template).expect_err("a read-only template must be refused");
+        assert!(
+            format!("{error:#}").contains("lacks the owner write bit"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(crate::fatal::exit_code(&error), 30);
+
+        // What the refusal prevents: past inspection, the seed succeeds and
+        // the runner's first batch cannot open its working clone.
+        let image = Template {
+            path: template,
+            hash,
+            awaits_input: true,
+        };
+        let seed = Seed {
+            image,
+            epoch: 0,
+            watermark: 0,
+        };
+        let state_dir = dir.path().join("state");
+        let mut storage =
+            Storage::initialize(&state_dir, Some(&seed), &config(Address::ZERO, 1, hash)).unwrap();
+        assert!(storage.begin_advances().is_err());
+    }
+
+    /// Only files the runner writes need the bit: a read-only drive (and the
+    /// PMAs, which every stored image keeps read-only) passes.
+    #[test]
+    fn template_inspection_accepts_a_read_only_drive() {
+        let dir = tempfile::tempdir().unwrap();
+        let template = dir.path().join("template");
+        let mut config = Machine::default_config().unwrap();
+        config.ram.length = 4096;
+        config.flash_drive = vec![cartesi_machine::config::machine::MemoryRangeConfig {
+            start: 1 << 55,
+            length: 4096,
+            read_only: true,
+            ..Default::default()
+        }];
+        Machine::create(&config, &RuntimeConfig::default())
+            .unwrap()
+            .store(&template)
+            .unwrap();
+        let drive = template.join(format!("{:016x}-1000.bin", 1u64 << 55));
+        assert_eq!(
+            fs::metadata(&drive).unwrap().permissions().mode() & 0o222,
+            0
+        );
+        Template::inspect(&template).unwrap();
     }
 
     #[test]
