@@ -127,10 +127,11 @@ impl Template {
         // The root hash comes from the image's stored hash tree, which a load
         // does not check against pages marked clean.
         // TODO: uncomment after the emulator release that supports
-        // cm_verify_hash_tree (docs/todo.md), un-ignore its test below, and
-        // then drop the notes that say to trust the seed image's source (the
-        // node README's operator notes and docs/node-architecture.md's
-        // startup section).
+        // cm_verify_hash_tree (docs/todo.md), with the binding it calls
+        // (cartesi-machine's machine.rs), un-ignore its test below, and then
+        // drop the notes that say to trust the seed image's source (the node
+        // README's operator notes and docs/node-architecture.md's startup
+        // section).
         // ensure!(
         //     machine.verify_hash_tree()?,
         //     Fatal::terminal(format!(
