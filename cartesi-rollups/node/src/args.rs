@@ -654,7 +654,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn discovers_the_deployed_tournament_geometry() {
         let state = anvil_state_path();
         let anvil = Anvil::default()
@@ -682,7 +682,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn setup_validates_before_writing() -> std::result::Result<(), Box<dyn std::error::Error>>
     {
         let (anvil, _provider, book) = spawn_anvil_and_provider().await?;
