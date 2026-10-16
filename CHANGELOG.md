@@ -141,7 +141,8 @@ needed.
 - The first log line names the release tag the binary was built from (or
   says it is an unreleased build), the linked Cartesi Machine and its
   `MARCHID`, and startup logs whether the signer is a sentry of the
-  consensus.
+  consensus. The configuration it runs with is now one log line, not a
+  record split over several.
 - Startup also requires the deployed state transition's
   `UARCH_PRISTINE_STATE_HASH()`, the linked emulator's pristine uarch hash and
   the template's uarch state hash to be equal, beside the `CM_MARCHID` check,
@@ -154,6 +155,18 @@ needed.
   more than one block is split, and a failure at one block fails the tick.
   Passing the flag is now a startup error; its environment variable is
   ignored.
+- `--auth-private-key` is removed: any local user can read a process's
+  arguments. The `pk` signer takes its key from
+  `CARTESI_SLING_AUTH_PRIVATE_KEY` or `--auth-private-key-file`, and
+  passing the old flag is a usage error. See the README's Run section.
+- `--blockchain-http-endpoint` and `--blockchain-id` are required; they
+  defaulted to anvil's `http://127.0.0.1:8545` and 31337.
+- `aws-kms` no longer defaults `--aws-region` to `us-east-1` or builds
+  `https://kms.<region>.amazonaws.com`: the AWS SDK resolves the region and
+  endpoint (profile, instance metadata, FIPS, other partitions), and the
+  two flags only override it. They no longer read `AWS_REGION` and
+  `AWS_ENDPOINT_URL` themselves; the SDK still does. A start where no region
+  resolves fails, naming `--aws-region`.
 - Bond recovery keeps its dispute tree across ticks instead of re-walking it,
   so its scan no longer grows with the dispute's age.
 - Gas limits come from estimates (half again, at least 150,000, clamped at the
