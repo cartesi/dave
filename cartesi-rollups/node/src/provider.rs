@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::args::SignerArgs;
+use crate::args::{PRIVATE_KEY_ENV, SignerArgs};
 use crate::fatal::Fatal;
 use crate::kms;
 use alloy::{
@@ -28,7 +28,9 @@ use alloy_transport::{
 use anyhow::{Context, Result, anyhow, ensure};
 use log::{debug, error, info, trace, warn};
 use std::{
+    ffi::OsString,
     fs,
+    path::Path,
     str::FromStr,
     task::{Context as TaskContext, Poll},
     time::Duration,
@@ -42,29 +44,14 @@ pub(crate) async fn create_signer(
 ) -> Result<(Address, EthereumWallet)> {
     let signer: Box<dyn TxSigner<Signature> + Send + Sync> = match signer_args {
         SignerArgs::Pk {
-            auth_private_key,
             auth_private_key_file,
         } => {
-            let pk = if let Some(file) = auth_private_key_file {
-                fs::read_to_string(file)
-                    .with_context(|| {
-                        format!(
-                            "failed to read --auth-private-key-file `{}`",
-                            file.display()
-                        )
-                    })?
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string()
-            } else {
-                auth_private_key.clone().unwrap()
-            };
-
-            let local_signer = PrivateKeySigner::from_str(&pk).map_err(|_| {
-                anyhow!("--auth-private-key(-file) does not hold a valid private key")
-            })?;
+            let (pk, source) = private_key(
+                auth_private_key_file.as_deref(),
+                std::env::var_os(PRIVATE_KEY_ENV),
+            )?;
+            let local_signer = PrivateKeySigner::from_str(&pk)
+                .map_err(|_| anyhow!("{source} does not hold a valid private key"))?;
 
             Box::new(local_signer)
         }
@@ -112,6 +99,36 @@ pub(crate) async fn create_signer(
         <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
 
     Ok((wallet_address, wallet))
+}
+
+/// The `pk` signer's key and the name of its source: the key file or, given
+/// no file, the environment variable (empty counts as unset). Neither or both
+/// is a configuration to fix, which no restart does.
+fn private_key(file: Option<&Path>, env: Option<OsString>) -> Result<(String, &'static str)> {
+    match (file, env.filter(|value| !value.is_empty())) {
+        (Some(file), None) => {
+            let contents = fs::read_to_string(file).with_context(|| {
+                format!(
+                    "failed to read --auth-private-key-file `{}`",
+                    file.display()
+                )
+            })?;
+            let key = contents.lines().next().unwrap_or("").trim().to_owned();
+            Ok((key, "--auth-private-key-file"))
+        }
+        (None, Some(key)) => Ok((
+            key.to_str().unwrap_or("").trim().to_owned(),
+            PRIVATE_KEY_ENV,
+        )),
+        (Some(_), Some(_)) => Err(Fatal::terminal(format!(
+            "pk: both {PRIVATE_KEY_ENV} and --auth-private-key-file are set; set one"
+        ))
+        .into()),
+        (None, None) => Err(Fatal::terminal(format!(
+            "pk: set {PRIVATE_KEY_ENV} or --auth-private-key-file"
+        ))
+        .into()),
+    }
 }
 
 /// How long one request may take, connect through body: an RPC attempt, or
@@ -846,6 +863,32 @@ mod tests {
             message: message.into(),
             data: None,
         })
+    }
+
+    #[test]
+    fn the_private_key_comes_from_exactly_one_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("key");
+        fs::write(&file, "0xfile \nignored\n").unwrap();
+        let env = |value: &str| Some(OsString::from(value));
+
+        let (key, source) = private_key(Some(&file), None).unwrap();
+        assert_eq!(
+            (key.as_str(), source),
+            ("0xfile", "--auth-private-key-file")
+        );
+        let (key, source) = private_key(None, env("0xenv")).unwrap();
+        assert_eq!((key.as_str(), source), ("0xenv", PRIVATE_KEY_ENV));
+        assert_eq!(private_key(Some(&file), env("")).unwrap().0, "0xfile");
+
+        for refused in [
+            private_key(None, None),
+            private_key(Some(&file), env("0xenv")),
+        ] {
+            let error = refused.unwrap_err();
+            assert_eq!(crate::fatal::exit_code(&error), 30, "{error:#}");
+            assert!(error.to_string().contains(PRIVATE_KEY_ENV), "{error:#}");
+        }
     }
 
     #[test]

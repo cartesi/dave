@@ -27,13 +27,15 @@ local function start_dave_node(machine_path, app_address, db_path, sleep_duratio
     -- exercise mid-epoch snapshot resumes; the default is 2, and a
     -- scenario can pass a larger gap to exercise the batched advance
     -- cadence instead (one commit per gap of inputs).
+    -- The key goes through the environment: the node takes no key flag.
     local cmd = string.format(
         [[echo $$ ; exec env CARTESI_SLING_TEMPLATE_PATH='%s' CARTESI_SLING_APP_ADDRESS='%s' \
-        CARTESI_SLING_DATA_DIR='%s' RUST_BACKTRACE='%s' RUST_LOG='info',cartesi_sling_node='%s' \
+        CARTESI_SLING_DATA_DIR='%s' CARTESI_SLING_AUTH_PRIVATE_KEY='%s' \
+        RUST_BACKTRACE='%s' RUST_LOG='info',cartesi_sling_node='%s' \
         ../../../target/debug/cartesi-sling-node --polling-interval %s \
-        --snapshot-gap-inputs %d --blockchain-http-endpoint %s pk --auth-private-key %s >> %s 2>&1]],
-        machine_path, app_address, db_path, trace_level, verbosity, sleep_duration, snapshot_gap,
-        blockchain_constants.endpoint, blockchain_constants.node_pk, DAVE_LOG
+        --snapshot-gap-inputs %d --blockchain-http-endpoint %s pk >> %s 2>&1]],
+        machine_path, app_address, db_path, blockchain_constants.node_pk, trace_level, verbosity,
+        sleep_duration, snapshot_gap, blockchain_constants.endpoint, DAVE_LOG
     )
 
     local reader = io.popen(cmd)

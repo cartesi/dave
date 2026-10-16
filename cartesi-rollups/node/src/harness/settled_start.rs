@@ -48,8 +48,8 @@ async fn settle(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
         .await
 }
 
-/// The binary's arguments for anvil key `key` over `data_dir`.
-fn args(world: &World, key: usize, template: &Path, data_dir: &Path) -> PRTArgs {
+/// The binary's arguments over `data_dir`, signing with the key in `key_file`.
+fn args(world: &World, key_file: &Path, template: &Path, data_dir: &Path) -> PRTArgs {
     PRTArgs::try_parse_from([
         "cartesi-sling-node".to_owned(),
         "--app-address".to_owned(),
@@ -63,8 +63,8 @@ fn args(world: &World, key: usize, template: &Path, data_dir: &Path) -> PRTArgs 
         "--data-dir".to_owned(),
         data_dir.to_str().unwrap().to_owned(),
         "pk".to_owned(),
-        "--auth-private-key".to_owned(),
-        alloy::hex::encode(world.anvil.keys()[key].to_bytes()),
+        "--auth-private-key-file".to_owned(),
+        key_file.to_str().unwrap().to_owned(),
     ])
     .unwrap()
 }
@@ -80,6 +80,12 @@ async fn a_node_seeded_from_the_settled_state_defends_its_epoch_and_touches_none
 -> Result<()> {
     let mut world = World::spawn(&[], 10).await?;
     world.add_input(b"one".to_vec()).await?;
+    let keys = tempfile::tempdir()?;
+    let key_file = keys.path().join("honest");
+    std::fs::write(
+        &key_file,
+        alloy::hex::encode(world.anvil.keys()[HONEST].to_bytes()),
+    )?;
 
     let mut a = world.honest_node().await?;
     settle(&mut a, &mut world, 0).await?;
@@ -99,7 +105,7 @@ async fn a_node_seeded_from_the_settled_state_defends_its_epoch_and_touches_none
     // B seeds from A's store, as an operator copies another node's image.
     let image = a_storage.snapshot_dir(2, 0)?.context("A's epoch-2 start")?;
     let b_dir = tempfile::tempdir()?;
-    let config = NodeConfig::setup_with(args(&world, HONEST, &image, b_dir.path())).await?;
+    let config = NodeConfig::setup_with(args(&world, &key_file, &image, b_dir.path())).await?;
     let mut b_storage = Storage::new(b_dir.path())?;
     assert_eq!(b_storage.snapshot_hash(2, 0)?, Some(start));
     assert!(b_storage.snapshot_hash(0, 0)?.is_none());
@@ -129,7 +135,7 @@ async fn a_node_seeded_from_the_settled_state_defends_its_epoch_and_touches_none
     let unsettled = b_storage.snapshot_dir(3, 0)?.context("B's epoch-3 start")?;
     let scratch = tempfile::tempdir()?;
     let refused = scratch.path().join("refused");
-    let error = NodeConfig::setup_with(args(&world, HONEST, &unsettled, &refused))
+    let error = NodeConfig::setup_with(args(&world, &key_file, &unsettled, &refused))
         .await
         .map(|_| ())
         .unwrap_err();
@@ -154,9 +160,9 @@ async fn a_node_seeded_from_the_settled_state_defends_its_epoch_and_touches_none
     // A restart reads no image: neither a vanished path nor the template.
     drop(config);
     let vanished = scratch.path().join("vanished");
-    drop(NodeConfig::setup_with(args(&world, HONEST, &vanished, b.state_dir.path())).await?);
+    drop(NodeConfig::setup_with(args(&world, &key_file, &vanished, b.state_dir.path())).await?);
     let template = program_path().join("machine-image");
-    drop(NodeConfig::setup_with(args(&world, HONEST, &template, b.state_dir.path())).await?);
+    drop(NodeConfig::setup_with(args(&world, &key_file, &template, b.state_dir.path())).await?);
     assert!(b_storage.snapshot_hash(0, 0)?.is_none());
     Ok(())
 }
