@@ -61,8 +61,7 @@ pub async fn run(config: NodeConfig) -> Result<()> {
     let shutdown = ShutdownSignal::default();
 
     // Startup hygiene, before any worker spawns: sweep the snapshot
-    // store's staging leftovers a crash left behind. Grows into the
-    // sequencer-style ritual as more checks earn a place.
+    // store's staging leftovers a crash left behind.
     config.storage()?.sweep_stale_staging()?;
 
     // The machine runner is the blocking lane (machine execution +

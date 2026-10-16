@@ -5,9 +5,7 @@
 //! shutdown, workers observe it, and that is the whole contract.
 //! Worker errors do NOT travel through here - they return through
 //! their JoinHandles, and the runtime loop in lib.rs turns the first
-//! exit into a shutdown request for everyone else. (The predecessor,
-//! Watch, carried the first error to every worker through a condvar;
-//! that conflation is what this replaces.)
+//! exit into a shutdown request for everyone else.
 
 use std::sync::{
     Arc, Condvar, Mutex,
