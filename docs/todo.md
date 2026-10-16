@@ -66,10 +66,6 @@ carry no backlog (reviews/README.md).
   only if no relay operators use frees a held nonce within G, planning the
   timeout claim when the opponent's leaf clock cannot outlive the proof, and
   the two planner leads recorded there. (node-architecture.md)
-- Once the branch that edits `args.rs` merges, one cleanup pull request for
-  the node's known debts, with args.rs's two `#[ignore]` reasons that still
-  blame the v0.21 lock leak and a test-harness.md line for
-  `harness/settled_start.rs`. (node-architecture.md, Known debts)
 - Qualify Flashbots Protect (default and `/fast`) and MEV Blocker
   `/noreverts` on mainnet with a small dedicated funded key, record the results and
   update the node README's candidate list: no relay is measured yet.
