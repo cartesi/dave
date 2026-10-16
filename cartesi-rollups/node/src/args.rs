@@ -23,7 +23,9 @@ use cartesi_prt_contracts::{
 use clap::{ArgGroup, Parser, Subcommand};
 use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 
-use crate::provider::{TransactionLane, create_rpc_provider, create_signer, rpc_provider};
+use crate::provider::{
+    TransactionLane, check_signer_source, create_rpc_provider, create_signer, rpc_provider,
+};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const POLLING_INTERVAL: u64 = 30;
@@ -373,6 +375,7 @@ impl NodeConfig {
     /// seeded directory never reads its image.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = named_chain(args.blockchain_id)?;
+        check_signer_source(&args.signer)?;
 
         let provider = create_rpc_provider(&args.blockchain_http_endpoint, chain_id)
             .await
@@ -507,6 +510,19 @@ mod tests {
     /// [`REQUIRED`], then `rest`.
     fn parse(rest: &[&str]) -> std::result::Result<PRTArgs, clap::Error> {
         PRTArgs::try_parse_from(REQUIRED.iter().chain(rest))
+    }
+
+    /// The signer's key source is checked before any endpoint is asked
+    /// anything: this start would otherwise fail on the endpoint first.
+    #[tokio::test]
+    async fn a_missing_key_is_refused_before_the_network() {
+        let args = parse(&["pk", "--auth-private-key-file", "/nonexistent/key"]).unwrap();
+        let error = NodeConfig::setup_with(args).await.map(|_| ()).unwrap_err();
+        let error = format!("{error:#}");
+        assert!(
+            error.contains("--auth-private-key-file") && !error.contains("--blockchain-http"),
+            "unexpected error: {error}"
+        );
     }
 
     /// A production start never wants anvil's endpoint or chain.

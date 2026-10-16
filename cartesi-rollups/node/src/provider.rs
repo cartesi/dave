@@ -101,6 +101,21 @@ pub(crate) async fn create_signer(
     Ok((wallet_address, wallet))
 }
 
+/// Refuses a `pk` signer with no key source, or two, before anything reaches
+/// the network: a configuration to fix is reported first.
+pub(crate) fn check_signer_source(signer_args: &SignerArgs) -> Result<()> {
+    match signer_args {
+        SignerArgs::Pk {
+            auth_private_key_file,
+        } => private_key(
+            auth_private_key_file.as_deref(),
+            std::env::var_os(PRIVATE_KEY_ENV),
+        )
+        .map(drop),
+        SignerArgs::AwsKms { .. } => Ok(()),
+    }
+}
+
 /// The `pk` signer's key and the name of its source: the key file or, given
 /// no file, the environment variable (empty counts as unset). Neither or both
 /// is a configuration to fix, which no restart does.
