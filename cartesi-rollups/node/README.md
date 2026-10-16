@@ -67,9 +67,11 @@ adversary's copies (up to about 3.76M gas for a leaf proof). A relay must:
 2. reach builders that cover most blocks;
 3. free a nonce it holds within 5 minutes, the response window: admit a
    different transaction at that nonce, which the node's next tick sends, or
-   drop a held transaction that can no longer succeed. A longer hold delays
-   the node's next action and draws on the dispute's censorship budget, and
-   a relay with no bound on it does not qualify.
+   drop a held transaction that can no longer succeed. Each hold delays the
+   node's next action by the hold plus a polling interval and an inclusion,
+   so a hold near 5 minutes already draws on the dispute's censorship budget
+   (about 40 s at the default polling interval), and a relay with no bound on
+   the hold does not qualify.
 
 No relay has passed the qualification in
 [docs/runbooks/submit-relay.md](../../docs/runbooks/submit-relay.md) yet, so
@@ -236,11 +238,13 @@ Options:
 - A fresh data directory seeded from the template replays every input since
   the application's deployment. To skip that replay, seed it from the
   application's last settled state instead: read its hash with
-  `cast call <consensus> 'getLastFinalizedMachineMerkleRoot(address)(bytes32)' <app>`,
+  `cast call --block finalized <consensus> 'getLastFinalizedMachineMerkleRoot(address)(bytes32)' <app>`
+  (the node accepts a settled state only once its settlement is finalized),
   or let the node's refusal print it, and point `--template-path` at
   `snapshots/0x<hash>` in the data directory of a node of the same emulator
-  release that still works on that epoch (on the same host directly;
-  elsewhere, a reflink copy). The node then executes from that epoch on. The
+  release that still works on that epoch: on the same host, that path itself,
+  since the node clones it into its store; from another host, a sparse
+  preserving copy of that directory (`rsync -S` or `tar --sparse`). The node then executes from that epoch on. The
   provider must still serve the application's logs since its deployment,
   which the node ingests either way, and in the epochs below the seed the
   node only recovers its signer's bonds. Until it has replayed the seeded
@@ -280,11 +284,11 @@ Options:
   the application's machine plus a dispute's.
 - Behind a relay, an error that a call has been planned for some minutes
   without landing, naming a last verdict rather than a revert at latest,
-  means the relay holds, drops or refuses its sends. Look up the transaction
-  hash it names on the relay's status page
-  ([submit-relay.md](../../docs/runbooks/submit-relay.md)), and until the
-  relay recovers, restart without `--blockchain-http-submit-endpoint`,
-  accepting paid reverts on the public pool.
+  means the relay holds, drops or refuses its sends; the nonce it names is
+  the stuck one ([submit-relay.md](../../docs/runbooks/submit-relay.md) says
+  how to find the held transaction). Until the relay recovers, restart
+  without `--blockchain-http-submit-endpoint`, accepting paid reverts on the
+  public pool.
 - Alert on every ERROR line, on restart loops, on free space on the data
   directory's filesystem (the node refuses a batch below 1 GiB), and on the
   signer's balance against the funding floor above, which the node checks

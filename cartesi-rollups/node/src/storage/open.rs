@@ -608,6 +608,34 @@ mod tests {
             Storage::initialize(&state_dir, None, &config(Address::ZERO, 1, hash)).unwrap();
         assert_eq!(storage.latest_processed_block().unwrap(), 1000);
         assert_eq!(storage.snapshot_hash(0, 0).unwrap(), Some(hash));
+        drop(storage);
+
+        // A seed that reaches a pinned directory (another start won the race
+        // after the probe) is ignored: nothing is imported or written.
+        let other = dir.path().join("other");
+        store_template(&other, |machine| {
+            machine
+                .write_memory(cartesi_machine::constants::ar::RAM_START, &[0xA5])
+                .unwrap();
+        });
+        let image = Template::inspect(&other).unwrap();
+        let other_hash = *image.hash();
+        let seed = Seed {
+            image,
+            epoch: 2,
+            watermark: 5000,
+        };
+        let mut storage =
+            Storage::initialize(&state_dir, Some(&seed), &config(Address::ZERO, 1, hash)).unwrap();
+        assert_eq!(storage.latest_processed_block().unwrap(), 1000);
+        assert_eq!(storage.snapshot_hash(0, 0).unwrap(), Some(hash));
+        assert!(storage.snapshot_hash(2, 0).unwrap().is_none());
+        assert!(
+            !snapshots_path(&state_dir)
+                .join(format!("0x{}", hex::encode(other_hash)))
+                .exists(),
+            "a seed given to a pinned directory must not be imported"
+        );
     }
 
     /// The probe found a seed the locked open does not: another process

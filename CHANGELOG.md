@@ -88,16 +88,23 @@ needed.
   templates and data directories do not load.
 - Start from a fresh data directory: the schema changed (tournament events
   are no longer stored; the chain id is pinned), and the directory holds a
-  `node.lock` that refuses a second process. A fresh directory replays every
-  input since the application's deployment; see the README's operator notes
-  for a side-by-side upgrade.
+  `node.lock` that refuses a second process. A fresh directory seeded from
+  the template replays every input since the application's deployment; one
+  seeded from the state the current sealed epoch starts from executes from
+  that epoch on, and only recovers its signer's bonds below it. See the
+  README's operator notes for both and for a side-by-side upgrade.
 - Changing the signer no longer needs a fresh directory: the node recovers
   its current signer's bonds, and a previous signer's stay recoverable by
   anyone through `tryRecoveringBond`, which pays the recorded claimer. The
   node does not revisit a completed epoch for them.
-- Startup checks the template against the chain, the directory's pins and
-  the chain id before writing anything, and refuses a template no epoch can
-  start from.
+- A first start checks the seed image (the template, or the last settled
+  state at the finalized head) against the chain, and every start checks the
+  directory's pins and each endpoint's chain id, before writing anything; an
+  endpoint on another chain exits 30. A seeded directory never reads
+  `--template-path` again.
+- Startup warns when no separate submit endpoint is set off anvil, and a send
+  the submit endpoint does not answer is a WARN that pages after 5 minutes,
+  not an ERROR on every send.
 - Startup also requires the deployed state transition's
   `UARCH_PRISTINE_STATE_HASH()`, the linked emulator's pristine uarch hash and
   the template's uarch state hash to be equal, beside the `CM_MARCHID` check,

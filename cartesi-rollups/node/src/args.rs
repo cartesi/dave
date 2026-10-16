@@ -378,8 +378,8 @@ impl NodeConfig {
                 .context("--blockchain-http-submit-endpoint")?,
             // Anvil is the tests' chain, where nobody orders transactions.
             None if args.blockchain_id != ANVIL_CHAIN_ID => log::warn!(
-                "no --blockchain-http-submit-endpoint: transactions go to the read endpoint's \
-                 public pool, where an adversary who orders transactions can land a copy of \
+                "no separate --blockchain-http-submit-endpoint: transactions go to the read \
+                 endpoint, on a public node its public pool, where an adversary who orders transactions can land a copy of \
                  each honest step first and make the node pay for its reverted one (up to \
                  about 3.76M gas for a leaf proof); in production, send through a relay that \
                  meets the node README's requirements"

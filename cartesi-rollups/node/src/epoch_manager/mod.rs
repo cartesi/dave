@@ -157,7 +157,8 @@ impl EpochManager {
                 let to = to.and_then(|kind| kind.to().copied()).unwrap_or_default();
                 let why = match &report.revert {
                     Some(reason) => format!("it reverts at latest: {reason}"),
-                    // The hash finds a held transaction on a relay's status page.
+                    // The newest send at the stuck nonce; a relay holds an
+                    // earlier one there (docs/runbooks/submit-relay.md).
                     None => format!(
                         "last verdict {:?} for transaction {} at nonce {}",
                         report.verdict, report.tx_hash, report.nonce
