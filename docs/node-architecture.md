@@ -66,8 +66,9 @@ can no longer load does not stop it. A mismatch names the flag to fix
 (`--app-address`, `--blockchain-id`), calls the directory another
 deployment's or an old one (the initial hash), or asks for a rebuild
 (consensus, emulator, table). A new directory is seeded in one transaction:
-the initial watermark, the seed epoch's start boundary and the pins. So a
-deployment or flag these checks reject cannot create or alter local state. The runner samples each window at the pinned
+the initial watermark, the seed epoch's start boundary, the completion cursor
+at that epoch and the pins. So a deployment or flag these checks reject cannot
+create or alter local state. The runner samples each window at the pinned
 root stride. Other operator mistakes (an unknown chain id, an unreadable or
 invalid key, an endpoint on another chain, an address that is not a Dave
 application) are errors that name their flag too, and add no key material;
@@ -343,7 +344,7 @@ Main schema (`storage/sql/schema.sql`):
 - `epochs(epoch_number, input_index_boundary, root_tournament, block_created_number)`
 - `inputs(epoch_number, input_index_in_epoch, input)`
 - `latest_processed(block)` - singleton; last finalized block ingested
-- `epoch_completion` - singleton; next unfinished epoch
+- `epoch_completion` - singleton; next unfinished epoch, from the seed epoch
 - `settlement_info(epoch_number, computation_hash, final_state, data block and
   sibling blobs for iflags_Y, HTIF tohost, and the TX buffer)` - the TX data
   block is the outputs Merkle root
@@ -493,8 +494,8 @@ initial hash is read at the consensus's deployment block (Process layout).
 Both are `block.number` values, read as RPC block numbers, which is why the
 node does not start on Arbitrum. Ingestion starts at genesis whatever the
 seed: a directory seeded at epoch k still stores every earlier epoch and
-input, since the node numbers inputs from the application's first and the
-bond-recovery walk needs the earlier roots, and never executes them.
+input, since the node numbers inputs from the application's first, and
+never executes them.
 
 Ingestion commits at most 10,000 finalized blocks at a time, with their
 watermark, so catch-up holds one chunk's inputs in memory and a restart
@@ -591,10 +592,10 @@ claimant. A recovered bond, a foreign claimant, or a no-winner tournament is
 complete; running and unknown dispositions are not. Restart resumes that
 cursor. The manager handles settled historical epochs using recovery reads
 and calls alone, without constructing a Hero or waiting for local execution.
-A directory seeded at epoch k has no settlement row below k, since only the
-runner writes them and its cursor starts at k, so the manager takes that path
-for every epoch below k: it recovers this signer's bonds there and reaches no
-Hero, sentry claim or settlement call.
+The cursor starts at the directory's seed epoch: a directory seeded at epoch k
+owns k and later epochs and never touches an earlier one, so bonds its signer
+holds there are the operator's (node README). Until epoch k's seal is
+ingested, the manager idles.
 
 Root settlement implies every linked descendant has finished. Creating a child
 pauses the parent match's clocks, and resolving that match requires the child

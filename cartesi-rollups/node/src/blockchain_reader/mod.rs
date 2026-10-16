@@ -209,7 +209,7 @@ impl AddressBook {
             Some((epoch, state)) if state == *image => {
                 info!(
                     "--template-path holds the state epoch {epoch} starts from; the node \
-                     executes from epoch {epoch} and only recovers bonds below it"
+                     executes from epoch {epoch} and does not touch earlier epochs"
                 );
                 Ok(epoch)
             }

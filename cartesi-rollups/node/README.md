@@ -244,13 +244,17 @@ Options:
   `snapshots/0x<hash>` in the data directory of a node of the same emulator
   release that still works on that epoch: on the same host, that path itself,
   since the node clones it into its store; from another host, a sparse
-  preserving copy of that directory (`rsync -S` or `tar --sparse`). The node then executes from that epoch on. The
-  provider must still serve the application's logs since its deployment,
-  which the node ingests either way, and in the epochs below the seed the
-  node only recovers its signer's bonds. Until it has replayed the seeded
-  epoch, it logs that it waits for the machine runner, at ERROR after 5
-  minutes, since that epoch's clock runs: seed early in an epoch, between
-  disputes. Across an emulator archive change (v0.22 refuses archive 7) an
+  preserving copy of that directory (`rsync -S` or `tar --sparse`). The node
+  then executes from that epoch on and never touches an earlier one, though
+  the provider must still serve the application's logs since its
+  deployment, which the node ingests either way. Bonds its signer holds in
+  earlier epochs are the operator's: a `tryRecoveringBond` call on each such
+  tournament has no deadline, may come from anyone and pays the recorded
+  claimer; or keep the node that placed them running until it logs those
+  epochs complete, as in the side-by-side upgrade below. Until it has
+  replayed the seeded epoch, it logs that it waits for the machine runner, at
+  ERROR after 5 minutes, since that epoch's clock runs: seed early in an
+  epoch, between disputes. Across an emulator archive change (v0.22 refuses archive 7) an
   older release's snapshot does not load: the first node of the new release
   replays from a template stored by that release, and the others seed from
   it. The node takes the image's root from its stored hash tree, so take the
