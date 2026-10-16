@@ -1363,6 +1363,84 @@ mod tests {
         );
     }
 
+    /// A store seeded at a later epoch executes only from it: the epochs
+    /// below are ingested but get no boundary or settlement row (so the
+    /// manager reaches no Hero there), and completing them collects
+    /// nothing. The pin keeps the deployment's initial hash, not the
+    /// image's.
+    #[test]
+    fn a_store_seeded_at_epoch_two_executes_only_from_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("_settled_image");
+        super::super::sql::test_helper::store_template(&path, |_| {});
+        let image = super::super::Template::inspect(&path).unwrap();
+        let start = *image.hash();
+        let deployment = [0x5a; 32];
+        let config = crate::engine::EngineConfig::for_deployment(
+            0,
+            Address::ZERO,
+            Address::ZERO,
+            deployment,
+            TournamentGeometry::two_level(),
+        );
+        let seed = super::super::Seed {
+            image,
+            epoch: 2,
+            watermark: 0,
+        };
+        let mut s = Storage::initialize(dir.path(), Some(&seed), &config).unwrap();
+
+        // Epochs 0 and 1 hold one input each; epoch 2 is sealed empty.
+        let inputs: Vec<_> = (0..2)
+            .map(|epoch_number| Input {
+                id: super::super::InputId {
+                    epoch_number,
+                    input_index_in_epoch: 0,
+                },
+                data: vec![epoch_number as u8],
+            })
+            .collect();
+        let epochs: Vec<_> = [(0, 1), (1, 2), (2, 2)]
+            .into_iter()
+            .map(|(epoch_number, input_index_boundary)| Epoch {
+                epoch_number,
+                input_index_boundary,
+                root_tournament: Address::repeat_byte(epoch_number as u8 + 1),
+                block_created_number: 1,
+            })
+            .collect();
+        s.insert_consensus_data(1, inputs.iter(), epochs.iter())
+            .unwrap();
+
+        let next = s.next_input_id().unwrap();
+        assert_eq!((next.epoch_number, next.input_index_in_epoch), (2, 0));
+        assert!(s.snapshot_hash(0, 0).unwrap().is_none());
+        assert_eq!(
+            s.sling_config().unwrap().template_hash,
+            Digest::new(deployment)
+        );
+
+        assert_eq!(s.advance_plan().unwrap().epoch, 2);
+        s.roll_epoch().unwrap();
+        assert!(s.settlement_info(2).unwrap().is_some());
+        assert_eq!(s.snapshot_hash(3, 0).unwrap(), Some(start));
+        assert!(s.settlement_info(0).unwrap().is_none());
+        assert!(s.settlement_info(1).unwrap().is_none());
+
+        s.complete_epoch(0).unwrap();
+        s.complete_epoch(1).unwrap();
+        s.advance_plan().unwrap();
+        assert_eq!(s.snapshot_hash(2, 0).unwrap(), Some(start));
+
+        s.complete_epoch(2).unwrap();
+        s.advance_plan().unwrap();
+        assert!(s.snapshot_hash(2, 0).unwrap().is_none());
+        assert!(
+            snapshot_path(s.state_dir(), &start).exists(),
+            "(3, 0) still names the seed image's directory"
+        );
+    }
+
     #[test]
     #[should_panic(expected = "refusing to roll open epoch")]
     fn roll_refuses_an_open_epoch() {

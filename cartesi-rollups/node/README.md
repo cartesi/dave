@@ -79,11 +79,15 @@ its current signer, and a previous signer's bonds stay recoverable by anyone
 through `tryRecoveringBond`, which pays the recorded claimer. A changed store
 format or commitment semantics requires a fresh directory under the node's
 rebuild policy. The first
-start checks the `--template-path` image against the application's on-chain
-initial hash and pins the directory to its application, chain and that hash;
-a mismatch is refused before anything is written, and so is a matching image
-that is not paused at a manual accepted yield, from which no epoch can start.
-Later starts compare the pins and never read `--template-path`. Startup also
+start checks the `--template-path` image and pins the directory to its
+application, chain and the application's on-chain initial hash. The image is
+either the application's template, whose root hash is that initial hash, or
+the state the application's current sealed epoch starts from, which the node
+reads from the consensus at a finalized block; the directory then starts at
+that epoch (operator notes). Any other image is refused before anything is
+written, and so is a matching image that is not paused at a manual accepted
+yield, from which no epoch can start. Later starts compare the pins and never
+read `--template-path`. Startup also
 refuses a deployment whose state transition disagrees with the linked Cartesi
 Machine library (its `CM_MARCHID` or pristine uarch hash), and a first start
 refuses an image whose uarch state is not that pristine uarch (custom uarch
@@ -170,7 +174,7 @@ Options:
       --app-address <APP_ADDRESS>
           address of application [env: CARTESI_SLING_APP_ADDRESS]
       --template-path <TEMPLATE_PATH>
-          path to machine template image [env: CARTESI_SLING_TEMPLATE_PATH]
+          machine image a new data directory starts from: the application's template, or the state its current sealed epoch starts from; a seeded directory does not read it [env: CARTESI_SLING_TEMPLATE_PATH]
       --blockchain-http-endpoint <BLOCKCHAIN_HTTP_ENDPOINT>
           blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT] [default: http://127.0.0.1:8545]
       --blockchain-http-submit-endpoint <BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT>
@@ -198,14 +202,33 @@ Options:
   but is not validated, and refunds leave out the L1 data fee. On Arbitrum
   the node stops at startup: contracts there measure clocks in the parent
   chain's block numbers, while logs and the node's heads use Arbitrum's own.
-- A fresh data directory replays every input since the application's
-  deployment. To upgrade across a change that requires one, start the new
-  node on a new directory with its own funded signer, let it catch up, then
-  stop the old one; never wipe the only node's directory in place. The new
-  node recovers only its own signer's bonds and never revisits an epoch it
-  has completed, even when restarted under another signer. The old signer's
-  outstanding bonds stay recoverable by anyone: a direct `tryRecoveringBond`
-  call on each such tournament pays the recorded claimer, whoever sends it.
+- A fresh data directory seeded from the template replays every input since
+  the application's deployment. To skip that replay, seed it from the
+  application's last settled state instead: read its hash with
+  `cast call <consensus> 'getLastFinalizedMachineMerkleRoot(address)(bytes32)' <app>`,
+  or let the node's refusal print it, and point `--template-path` at
+  `snapshots/0x<hash>` in the data directory of a node of the same emulator
+  release that still works on that epoch (on the same host directly;
+  elsewhere, a reflink copy). The node then executes from that epoch on. The
+  provider must still serve the application's logs since its deployment,
+  which the node ingests either way, and in the epochs below the seed the
+  node only recovers its signer's bonds. Until it has replayed the seeded
+  epoch, it logs that it waits for the machine runner, at ERROR after 5
+  minutes, since that epoch's clock runs: seed early in an epoch, between
+  disputes. Across an emulator archive change (v0.22 refuses archive 7) an
+  older release's snapshot does not load: the first node of the new release
+  replays from a template stored by that release, and the others seed from
+  it. The node takes the image's root from its stored hash tree, so take the
+  image from a source you trust like the template, such as your own node's
+  store.
+- To upgrade across a change that requires a fresh data directory, start the
+  new node on a new directory with its own funded signer, let it catch up,
+  then stop the old one; never wipe the only node's directory in place. The
+  new node recovers only its own signer's bonds and never revisits an epoch
+  it has completed, even when restarted under another signer. The old
+  signer's outstanding bonds stay recoverable by anyone: a direct
+  `tryRecoveringBond` call on each such tournament pays the recorded
+  claimer, whoever sends it.
 - Read the levels as the failure policy defines them
   ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
   an ERROR asks an operator to act; a WARN means the node carries on. A
@@ -215,7 +238,7 @@ Options:
   and a page means the node is losing clock.
 - Run the node under a supervisor that restarts it with backoff. Its exit
   status says why it stopped: 0 a requested stop; 1 any other error
-  (restart); 2 a usage error; 30 terminal, when a flag, the template, the
+  (restart); 2 a usage error; 30 terminal, when a flag, the seed image, the
   deployment or the settled chain disagrees with the node (do not restart:
   an operator must act); 40 the data directory was built under another
   store format, commitment semantics, emulator, consensus or tournament geometry

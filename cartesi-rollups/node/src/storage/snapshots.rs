@@ -411,8 +411,7 @@ impl Storage {
 
 /// The newest snapshot boundary: (epoch, input, state_hash) - the
 /// machine runner's resume point. At least one exists from the
-/// initialization's epoch-0 seed; its absence means a foreign or torn
-/// database.
+/// initialization's seed; its absence means a foreign or torn database.
 pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
     let row = tx
         .prepare_cached(
@@ -433,7 +432,7 @@ pub(super) fn latest_boundary_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
         .optional()?;
 
     let (epoch, input, hash) = row.ok_or_else(|| StorageError::DataNotFound {
-        description: "snapshot boundary (initialization seeds epoch 0)".into(),
+        description: "snapshot boundary (initialization seeds the start epoch)".into(),
     })?;
 
     Ok((i64_to_u64(epoch), i64_to_u64(input), blob_to_hash(hash)?))
@@ -505,8 +504,9 @@ pub(super) fn insert_snapshot_in(
 
 /// Deletes the boundaries of every epoch up to `max_epoch`, returning
 /// the states no remaining boundary names: their directories are
-/// orphans once this transaction commits. The template needs no row of
-/// its own: epoch 0's start names it while anything can still need it.
+/// orphans once this transaction commits. The seed image needs no row of
+/// its own: its epoch's start row names it while anything can still need
+/// it.
 pub(super) fn release_boundaries_in(tx: &Transaction, max_epoch: u64) -> Result<Vec<Hash>> {
     let max_epoch = u64_to_i64(max_epoch);
     let orphans = tx
