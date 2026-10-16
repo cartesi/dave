@@ -202,11 +202,12 @@ reader's and the runner's ticks, the manager's tick and its dispute,
 settlement and refund planning, a sealed epoch the runner has not finished,
 and each call the manager plans: planning reads latest and drops a call once
 it lands, so a call planned for G has not landed (it reverts at estimation,
-with the reason in the error; a relay holds or dropped it; it is outbid; or
-it mines without effect). G is hardcoded, since the node knows no block time
-to convert the table's budgets; revisit it if a deployment's G departs from 5
-minutes. A read endpoint that stops following the chain fails nothing (it
-answers consistently with its old head), so the reader also logs ERROR on
+with the reason in the error; the submit endpoint does not answer; a relay
+holds or dropped it; it is outbid; or it mines without effect). G is
+hardcoded, since the node knows no block time to convert the table's budgets;
+revisit it if a deployment's G departs from 5 minutes. A read endpoint that
+stops following the chain fails nothing (it answers consistently with its old
+head), so the reader also logs ERROR on
 every tick whose latest block is older than G; a stalled provider is outside
 the trust model, so it is reported, not worked around. An ingestion check
 that keeps failing means the provider keeps
@@ -241,10 +242,10 @@ winnerless dispute (a loss names its case: elimination, another class's child
 win, a root won with this node's final state, or a divergence), an obligation
 the local commitment already missed (joins closed before it joined, its clock
 expired, its match or its match's child is eliminable), a won epoch that
-cannot settle, a rejected submission, a
-batch the signer cannot cover, a failure or a planned call that persists past
-G (the paging rule above), a torn snapshot, a worker
-exit, or a contract answer the node does not know (an unknown bond
+cannot settle, a submission the endpoint rejected (one it did not answer is
+WARN until its call pages), a batch the signer cannot cover, a failure or a
+planned call that persists past G (the paging rule above), a torn snapshot, a
+worker exit, or a contract answer the node does not know (an unknown bond
 disposition holds the epoch, and with it the next one). WARN
 means the node carries on: the next tick retries, an action is skipped or
 falls back, or best-effort work failed. INFO is protocol progress. Every
@@ -656,20 +657,20 @@ has been planned for G, since the node keeps planning a step it cannot take;
 one skip is routine with several honest nodes on one commitment, when another
 node's copy of the step mines between this node's read and its estimate. The
 node harness fails on any honest skip. Already-known transactions, underpriced
-replacements, and stale nonces are ordinary retry states; every later tick
-rebuilds intent from fresh observation. The mempool or a separately
-configured revert-protecting endpoint arbitrates races and duplicates. The
-lane observes no receipts, so a call that passes its estimate and loses a
-race before inclusion is paid for. Every contested step races among the
-honest nodes that share a commitment, so each may pay for the reverts of
-steps another won, a reverted leaf proof's calldata included. An adversary
-who orders transactions can impose the same cost on every honest action by
-landing an identical copy first, up to the EIP-7623 floor of a maximum-input
-leaf proof, about 3.76M gas, at no extra bond
+replacements, stale nonces and sends the endpoint did not answer are ordinary
+retry states; every later tick rebuilds intent from fresh observation. The
+mempool or a separately configured revert-protecting endpoint arbitrates
+races and duplicates. The lane observes no receipts, so a call that passes
+its estimate and loses a race before inclusion is paid for. Every contested
+step races among the honest nodes that share a commitment, so each may pay for
+the reverts of steps another won, a reverted leaf proof's calldata included.
+An adversary who orders transactions can impose the same cost on every honest
+action by landing an identical copy first, up to the EIP-7623 floor of a
+maximum-input leaf proof, about 3.76M gas, at no extra bond
 (reviews/2026-10-13-prt-cyber-verification, L-06). A revert-protecting
-endpoint behind `--blockchain-http-submit-endpoint` avoids that cost; the
-node recommends one and does not require it, and a production deployment
-should treat it as required.
+endpoint behind `--blockchain-http-submit-endpoint` avoids that cost; the node
+recommends one and does not require it, and a production deployment should
+treat it as required.
 
 A slot the pool turns down on price is signed once more at the quote's max
 fee with the tip raised to it. geth replaces only on 10% more of both fees,
