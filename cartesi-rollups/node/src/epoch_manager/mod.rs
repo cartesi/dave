@@ -270,18 +270,6 @@ impl EpochManager {
             }
         }
 
-        // A settled epoch's tree is walked only to its successor's seal: root
-        // settlement implies every linked descendant finished (a child leaves
-        // its parent only finished), so no NewInnerTournament follows the
-        // acceptance that sealed e + 1. Epochs are dense, so that seal is
-        // stored.
-        let walk_end = if settled {
-            self.storage
-                .sealed_epoch(epoch.epoch_number + 1)?
-                .map(|next| next.block_created_number)
-        } else {
-            None
-        };
         // Every applicable refund joins the same batch, including while the
         // root is running. A failed scan cannot discard already prepared work.
         let refunds_complete = match plan_recovery(
@@ -290,7 +278,6 @@ impl EpochManager {
             &epoch,
             self.signer_address,
             finalized,
-            walk_end,
         )
         .await
         {
@@ -917,8 +904,7 @@ mod tests {
         assert_eq!(retried.wave, planned.wave);
 
         // Mined but unfinalized recovery suppresses the call, not the epoch.
-        // The settled epoch's tree is already walked through its successor's
-        // seal at 20: no logs, only the bond read.
+        // The tree is already walked through 30: no logs, only the bond read.
         push_head(&rpc, 30);
         push_bond(&rpc, 2, us);
         push_head(&rpc, 31);
@@ -934,10 +920,8 @@ mod tests {
             0
         );
 
-        // Once the payment is final the real tick advances the durable cursor,
-        // still walking nothing past the seal.
-        push_head(&rpc, 32);
-        push_bond(&rpc, 3, Address::ZERO);
+        // Once the payment is final the real tick advances the durable cursor.
+        push_refund_tick(&rpc, 32, 3, Address::ZERO);
         assert!(restarted.tick(&chain).await.unwrap().done);
         drop(restarted);
         let (mut next, chain, rpc) = manager(dir.path());
