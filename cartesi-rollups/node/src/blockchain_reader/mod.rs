@@ -1478,7 +1478,7 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
-    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn test_input_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let inputbox = IInputBox::new(address_book.input_box, &provider);
@@ -1520,7 +1520,7 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
-    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn test_epoch_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let daveconsensus = DaveConsensus::new(address_book.consensus, &provider);
@@ -1543,7 +1543,7 @@ mod blockchain_reader_tests {
     /// 0's seal, and a directory seeded right below it, the highest seed,
     /// for a finalized deployment, ingests that seal.
     #[tokio::test]
-    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn ingestion_starts_at_the_application_deployment() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
         let chain = Chain::new(provider.clone());
@@ -1595,7 +1595,7 @@ mod blockchain_reader_tests {
     }
 
     #[tokio::test]
-    #[ignore = "spawns anvil, which inherits the emulator's leaked machine file locks (see harness/mod.rs); run `just test-node-harness`"]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn test_blockchain_reader() -> Result<()> {
         let (anvil, provider, address_book) = spawn_anvil_and_provider().await?;
 
