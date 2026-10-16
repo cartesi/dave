@@ -158,9 +158,10 @@ impl AddressBook {
             return Ok(0);
         }
         let at = chain
-            .finalized_block_number()
+            .finalized_head()
             .await
-            .context("--blockchain-http-endpoint: failed to read the finalized block")?;
+            .context("--blockchain-http-endpoint: failed to read the finalized block")?
+            .number;
         // Below genesis the consensus has no code to answer.
         let settled = if at < self.genesis_block_number {
             None
@@ -377,7 +378,7 @@ impl BlockchainReader {
     /// another cut like the finalized head: the next chunk reseeds its
     /// numbering from storage, as the next tick does.
     pub(crate) async fn tick(&mut self, chain: &Chain) -> Result<bool> {
-        let finalized = chain.finalized_block_number().await?;
+        let finalized = chain.finalized_head().await?.number;
         let processed = self.storage.latest_processed_block()?;
         if finalized <= processed {
             return Ok(true);
@@ -859,6 +860,7 @@ mod address_book_tests {
 
         let mut block: Block = Block::default();
         block.header.inner.number = 5000;
+        block.header.hash = alloy::primitives::B256::repeat_byte(1);
         rpc.push_success(&Some(block));
         rpc.push_success(&Bytes::from(
             DaveConsensus::getCurrentSealedEpochCall::abi_encode_returns(
@@ -1017,6 +1019,7 @@ mod witness_tests {
         fn head(&self, finalized: u64, inputs: u64, sealed_epoch: u64) {
             let mut block: Block = Block::default();
             block.header.inner.number = finalized;
+            block.header.hash = alloy::primitives::B256::repeat_byte(1);
             self.rpc.push_success(&Some(block));
             self.rpc.push_success(&Bytes::from(
                 IInputBox::getNumberOfInputsCall::abi_encode_returns(&U256::from(inputs)),
@@ -1418,7 +1421,7 @@ mod blockchain_reader_tests {
             // toward the finalized tag
             mine_blocks(chain.provider(), 1).await?;
             // latest finalized block must be greater than 0
-            let finalized = std::cmp::max(1, chain.finalized_block_number().await?);
+            let finalized = std::cmp::max(1, chain.finalized_head().await?.number);
 
             read_epochs = chain
                 .decoded_logs::<EpochSealed>(*consensus_address, None, 1, finalized)
@@ -1445,7 +1448,7 @@ mod blockchain_reader_tests {
             // toward the finalized tag
             mine_blocks(chain.provider(), 1).await?;
             // latest finalized block must be greater than 0
-            let finalized = std::cmp::max(1, chain.finalized_block_number().await?);
+            let finalized = std::cmp::max(1, chain.finalized_head().await?.number);
 
             read_inputs = chain
                 .decoded_logs::<InputAdded>(
@@ -1554,7 +1557,7 @@ mod blockchain_reader_tests {
         let chain = Chain::new(provider.clone());
         // finality trails latest by two blocks
         mine_blocks(&provider, 3).await?;
-        let watermark = address_book.initial_watermark(chain.finalized_block_number().await?);
+        let watermark = address_book.initial_watermark(chain.finalized_head().await?.number);
         assert_eq!(watermark, address_book.genesis_block_number - 1);
 
         let latest = chain.latest_block_number().await?;

@@ -406,9 +406,10 @@ impl NodeConfig {
         // Sampled before the deployment blocks are read: it bounds a new
         // directory's watermark (AddressBook::initial_watermark).
         let finalized = Chain::new(provider.clone())
-            .finalized_block_number()
+            .finalized_head()
             .await
-            .context("--blockchain-http-endpoint: failed to read the finalized block")?;
+            .context("--blockchain-http-endpoint: failed to read the finalized block")?
+            .number;
         let address_book = AddressBook::new(args.app_address, &provider)
             .await
             .with_context(|| {

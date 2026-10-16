@@ -73,16 +73,6 @@ impl Chain {
             .number)
     }
 
-    pub async fn finalized_block_number(&self) -> Result<u64> {
-        Ok(self
-            .provider
-            .get_block(Finalized.into())
-            .await?
-            .ok_or_else(|| anyhow!("provider has no finalized block"))?
-            .header
-            .number)
-    }
-
     /// Sample Latest once and retain both coordinates needed to pin
     /// the rest of an observation.
     pub async fn latest_head(&self) -> Result<ChainHead> {
