@@ -261,9 +261,8 @@ impl EpochManager {
                     ),
                 );
             } else {
-                // Still replaying earlier epochs (a fresh data directory), or
-                // an epoch below the directory's seeded start, which the
-                // runner never executes: neither is a stall.
+                // Still replaying earlier epochs (a fresh data directory):
+                // the replay is the operator's expected wait, not a stall.
                 debug!(
                     "wait for machine-runner to reach sealed epoch {}",
                     epoch.epoch_number

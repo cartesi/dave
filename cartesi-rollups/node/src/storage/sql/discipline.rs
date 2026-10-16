@@ -38,7 +38,7 @@ fn mutation_taxonomy_holds_at_source_level() {
     assert_eq!(
         update_hits,
         vec![
-            ("completion.rs".to_string(), 1),
+            ("completion.rs".to_string(), 2),
             ("ingest.rs".to_string(), 1)
         ],
         "only completion and the ingestion watermark write in place"

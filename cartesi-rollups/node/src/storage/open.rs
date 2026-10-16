@@ -217,8 +217,8 @@ impl Storage {
     /// with this start's before anything is written, so a wrong flag leaves
     /// it untouched, and its image is never read again. A new one gets the
     /// seed image stored (filesystem first), then one transaction for the
-    /// seed's watermark, its epoch's start boundary and the pin, so a pinned
-    /// directory is always a seeded one.
+    /// seed's watermark, its epoch's start boundary, the completion cursor at
+    /// that epoch and the pin, so a pinned directory is always a seeded one.
     pub fn initialize(
         state_dir: &Path,
         seed: Option<&Seed>,
@@ -273,13 +273,12 @@ impl Storage {
         self.write(|tx| {
             super::ingest::raise_watermark_in(tx, seed.watermark)?;
             super::snapshots::insert_snapshot_in(tx, seed.epoch, 0, image.hash())?;
+            super::completion::seed_cursor_in(tx, seed.epoch)?;
             sling_config::pin(tx, config)?;
             Ok(())
         })?;
-        // Below the seed the runner writes no settlement row, so the manager
-        // reaches no Hero there: it only recovers this signer's bonds.
         let below = if seed.epoch > 0 {
-            "; earlier epochs are not executed, only their bonds recovered"
+            "; the node does not touch earlier epochs"
         } else {
             ""
         };

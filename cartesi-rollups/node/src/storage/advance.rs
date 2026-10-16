@@ -1363,13 +1363,13 @@ mod tests {
         );
     }
 
-    /// A store seeded at a later epoch executes only from it: the epochs
-    /// below are ingested but get no boundary or settlement row (so the
-    /// manager reaches no Hero there), and completing them collects
-    /// nothing. The pin keeps the deployment's initial hash, not the
+    /// A store seeded at a later epoch owns only it and later epochs: the
+    /// completion cursor starts there and waits for its seal, and the epochs
+    /// below are ingested but get no boundary or settlement row and cannot
+    /// complete. The pin keeps the deployment's initial hash, not the
     /// image's.
     #[test]
-    fn a_store_seeded_at_epoch_two_executes_only_from_it() {
+    fn a_store_seeded_at_epoch_two_owns_only_it_and_later_epochs() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("_settled_image");
         super::super::sql::test_helper::store_template(&path, |_| {});
@@ -1390,7 +1390,8 @@ mod tests {
         };
         let mut s = Storage::initialize(dir.path(), Some(&seed), &config).unwrap();
 
-        // Epochs 0 and 1 hold one input each; epoch 2 is sealed empty.
+        // Epochs 0 and 1 hold one input each and arrive first; epoch 2 is
+        // sealed empty in a later chunk.
         let inputs: Vec<_> = (0..2)
             .map(|epoch_number| Input {
                 id: super::super::InputId {
@@ -1409,7 +1410,7 @@ mod tests {
                 block_created_number: 1,
             })
             .collect();
-        s.insert_consensus_data(1, inputs.iter(), epochs.iter())
+        s.insert_consensus_data(1, inputs.iter(), epochs[..2].iter())
             .unwrap();
 
         let next = s.next_input_id().unwrap();
@@ -1419,7 +1420,24 @@ mod tests {
             s.sling_config().unwrap().template_hash,
             Digest::new(deployment)
         );
+        assert!(s.unfinished_epoch().unwrap().is_none());
+        assert!(matches!(
+            s.complete_epoch(0),
+            Err(super::super::StorageError::InconsistentEpoch {
+                expected: 2,
+                provided: 0
+            })
+        ));
+        assert!(matches!(
+            s.complete_epoch(2),
+            Err(super::super::StorageError::DataNotFound { .. })
+        ));
+        assert!(!s.advance_plan().unwrap().sealed);
+        assert_eq!(s.snapshot_hash(2, 0).unwrap(), Some(start));
 
+        s.insert_consensus_data(2, [].iter(), epochs[2..].iter())
+            .unwrap();
+        assert_eq!(s.unfinished_epoch().unwrap().unwrap().epoch_number, 2);
         assert_eq!(s.advance_plan().unwrap().epoch, 2);
         s.roll_epoch().unwrap();
         assert!(s.settlement_info(2).unwrap().is_some());
@@ -1427,8 +1445,6 @@ mod tests {
         assert!(s.settlement_info(0).unwrap().is_none());
         assert!(s.settlement_info(1).unwrap().is_none());
 
-        s.complete_epoch(0).unwrap();
-        s.complete_epoch(1).unwrap();
         s.advance_plan().unwrap();
         assert_eq!(s.snapshot_hash(2, 0).unwrap(), Some(start));
 

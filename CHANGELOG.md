@@ -91,8 +91,9 @@ needed.
   `node.lock` that refuses a second process. A fresh directory seeded from
   the template replays every input since the application's deployment; one
   seeded from the state the current sealed epoch starts from executes from
-  that epoch on, and only recovers its signer's bonds below it. See the
-  README's operator notes for both and for a side-by-side upgrade.
+  that epoch on and never touches an earlier one, so bonds its signer holds
+  there are the operator's to recover. See the README's operator notes for
+  both and for a side-by-side upgrade.
 - Changing the signer no longer needs a fresh directory: the node recovers
   its current signer's bonds, and a previous signer's stay recoverable by
   anyone through `tryRecoveringBond`, which pays the recorded claimer. The

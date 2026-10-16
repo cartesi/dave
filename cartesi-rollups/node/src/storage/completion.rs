@@ -8,12 +8,15 @@ use super::Storage;
 use super::convert::u64_to_i64;
 use super::error::{Result, StorageError};
 use super::queries::{epoch_count_in, unfinished_epoch_number_in};
+use rusqlite::Transaction;
 
 impl Storage {
     /// Releases an epoch after finalized settlement and bond recovery. The
     /// caller must stop using its Hero before making the epoch collectible.
-    /// Epochs complete in order, and only ingested ones: the cursor may
-    /// point just past the ingested prefix, never further.
+    /// Epochs complete in order, and only ingested ones. The cursor starts
+    /// at the directory's seed epoch, which may be ahead of ingestion until
+    /// that epoch's seal arrives (the manager waits for it); once the seed
+    /// epoch completes, it points at most just past the ingested prefix.
     pub fn complete_epoch(&mut self, epoch_number: u64) -> Result<()> {
         self.write(|tx| {
             let expected = unfinished_epoch_number_in(tx)?;
@@ -36,6 +39,18 @@ impl Storage {
             Ok(())
         })
     }
+}
+
+/// Starts a new directory's cursor at its seed epoch: the directory owns
+/// that epoch and later ones and never touches an earlier one, whose bonds
+/// are the operator's (node README). A genesis seed leaves it at 0.
+pub(super) fn seed_cursor_in(tx: &Transaction, seed_epoch: u64) -> Result<()> {
+    tx.execute(
+        "UPDATE epoch_completion SET next_epoch = ?1
+         WHERE id = 1 AND next_epoch = 0",
+        [u64_to_i64(seed_epoch)],
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
