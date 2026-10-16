@@ -70,8 +70,12 @@ the initial watermark, the seed epoch's start boundary and the pins. So a
 deployment or flag these checks reject cannot create or alter local state. The runner samples each window at the pinned
 root stride. Other operator mistakes (an unknown chain id, an unreadable or
 invalid key, an endpoint on another chain, an address that is not a Dave
-application) are errors that name their flag too; they add no URL or key
-material, though a transport error's own text may carry the endpoint. The
+application) are errors that name their flag too, and add no key material;
+no error quotes an endpoint's URL (RPC client). An unknown chain id and an
+endpoint on another chain are terminal (exit 30). Before any read above,
+startup asks each endpoint its chain, once: the workers build their clients
+without asking again. A submit endpoint that does not answer only warns,
+since reads and execution need no relay and its sends retry every tick. The
 initial hash comes from epoch 0's `EpochSealed` in the consensus's deployment
 block, which the consensus records as `block.number`: where that is not the log
 block coordinate (Arbitrum reports the parent chain's), the node cannot locate
@@ -428,8 +432,13 @@ its rate-limit code (-32005) but clears only by splitting the range. The
 skipped wait is the hint the layer itself sleeps on, so no resend waits
 longer than 5 s. alloy drops a `Retry-After` header that comes with a
 JSON-RPC error body, so such a 429 is resent at the one-second backoff. The
-tick is the retry for everything else. The submit endpoint shares this
-configuration.
+tick is the retry for everything else. A layer strips the endpoint's URL,
+which often carries an API key, from every transport error before any
+caller logs it.
+
+The submit endpoint shares this configuration on purpose: resending the same
+raw transaction on a rate limit is idempotent, and the 20 s timeout only
+bounds a hang, while a shorter one would make a slow relay fail every send.
 
 ## Chain ingestion stance
 
