@@ -738,8 +738,10 @@ logs each action's preparation time, commitment builds included.
 
 ## Known debts
 
-A new debt is listed here with the doc that owns its reasoning:
+None open. A new debt is listed here with the doc that owns its reasoning.
 
-- `--blockchain-id` must be a chain alloy names, but the name only sets a
-  client poll interval that no production path polls with. The `eth_chainId`
-  check is the guard, so the gate refuses unnamed chains for nothing.
+Kept on purpose: `--blockchain-id` must be a chain alloy names, although the
+name only sets a client poll interval that no production path polls with and
+the `eth_chainId` check is the guard. Every supported chain is named, so the
+gate refuses nothing the node supports, and removing it would touch several
+signatures for no change in behavior.
