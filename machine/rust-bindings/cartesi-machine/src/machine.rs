@@ -921,20 +921,23 @@ impl Machine {
     // Integrity checking
     // ------------------------------------
 
-    /// Checks the hash tree against the current machine state: false when
-    /// a stored tree disagrees with the contents it covers. Upstream
-    /// documents it as used only for emulator internal tests until a later
-    /// release supports it.
-    pub fn verify_hash_tree(&mut self) -> Result<bool> {
-        let mut result = false;
-        // SAFETY: `self.machine` is the live machine `self` owns, and
-        // `result` is a writable bool that outlives the call.
-        let err_code =
-            unsafe { cartesi_machine_sys::cm_verify_hash_tree(self.machine, &mut result) };
-        check_err!(err_code)?;
-
-        Ok(result)
-    }
+    // TODO: uncomment after the emulator release that supports
+    // cm_verify_hash_tree (docs/todo.md). v0.22.0 offers it for the
+    // emulator's internal tests only, unoptimized, and the emulator team
+    // asked that nothing call it there.
+    //
+    // /// Checks the hash tree against the current machine state: false when
+    // /// a stored tree disagrees with the contents it covers.
+    // pub fn verify_hash_tree(&mut self) -> Result<bool> {
+    //     let mut result = false;
+    //     // SAFETY: `self.machine` is the live machine `self` owns, and
+    //     // `result` is a writable bool that outlives the call.
+    //     let err_code =
+    //         unsafe { cartesi_machine_sys::cm_verify_hash_tree(self.machine, &mut result) };
+    //     check_err!(err_code)?;
+    //
+    //     Ok(result)
+    // }
 }
 
 /// The C API takes CMIO response lengths as `uint32_t`. A longer payload is
@@ -1434,15 +1437,17 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_verify_hash_tree_accepts_a_consistent_machine() -> Result<()> {
-        let mut config = Machine::default_config()?;
-        config.ram.length = 4096;
-        let mut machine = create_machine(&config)?;
-        assert!(machine.verify_hash_tree()?);
-
-        Ok(())
-    }
+    // TODO: uncomment with `verify_hash_tree` above (docs/todo.md).
+    //
+    // #[test]
+    // fn test_verify_hash_tree_accepts_a_consistent_machine() -> Result<()> {
+    //     let mut config = Machine::default_config()?;
+    //     config.ram.length = 4096;
+    //     let mut machine = create_machine(&config)?;
+    //     assert!(machine.verify_hash_tree()?);
+    //
+    //     Ok(())
+    // }
 
     /// A clone loaded with SharingMode::All advances on disk and remains
     /// a valid stored machine after drop, with the hash sidecars exact
