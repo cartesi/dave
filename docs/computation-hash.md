@@ -70,10 +70,12 @@ uarch hash that every uarch reset restores, taken from solidity-step's
 their own emulator before joining.
 
 Node startup requires three hashes of the uarch state's node to be equal:
-the template's (T), the deployed `UARCH_PRISTINE_STATE_HASH` (S) and the
-linked library's pristine uarch hash (H). It refuses S != H beside the
-`CM_MARCHID` check, as an incompatible deployment, before opening local
-storage, and T != H at template inspection (below); each refusal names the
+the seed image's (T: the template's, or the settled state's a new data
+directory starts from), the deployed `UARCH_PRISTINE_STATE_HASH` (S) and the
+linked library's pristine uarch hash (H). Every start refuses S != H beside
+the `CM_MARCHID` check, as an incompatible deployment, before opening local
+storage; T != H is refused at image inspection (below), which runs only when
+a new data directory is seeded; each refusal names the
 pair that disagrees. Inspection first refuses a template whose hash tree is
 not Keccak-256, under which T cannot equal H and the uarch cannot run. The
 emulator's C API exports H (`cm_get_uarch_pristine_hash`) and the node's

@@ -27,10 +27,12 @@ nonce and the error text.
 3. It frees a held nonce within G. Behind such a relay a transaction that can
    no longer succeed is never included, so it holds its nonce. The relay
    passes if it admits a different transaction at that nonce, which the
-   lane's per-tick re-sign then is, or drops the held one within G. A hold R
-   beyond G costs each occurrence about `R + polling interval + inclusion -
-   G` of the censorship budget C (node-architecture.md); a hold with no bound
-   disqualifies the relay.
+   lane's per-tick re-sign then is, or drops the held one within G. Each hold
+   R delays the next action by about `R + polling interval + inclusion`, so
+   it costs about `R + polling interval + inclusion - G` of the censorship
+   budget C (node-architecture.md) once that is positive: a hold near G,
+   such as Flashbots' default 25 blocks, already costs about 40 s each time.
+   A hold with no bound disqualifies the relay.
 
 ## What the candidates document
 
@@ -78,9 +80,10 @@ MEV Blocker:
 - [Transaction endpoints](https://docs.mevblocker.io/reference/api/transaction-endpoints)
   and [send transactions](https://docs.mevblocker.io/how-to/transactions/send-transactions)
   (both updated 2025-12-18): `/noreverts` is the no-revert endpoint and stops
-  broadcasting a transaction once it is no longer valid; the default `/fast`
-  carries no revert guarantee; `softCancellations=true` works only on
-  `/noreverts` and `/fullprivacy`. No retention time, no same-nonce rule and
+  broadcasting a transaction once it is no longer valid, and it is the only
+  endpoint that documents a no-revert guarantee (name it explicitly in the
+  URL); `softCancellations=true` works only on `/noreverts` and
+  `/fullprivacy`. No retention time, no same-nonce rule and
   no testnet endpoint are documented.
 - [Cancel a transaction](https://docs.mevblocker.io/how-to/transactions/cancel-transaction)
   (updated 2025-12-18): cancellation is best-effort; a soft cancel is a
@@ -154,17 +157,23 @@ Requirements 1 and 3, a held transaction at nonce `n`, the latest count:
    block `L` and `send "$n" $((L + 1))`: A is valid when sent and doomed from
    block `L + 2`. If A lands in `L + 1`, retry at the next count.
 2. Then send B, `send "$n" 18446744073709551615`, every 30 s, as the lane
-   re-signs a call each tick. B must not be a self-transfer with empty data:
-   Flashbots reads that as a cancel, which the node never sends.
+   re-signs a call each tick. When the relay answers that B is underpriced
+   (including "replacement transaction underpriced"), re-sign it once at the
+   same nonce with `--gas-price` and `--priority-gas-price` both at the
+   quoted maximum fee, as the lane outbids, and record both answers. B must
+   not be a self-transfer with empty data: Flashbots reads that as a cancel,
+   which the node never sends.
 3. Read the outcome from the latest count and the receipts of every hash
    sent at `n`:
    - A mined with status 0: requirement 1 fails.
-   - B landing within a block or two of its first send: the relay admits a
-     replacement, and requirement 3 passes.
+   - B landing within a block or two of its first send (compare with the
+     requirement 2 median, or read B's status on the relay): the relay admits
+     a replacement, and requirement 3 passes.
    - Otherwise R is the time from B's first send to its inclusion, and
      requirement 3 passes when R is within 5 minutes.
-4. Record each B send's error text, if any, and the verdict the lane gives
-   it (`classify_submission_error` in `cartesi-rollups/node/src/provider.rs`).
+4. Record each B send's error text, if any, and the verdict the lane would
+   reach on it after its outbid retry (`judge` and `outbid` in
+   `cartesi-rollups/node/src/provider.rs`).
 
 A run in which A always lands first, or another sender moves the nonce, is
 inconclusive, not a pass: retry it.
@@ -196,11 +205,17 @@ some minutes without landing, naming a last verdict rather than a revert at
 latest, means the relay holds, drops or refuses the sends. Its WARN that a
 transaction got no answer from the submit endpoint means the relay is
 unreachable, and its ERROR "failed to submit" carries the relay's rejection.
-Look up the transaction hash the page names on the relay's status page:
-`https://protect.flashbots.net/tx/<hash>` for Flashbots
-(`https://protect-sepolia.flashbots.net/tx/<hash>` on Sepolia), where PENDING
-with `SimErrorExecutionReverted` is a held transaction that can no longer
-succeed.
+The page names the newest send at the stuck nonce, a call that still
+succeeds at latest; the held transaction is an earlier send at that nonce,
+often a step whose effect has since landed some other way. A hold looks like
+the latest nonce staying at the named one while the named hash is UNKNOWN,
+or PENDING without a simError, on the relay's status page
+(`https://protect.flashbots.net/tx/<hash>` for Flashbots,
+`https://protect-sepolia.flashbots.net/tx/<hash>` on Sepolia). The held
+transaction's own hash is logged only at DEBUG ("submitted <label>
+transaction <hash> at nonce <n>"): run with
+`RUST_LOG=cartesi_sling_node::provider=debug` to keep it, and its status is
+then PENDING with `SimErrorExecutionReverted`.
 
 Fallback: restart the node without `--blockchain-http-submit-endpoint`. Its
 sends then go to the read endpoint's public pool, which mines a doomed
