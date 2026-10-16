@@ -33,6 +33,9 @@ nonce and the error text.
    budget C (node-architecture.md) once that is positive: a hold near G,
    such as Flashbots' default 25 blocks, already costs about 40 s each time.
    A hold with no bound disqualifies the relay.
+4. It answers `eth_chainId` with the node's chain. The node asks every
+   endpoint its chain at every start and does not start (exit 1) while one
+   does not answer, so a send-only endpoint keeps it from starting.
 
 ## What the candidates document
 
@@ -105,15 +108,15 @@ the next tick at a fresh quote.
 ## Procedure
 
 Run `cast` from the nix devshell. Sign against the read endpoint and publish
-to the relay, so the relay needs to serve only `eth_sendRawTransaction`, as
-the node does.
+to the relay, so the relay needs to serve `eth_sendRawTransaction` and
+`eth_chainId`, as the node does.
 
 Setup:
 
 - Use a dedicated key in a cast keystore
   (`cast wallet new ~/.foundry/keystores relay-probe`), never the node's
   signer: the node owns its signer's nonces, and a probe would race them.
-- Fund it with about 0.01 ETH on mainnet, or with Sepolia ETH.
+- Fund it with about 0.01 ETH on mainnet.
 - Keep it idle: no other sender, and the latest and pending counts on the
   read endpoint equal. Watch the latest count during a run; the pending one
   does not see what the relay holds.
@@ -124,6 +127,7 @@ Setup:
 READ=<the node's --blockchain-http-endpoint>
 RELAY=<the candidate URL>
 ME=$(cast wallet address --account relay-probe)
+cast chain-id -r "$RELAY"   # requirement 4: prints the node's chain id
 cast nonce -r "$READ" -B latest "$ME"; cast nonce -r "$READ" -B pending "$ME"
 ```
 
@@ -178,16 +182,15 @@ Requirements 1 and 3, a held transaction at nonce `n`, the latest count:
 A run in which A always lands first, or another sender moves the nonce, is
 inconclusive, not a pass: retry it.
 
-Variants to run:
+Variants to run, on mainnet with a small key: Flashbots Protect's default
+endpoint and `/fast`, with `?blockRange=N` if the default holds longer than 5
+minutes, and MEV Blocker `/noreverts`. Flashbots documents a Sepolia
+endpoint, but the team found it does not include transactions (a lead, not
+measured here), and MEV Blocker documents none, so a testnet run proves
+nothing about either.
 
-- Flashbots Protect on Sepolia: the default endpoint, `/fast` if served, and
-  `?blockRange=N` if the default holds longer than 5 minutes.
-- On mainnet, with a small key: Flashbots `/fast` and MEV Blocker
-  `/noreverts`.
-
-Results hold for one chain and one date, and Sepolia's builder set differs
-from mainnet's. The mainnet runs cost real gas, well under 0.01 ETH at
-ordinary fees.
+Results hold for one date: rerun when a relay announces a change. The runs
+cost real gas, well under 0.01 ETH at ordinary fees.
 
 ## Results
 
@@ -216,6 +219,9 @@ transaction's own hash is logged only at DEBUG ("submitted <label>
 transaction <hash> at nonce <n>"): run with
 `RUST_LOG=cartesi_sling_node::provider=debug` to keep it, and its status is
 then PENDING with `SimErrorExecutionReverted`.
+
+A relay that does not answer when the node starts keeps it exiting 1, and
+its supervisor restarting it, until the relay answers.
 
 Fallback: restart the node without `--blockchain-http-submit-endpoint`. Its
 sends then go to the read endpoint's public pool, which mines a doomed

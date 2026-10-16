@@ -71,7 +71,9 @@ adversary's copies (up to about 3.76M gas for a leaf proof). A relay must:
    node's next action by the hold plus a polling interval and an inclusion,
    so a hold near 5 minutes already draws on the dispute's censorship budget
    (about 40 s at the default polling interval), and a relay with no bound on
-   the hold does not qualify.
+   the hold does not qualify;
+4. answer `eth_chainId` with the node's chain: the node asks at every start
+   and does not start (exit 1) while the relay does not answer.
 
 No relay has passed the qualification in
 [docs/runbooks/submit-relay.md](../../docs/runbooks/submit-relay.md) yet, so
@@ -84,7 +86,8 @@ runbook records results:
   blocks and then dropped, and `?blockRange=N` changes that; the default
   endpoint forwards only to the Flashbots builder, while `/fast` shares with
   every registered builder. Sepolia has its own endpoint (quick start,
-  updated 2025-12-16). No page says whether a different transaction is
+  updated 2025-12-16), which the team found does not include transactions
+  (a lead). No page says whether a different transaction is
   admitted at a nonce Protect holds (the cancellations, nonce management and
   stuck transactions pages, updated 2025-12-16).
 - MEV Blocker (endpoints and send-transactions pages, updated 2025-12-18):
@@ -313,6 +316,12 @@ Options:
   does not heal. Either failure logs an error once it has persisted 5
   minutes: point the node at a provider that serves complete logs, and if
   the error persists, rebuild the data directory.
+- A directory seeded from the template walks every settled epoch's
+  tournament logs up to the head before it reaches the current epoch. Behind
+  a provider that caps `eth_getLogs` ranges, that grows with the history
+  (hours per year of Sepolia history at a 10,000-block cap) and can outlast
+  a testnet's root allowance: use a provider without a tight cap, or seed
+  from the last settled state (above).
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
   canonical table that allowance is about one week and 140 minutes on
