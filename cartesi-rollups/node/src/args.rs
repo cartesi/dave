@@ -239,15 +239,19 @@ pub struct PRTArgs {
     pub data_dir: PathBuf,
 }
 
+/// The `pk` signer's key when no key file is given. Never a flag: any local
+/// user can read a process's arguments (ps, /proc/<pid>/cmdline). clap reads
+/// no argument from the environment alone, so the signer reads it.
+pub(crate) const PRIVATE_KEY_ENV: &str = "CARTESI_SLING_AUTH_PRIVATE_KEY";
+
 #[derive(Subcommand, Debug, Clone)]
 pub enum SignerArgs {
-    /// private-key signer
-    #[command(group(ArgGroup::new("pk_source").required(true)))]
+    /// private-key signer: the key comes from the
+    /// CARTESI_SLING_AUTH_PRIVATE_KEY environment variable or a key file,
+    /// never from the command line
     Pk {
-        #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY", group = "pk_source")]
-        auth_private_key: Option<String>,
-
-        #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY_FILE", group = "pk_source")]
+        /// file whose first line is the private key
+        #[arg(long, env = "CARTESI_SLING_AUTH_PRIVATE_KEY_FILE")]
         auth_private_key_file: Option<PathBuf>,
     },
 
@@ -478,8 +482,9 @@ mod tests {
     use alloy::{node_bindings::Anvil, providers::ProviderBuilder};
     use std::path::Path;
 
-    fn args_with_snapshot_gap(gap: &str) -> Vec<&str> {
-        vec![
+    /// The flags every start needs, then `rest`.
+    fn parse(rest: &[&str]) -> std::result::Result<PRTArgs, clap::Error> {
+        let required = [
             "cartesi-sling-node",
             "--app-address",
             "0x0000000000000000000000000000000000000000",
@@ -487,12 +492,27 @@ mod tests {
             "/tmp/machine",
             "--data-dir",
             "/tmp/state",
+        ];
+        PRTArgs::try_parse_from(required.iter().chain(rest))
+    }
+
+    fn parse_with_snapshot_gap(gap: &str) -> std::result::Result<PRTArgs, clap::Error> {
+        parse(&[
             "--snapshot-gap-inputs",
             gap,
             "pk",
-            "--auth-private-key",
-            "unused-by-parser",
-        ]
+            "--auth-private-key-file",
+            "/tmp/unread-by-the-parser",
+        ])
+    }
+
+    /// The process list shows every argument to any local user.
+    #[test]
+    fn the_private_key_itself_is_no_flag() {
+        let error = parse(&["pk", "--auth-private-key", "0x01"])
+            .err()
+            .expect("a key on the command line must not parse");
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 
     #[test]
@@ -523,13 +543,13 @@ mod tests {
 
     #[test]
     fn accepts_snapshot_gap_of_one() {
-        let args = PRTArgs::try_parse_from(args_with_snapshot_gap("1")).unwrap();
+        let args = parse_with_snapshot_gap("1").unwrap();
         assert_eq!(args.snapshot_gap_inputs, 1);
     }
 
     #[test]
     fn rejects_zero_snapshot_gap() {
-        let error = PRTArgs::try_parse_from(args_with_snapshot_gap("0"))
+        let error = parse_with_snapshot_gap("0")
             .err()
             .expect("zero snapshot gap should fail argument parsing");
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
@@ -638,7 +658,11 @@ mod tests {
         let state_dir = dir.path().join("state");
         let endpoint = anvil.endpoint();
         let chain_id = anvil.chain_id().to_string();
-        let key = |signer: usize| alloy::hex::encode(anvil.keys()[signer].to_bytes());
+        let key_files = [0, 1].map(|signer| {
+            let path = dir.path().join(format!("key-{signer}"));
+            std::fs::write(&path, alloy::hex::encode(anvil.keys()[signer].to_bytes())).unwrap();
+            path
+        });
         let args_for = |app: Address, machine_path: &Path, signer: usize| {
             PRTArgs::try_parse_from([
                 "cartesi-sling-node",
@@ -653,8 +677,8 @@ mod tests {
                 "--data-dir",
                 state_dir.to_str().unwrap(),
                 "pk",
-                "--auth-private-key",
-                &key(signer),
+                "--auth-private-key-file",
+                key_files[signer].to_str().unwrap(),
             ])
             .unwrap()
         };
