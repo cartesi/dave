@@ -60,12 +60,7 @@ pub(crate) async fn create_signer(
             auth_aws_kms_key_id_file,
             aws_endpoint_url,
             aws_region,
-            ..
         } => {
-            let endpoint_url = aws_endpoint_url
-                .clone()
-                .unwrap_or_else(|| format!("https://kms.{}.amazonaws.com", aws_region));
-
             let key_id = if let Some(file) = auth_aws_kms_key_id_file {
                 fs::read_to_string(file)
                     .with_context(|| {
@@ -83,12 +78,17 @@ pub(crate) async fn create_signer(
                 auth_aws_kms_key_id.clone().unwrap()
             };
 
-            let kms_signer = kms::kms_signer(key_id, chain_id.into(), aws_region, &endpoint_url)
-                .await
-                .context(
-                    "failed to create the AWS KMS signer (--auth-aws-kms-key-id(-file), \
+            let kms_signer = kms::kms_signer(
+                key_id,
+                chain_id.into(),
+                aws_region.as_deref(),
+                aws_endpoint_url.as_deref(),
+            )
+            .await
+            .context(
+                "failed to create the AWS KMS signer (--auth-aws-kms-key-id(-file), \
                      --aws-endpoint-url, --aws-region)",
-                )?;
+            )?;
 
             Box::new(kms_signer)
         }

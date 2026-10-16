@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use alloy::{primitives::ChainId, signers::aws::AwsSigner};
-use aws_config::{BehaviorVersion, timeout::TimeoutConfig};
+use anyhow::ensure;
+use aws_config::{BehaviorVersion, Region, timeout::TimeoutConfig};
 use aws_sdk_kms::Client;
 
 use crate::provider::REQUEST_TIMEOUT;
@@ -12,26 +13,35 @@ use crate::provider::REQUEST_TIMEOUT;
 pub async fn kms_signer(
     key_id: String,
     chain_id: ChainId,
-    region: &str,
-    endpoint_url: &str,
+    region: Option<&str>,
+    endpoint_url: Option<&str>,
 ) -> anyhow::Result<AwsSigner> {
-    let client = client(region, endpoint_url).await;
+    let client = client(region, endpoint_url).await?;
     Ok(AwsSigner::new(client, key_id, Some(chain_id)).await?)
 }
 
-async fn client(region: &str, endpoint_url: &str) -> Client {
-    let config = aws_config::defaults(BehaviorVersion::latest());
+/// The SDK resolves the region and endpoint as for any AWS client (the
+/// environment, the profile, instance metadata, FIPS, the region's
+/// partition); `region` and `endpoint_url` override it.
+async fn client(region: Option<&str>, endpoint_url: Option<&str>) -> anyhow::Result<Client> {
+    let mut config = aws_config::defaults(BehaviorVersion::latest());
     // LocalStack accepts fake credentials but still requires signed
     // requests. Production builds retain the default AWS credential chain.
     #[cfg(test)]
-    let config = config.test_credentials();
+    {
+        config = config.test_credentials();
+    }
+    if let Some(region) = region {
+        config = config.region(Region::new(region.to_owned()));
+    }
+    if let Some(endpoint_url) = endpoint_url {
+        config = config.endpoint_url(endpoint_url);
+    }
     // The SDK bounds only the connect by default, so a KMS endpoint that
     // accepts a call and never answers would park the manager's tick in
     // `sign` with nothing logged. Bounded like one RPC attempt, the tick
     // fails instead, and the paging rule reports it if it persists.
     let config = config
-        .endpoint_url(endpoint_url.to_owned())
-        .region(aws_config::Region::new(region.to_owned()))
         .timeout_config(
             TimeoutConfig::builder()
                 .operation_timeout(REQUEST_TIMEOUT)
@@ -39,7 +49,12 @@ async fn client(region: &str, endpoint_url: &str) -> Client {
         )
         .load()
         .await;
-    Client::new(&config)
+    // Requests are signed for a region, so none goes out without one.
+    ensure!(
+        config.region().is_some(),
+        "no AWS region resolved: pass --aws-region, or set AWS_REGION or the profile's region"
+    );
+    Ok(Client::new(&config))
 }
 
 #[cfg(test)]
@@ -78,8 +93,8 @@ mod tests {
 
     /// A fresh signing key in LocalStack's KMS.
     async fn create_key() -> anyhow::Result<String> {
-        let result = client("us-east-1", LOCALSTACK)
-            .await
+        let result = client(Some("us-east-1"), Some(LOCALSTACK))
+            .await?
             .create_key()
             .key_usage(KeyUsageType::SignVerify)
             .key_spec(KeySpec::EccSecgP256K1)
@@ -143,7 +158,7 @@ mod tests {
             println!("Key ID: {}", key_id);
             let message = "Hello world!";
 
-            let kms_signer = kms_signer(key_id, 1, "us-east-1", LOCALSTACK)
+            let kms_signer = kms_signer(key_id, 1, Some("us-east-1"), Some(LOCALSTACK))
                 .await
                 .unwrap();
 
@@ -174,7 +189,7 @@ mod tests {
             let key_id = create_key().await.unwrap();
             println!("Key ID: {}", key_id);
 
-            let signer = kms_signer(key_id, chain_id, "us-east-1", LOCALSTACK)
+            let signer = kms_signer(key_id, chain_id, Some("us-east-1"), Some(LOCALSTACK))
                 .await
                 .unwrap();
 
