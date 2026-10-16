@@ -60,20 +60,46 @@ Reads use `--blockchain-http-endpoint`. Raw signed transactions use
 `--blockchain-http-submit-endpoint`, which defaults to the read endpoint and
 may instead name a private relay with revert protection: honest nodes that
 share a commitment race on every step, and without it each pays for its
-reverted copies of the steps another node landed first. The relay must not
-land reverting transactions and must reach builders covering most blocks. For
-example, MEV Blocker's `/noreverts` endpoint qualifies, while its default
-endpoint lands reverts, and Flashbots Protect's default endpoint reaches only
-the Flashbots builder. At startup the node asks each endpoint its chain and
-refuses one on another chain (exit 30); a submit endpoint that does not
-answer only logs a warning, since its sends retry every tick. Without a
-separate submit endpoint, on any chain but anvil's, it warns once at startup
-that transactions go to the read endpoint's public pool. The signer must be
-exclusive to one node process because the node owns its nonce sequence. Each
-tick batches the applicable dispute or cleanup action, settlement step, and
-all available bond recoveries at consecutive nonces from the latest mined
-count. The next tick rebuilds the batch from chain state without waiting for
-receipts.
+reverted copies of the steps another node landed first, as it does for an
+adversary's copies (up to about 3.76M gas for a leaf proof). A relay must:
+
+1. not land reverting transactions;
+2. reach builders that cover most blocks;
+3. free a nonce it holds within 5 minutes, the response window: admit a
+   different transaction at that nonce, which the node's next tick sends, or
+   drop a held transaction that can no longer succeed. A longer hold delays
+   the node's next action and draws on the dispute's censorship budget, and
+   a relay with no bound on it does not qualify.
+
+No relay has passed the qualification in
+[docs/runbooks/submit-relay.md](../../docs/runbooks/submit-relay.md) yet, so
+the node does not require one, though a production deployment should use
+one. What the candidates document, read 2026-10-15 and unmeasured until the
+runbook records results:
+
+- Flashbots Protect (settings guide, updated 2026-05-12): no reverts land by
+  default (`?canRevert=true` lands them); a transaction is retried for 25
+  blocks and then dropped, and `?blockRange=N` changes that; the default
+  endpoint forwards only to the Flashbots builder, while `/fast` shares with
+  every registered builder. Sepolia has its own endpoint (quick start,
+  updated 2025-12-16). No page says whether a different transaction is
+  admitted at a nonce Protect holds (the cancellations, nonce management and
+  stuck transactions pages, updated 2025-12-16).
+- MEV Blocker (endpoints and send-transactions pages, updated 2025-12-18):
+  `/noreverts` stops broadcasting a transaction once it is no longer valid,
+  which documents requirement 1, while the default `/fast` carries no revert
+  guarantee; retention and same-nonce admission are undocumented, and no
+  testnet endpoint is documented.
+
+At startup the node asks each endpoint its chain and refuses one on another
+chain (exit 30); a submit endpoint that does not answer only logs a warning,
+since its sends retry every tick. Without a separate submit endpoint, on any
+chain but anvil's, it warns once at startup that transactions go to the read
+endpoint's public pool. The signer must be exclusive to one node process
+because the node owns its nonce sequence. Each tick batches the applicable
+dispute or cleanup action, settlement step, and all available bond
+recoveries at consecutive nonces from the latest mined count. The next tick
+rebuilds the batch from chain state without waiting for receipts.
 
 The node completes epochs in order: it waits for finalized settlement and its
 winning bond recoveries before participating in the next epoch. It resumes the
@@ -252,6 +278,13 @@ Options:
   local state). With systemd, `RestartPreventExitStatus=30 40`. An exit by
   SIGKILL (137) is usually the kernel's out-of-memory killer: size memory for
   the application's machine plus a dispute's.
+- Behind a relay, an error that a call has been planned for some minutes
+  without landing, naming a last verdict rather than a revert at latest,
+  means the relay holds, drops or refuses its sends. Look up the transaction
+  hash it names on the relay's status page
+  ([submit-relay.md](../../docs/runbooks/submit-relay.md)), and until the
+  relay recovers, restart without `--blockchain-http-submit-endpoint`,
+  accepting paid reverts on the public pool.
 - Alert on every ERROR line, on restart loops, on free space on the data
   directory's filesystem (the node refuses a batch below 1 GiB), and on the
   signer's balance against the funding floor above, which the node checks

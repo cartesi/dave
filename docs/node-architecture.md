@@ -668,26 +668,46 @@ An adversary who orders transactions can impose the same cost on every honest
 action by landing an identical copy first, up to the EIP-7623 floor of a
 maximum-input leaf proof, about 3.76M gas, at no extra bond
 (reviews/2026-10-13-prt-cyber-verification, L-06). A revert-protecting
-endpoint behind `--blockchain-http-submit-endpoint` avoids that cost; the node
-recommends one and does not require it, and a production deployment should
-treat it as required.
+endpoint behind `--blockchain-http-submit-endpoint` avoids that cost. The node
+recommends one and warns at startup without one, on any chain but anvil's; it
+will require one only once a relay passes
+[runbooks/submit-relay.md](runbooks/submit-relay.md), and until then a
+production deployment should treat it as required.
 
 A slot the pool turns down on price is signed once more at the quote's max
 fee with the tip raised to it. geth replaces only on 10% more of both fees,
 and the quote's max fee is twice the latest base fee plus the market tip, so
 the retry displaces any pending transaction the base fee has outrun, which a
-fresh quote with a flat market tip could not. A pending transaction that
-survives the retry has a fee cap above 1.8 times the latest base fee, so it is
-includable and is waited out: a changed intent behind it costs at most that
-transaction's inclusion and a paid revert. The retry has costs. A replaced
-slot pays its full max fee, and the excess over the refund price (base fee
-plus 10 gwei, dispute-game.md) is not refunded. A healthy pending transaction
-is replaced too once the quote's max fee has risen 10% since it was signed,
-which ordinary rising congestion does. The retry ignores intent: when a
-transient Hero planning failure shrinks a wave to its recoveries, a recovery
-may displace the pending Hero action at the same nonce for a tick. A full
-pool or a minimum tip (a bare "transaction underpriced") takes the same retry
-with a warning, and logs an error when the retry is refused too.
+fresh quote with a flat market tip could not. On a public pool, a pending
+transaction that survives the retry has a fee cap above 1.8 times the latest
+base fee, so it is includable and is waited out: a changed intent behind it
+costs at most that transaction's inclusion and a paid revert. The retry has
+costs. A replaced slot pays its full max fee, and the excess over the refund
+price (base fee plus 10 gwei, dispute-game.md) is not refunded. A healthy
+pending transaction is replaced too once the quote's max fee has risen 10%
+since it was signed, which ordinary rising congestion does. The retry ignores
+intent: when a transient Hero planning failure shrinks a wave to its
+recoveries, a recovery may displace the pending Hero action at the same nonce
+for a tick. A full pool or a minimum tip (a bare "transaction underpriced")
+takes the same retry with a warning, and logs an error when the retry is
+refused too.
+
+Behind a revert-protecting relay, waiting out does not hold for a pending
+transaction that can no longer succeed: the relay never includes it, so it
+holds its nonce until the relay admits another transaction at that nonce,
+which the next tick's re-sign then is, or drops the held one. No relay
+documents the first, and Flashbots Protect documents the second after 25
+blocks by default; runbooks/submit-relay.md measures both. A race between
+honest nodes never holds its winner: the winner's nonce advanced, so it
+defends the next step while the losers wait. The commitment waits only when
+every honest transaction for a step is doomed at once: by an adversary's
+copy, timed blind into the send-to-inclusion window the relay hides, or by the
+opponent's expiry overtaking a leaf proof, whose fallback timeout claim then
+queues behind it (todo.md, the timeout-claim item). Each such occurrence lands
+the next action up to the hold R later, about R + one polling interval +
+inclusion - G beyond G, drawn from C: about 40 s with Flashbots' default 25
+blocks. The draw is bounded by R and documented rather than engineered away,
+so the lane stays stateless; a relay whose hold has no bound does not qualify.
 
 The signer must be exclusive to one node instance. A pool admits a batch only
 while the balance covers every gas limit at its max fee plus its value, join
