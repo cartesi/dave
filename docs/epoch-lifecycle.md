@@ -160,6 +160,9 @@ prevent completion. Latest only suppresses already-mined payments. The walked
 tree is a finalized fact, so the manager keeps it in memory: each tick walks
 only newly finalized blocks, and a tournament leaves the tree once it no longer
 owes us a payment, since it has then finished and creates no more children.
+A settled epoch's tree is walked only to its successor's seal, since a
+settled root's tournaments have all finished, so a node catching up over
+many settled epochs walks each one's lifetime, not the history to the head.
 The scan runs before the tick's wave is sent, so it must not grow with the
 dispute's age or with the tournaments an adversary has created and resolved.
 Restart resumes the durable cursor and walks the tree once. "Our" is the

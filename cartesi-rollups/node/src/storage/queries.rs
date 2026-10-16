@@ -31,17 +31,12 @@ impl Storage {
 
     /// The manager's next epoch, once its seal has reached finalized ingestion.
     pub fn unfinished_epoch(&mut self) -> Result<Option<Epoch>> {
-        self.read(|tx| {
-            let epoch = unfinished_epoch_number_in(tx)?;
-            tx.query_row(
-                "SELECT epoch_number, input_index_boundary, root_tournament,
-                        block_created_number FROM epochs WHERE epoch_number = ?1",
-                [u64_to_i64(epoch)],
-                row_to_epoch,
-            )
-            .optional()?
-            .transpose()
-        })
+        self.read(|tx| sealed_epoch_in(tx, unfinished_epoch_number_in(tx)?))
+    }
+
+    /// The sealed epoch `epoch_number`, once ingested.
+    pub fn sealed_epoch(&mut self, epoch_number: u64) -> Result<Option<Epoch>> {
+        self.read(|tx| sealed_epoch_in(tx, epoch_number))
     }
 
     pub fn last_sealed_epoch(&mut self) -> Result<Option<Epoch>> {
@@ -239,6 +234,17 @@ pub(super) fn unfinished_epoch_number_in(tx: &Transaction) -> Result<u64> {
         |row| row.get(0),
     )?;
     Ok(i64_to_u64(epoch))
+}
+
+fn sealed_epoch_in(tx: &Transaction, epoch_number: u64) -> Result<Option<Epoch>> {
+    tx.query_row(
+        "SELECT epoch_number, input_index_boundary, root_tournament,
+                block_created_number FROM epochs WHERE epoch_number = ?1",
+        [u64_to_i64(epoch_number)],
+        row_to_epoch,
+    )
+    .optional()?
+    .transpose()
 }
 
 fn row_to_epoch(row: &rusqlite::Row) -> rusqlite::Result<Result<Epoch>> {
