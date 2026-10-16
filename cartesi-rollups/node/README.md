@@ -308,7 +308,7 @@ Options:
   store format, commitment semantics, emulator, consensus or tournament geometry
   (start a fresh one beside it, as above); 101 a
   panic (restart with backoff and page, since a loop means a bug or corrupt
-  local state). With systemd, `RestartPreventExitStatus=30 40`. An exit by
+  local state). With systemd, `RestartPreventExitStatus=2 30 40`. An exit by
   SIGKILL (137) is usually the kernel's out-of-memory killer: size memory for
   the application's machine plus a dispute's.
 - Behind a relay, an error that a call has been planned for some minutes

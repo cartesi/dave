@@ -25,7 +25,7 @@ use alloy_transport::{
     HttpError, RpcError, TransportError, TransportErrorKind, TransportFut,
     layers::{RateLimitRetryPolicy, RetryBackoffLayer, RetryPolicy},
 };
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Context, Result, ensure};
 use log::{debug, error, info, trace, warn};
 use std::{
     ffi::OsString,
@@ -45,16 +45,10 @@ pub(crate) async fn create_signer(
     let signer: Box<dyn TxSigner<Signature> + Send + Sync> = match signer_args {
         SignerArgs::Pk {
             auth_private_key_file,
-        } => {
-            let (pk, source) = private_key(
-                auth_private_key_file.as_deref(),
-                std::env::var_os(PRIVATE_KEY_ENV),
-            )?;
-            let local_signer = PrivateKeySigner::from_str(&pk)
-                .map_err(|_| anyhow!("{source} does not hold a valid private key"))?;
-
-            Box::new(local_signer)
-        }
+        } => Box::new(private_key_signer(
+            auth_private_key_file.as_deref(),
+            std::env::var_os(PRIVATE_KEY_ENV),
+        )?),
         SignerArgs::AwsKms {
             auth_aws_kms_key_id,
             auth_aws_kms_key_id_file,
@@ -107,7 +101,7 @@ pub(crate) fn check_signer_source(signer_args: &SignerArgs) -> Result<()> {
     match signer_args {
         SignerArgs::Pk {
             auth_private_key_file,
-        } => private_key(
+        } => private_key_signer(
             auth_private_key_file.as_deref(),
             std::env::var_os(PRIVATE_KEY_ENV),
         )
@@ -119,15 +113,22 @@ pub(crate) fn check_signer_source(signer_args: &SignerArgs) -> Result<()> {
 /// The `pk` signer's key and the name of its source: the key file or, given
 /// no file, the environment variable (empty counts as unset). Neither or both
 /// is a configuration to fix, which no restart does.
+/// The `pk` signer from its one key source. A key that does not parse is a
+/// configuration to fix too; the parse error is dropped, since it may quote
+/// the key's characters.
+fn private_key_signer(file: Option<&Path>, env: Option<OsString>) -> Result<PrivateKeySigner> {
+    let (key, source) = private_key(file, env)?;
+    PrivateKeySigner::from_str(&key)
+        .map_err(|_| Fatal::terminal(format!("{source} does not hold a valid private key")).into())
+}
+
 fn private_key(file: Option<&Path>, env: Option<OsString>) -> Result<(String, &'static str)> {
     match (file, env.filter(|value| !value.is_empty())) {
         (Some(file), None) => {
-            let contents = fs::read_to_string(file).with_context(|| {
-                format!(
-                    "failed to read --auth-private-key-file `{}`",
-                    file.display()
-                )
-            })?;
+            // The path is left out: an operator who mistook the flag for the key
+            // itself would see the key logged.
+            let contents =
+                fs::read_to_string(file).context("failed to read --auth-private-key-file")?;
             let key = contents.lines().next().unwrap_or("").trim().to_owned();
             Ok((key, "--auth-private-key-file"))
         }
@@ -904,6 +905,25 @@ mod tests {
             assert_eq!(crate::fatal::exit_code(&error), 30, "{error:#}");
             assert!(error.to_string().contains(PRIVATE_KEY_ENV), "{error:#}");
         }
+    }
+
+    #[test]
+    fn a_private_key_that_does_not_parse_is_terminal_and_not_echoed() {
+        let env = |value: &str| Some(OsString::from(value));
+        // anvil's first well-known development key.
+        let anvil = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+        private_key_signer(None, env(anvil)).unwrap();
+
+        let error = private_key_signer(None, env("0x123badkey")).unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 30, "{error:#}");
+        let text = format!("{error:#}");
+        assert!(
+            text.contains(PRIVATE_KEY_ENV) && !text.contains("123badkey"),
+            "{text}"
+        );
+
+        let error = private_key(Some(Path::new("0x123badkey")), None).unwrap_err();
+        assert!(!format!("{error:#}").contains("123badkey"), "{error:#}");
     }
 
     #[test]

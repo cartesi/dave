@@ -238,8 +238,8 @@ format, commitment semantics, emulator, consensus or geometry is another). A pan
 exits 101: restart with backoff and page, since a restart cannot make an
 invariant violation worse and may clear a nondeterministic one while a clock
 runs. The sequencer aborts on its panics instead, because its diagnosed
-faults cannot heal. Every exit logs its cause at ERROR, panics included (a
-panic hook), and a failure during a signal-requested drain still fails the
+faults cannot heal. Every exit but a usage error (exit 2, which clap prints
+to stderr) logs its cause at ERROR, panics included (a panic hook), and a failure during a signal-requested drain still fails the
 exit status.
 
 Log levels carry that split. ERROR means an operator must act: a lost or
