@@ -128,7 +128,11 @@ refuses a deployment whose state transition disagrees with the linked Cartesi
 Machine library (its `CM_MARCHID` or pristine uarch hash), and a first start
 refuses an image whose uarch state is not that pristine uarch (custom uarch
 code, or an image built by another emulator) or whose hash tree is not
-Keccak-256.
+Keccak-256. It also refuses an image with a file the node maps for writing
+(all but `config.json` and the data of the PMAs and read-only drives) that
+lacks the owner write bit: the copy the node seeds keeps each file's mode,
+so every advance batch would fail. Make such an image writable
+(`chmod -R u+w`).
 
 One node process owns a data directory: startup locks its `node.lock` and
 refuses a directory another process holds, or one on a filesystem without
