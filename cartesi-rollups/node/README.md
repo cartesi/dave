@@ -56,7 +56,8 @@ The executable will appear at:
 ## Run
 
 Running the node requires an Ethereum JSON-RPC gateway and a funded wallet.
-Reads use `--blockchain-http-endpoint`. Raw signed transactions use
+Reads use `--blockchain-http-endpoint`, on the chain `--blockchain-id` names;
+neither has a default. Raw signed transactions use
 `--blockchain-http-submit-endpoint`, which defaults to the read endpoint and
 may instead name a private relay with revert protection: honest nodes that
 share a commitment race on every step, and without it each pays for its
@@ -105,6 +106,16 @@ because the node owns its nonce sequence. Each tick batches the applicable
 dispute or cleanup action, settlement step, and all available bond
 recoveries at consecutive nonces from the latest mined count. The next tick
 rebuilds the batch from chain state without waiting for receipts.
+
+The signer is a private key (`pk`) or an AWS KMS key (`aws-kms`). The `pk`
+signer reads its key from the `CARTESI_SLING_AUTH_PRIVATE_KEY` environment
+variable or from the first line of `--auth-private-key-file`, and refuses
+neither or both (exit 30); no flag takes the key itself, since any local user
+can read a process's arguments. The `aws-kms` signer resolves its region and
+endpoint as any AWS client does (`AWS_REGION`, `AWS_ENDPOINT_URL_KMS`, the
+profile, instance metadata, FIPS endpoints, other partitions);
+`--aws-region` and `--aws-endpoint-url` override them, and a start where no
+region resolves fails (exit 1) naming `--aws-region`.
 
 The node completes epochs in order: it waits for finalized settlement and its
 winning bond recoveries before participating in the next epoch. It resumes the
@@ -203,10 +214,10 @@ Here are its arguments:
 ```
 The sling node: a PRT validator for Cartesi Rollups applications
 
-Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --template-path <TEMPLATE_PATH> --data-dir <DATA_DIR> <COMMAND>
+Usage: cartesi-sling-node [OPTIONS] --app-address <APP_ADDRESS> --template-path <TEMPLATE_PATH> --blockchain-http-endpoint <BLOCKCHAIN_HTTP_ENDPOINT> --blockchain-id <BLOCKCHAIN_ID> --data-dir <DATA_DIR> <COMMAND>
 
 Commands:
-  pk       private-key signer
+  pk       private-key signer: the key comes from the CARTESI_SLING_AUTH_PRIVATE_KEY environment variable or a key file, never from the command line
   aws-kms  AWS KMS signer
   help     Print this message or the help of the given subcommand(s)
 
@@ -216,11 +227,11 @@ Options:
       --template-path <TEMPLATE_PATH>
           machine image a new data directory starts from: the application's template, or the state its current sealed epoch starts from; a seeded directory does not read it [env: CARTESI_SLING_TEMPLATE_PATH]
       --blockchain-http-endpoint <BLOCKCHAIN_HTTP_ENDPOINT>
-          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT] [default: http://127.0.0.1:8545]
+          blockchain read gateway endpoint URL [env: CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT]
       --blockchain-http-submit-endpoint <BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT>
           raw-transaction submission endpoint URL; defaults to the read gateway [env: CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT]
       --blockchain-id <BLOCKCHAIN_ID>
-          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID] [default: 31337]
+          blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID]
       --polling-interval <POLLING_INTERVAL>
           polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
@@ -280,7 +291,8 @@ Options:
 - The first log line names the release the binary was built from (its tag,
   or `unreleased build`), the linked Cartesi Machine and its `MARCHID`:
   quote it in bug reports. Startup then logs whether the signer is a sentry
-  of the consensus.
+  of the consensus, and the configuration it runs with on one line, the
+  endpoint URLs redacted.
 - Read the levels as the failure policy defines them
   ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
   an ERROR asks an operator to act; a WARN means the node carries on. A
