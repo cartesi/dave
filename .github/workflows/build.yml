@@ -312,6 +312,9 @@ jobs:
             -- --exact
 
       - name: Build release
+        env:
+          # The node's startup line names this tag; off a tag it says unreleased.
+          CARTESI_SLING_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           cargo build --release -p cartesi-sling-node --target ${{ matrix.target }}
           cp -v ./target/${{ matrix.target }}/release/cartesi-sling-node cartesi-sling-node

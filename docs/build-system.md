@@ -374,10 +374,12 @@ contracts, the e2e smoke (`just e2e-smoke`, one step over the list in
 `test/e2e/rollups/justfile`), a Rust workspace job (fmt, clippy, Lua lint and
 unit tests, Rust tests, the KMS signer tests, explicit image-backed machine
 differentials, the node's half of the computation-hash release corpus, and the
-anvil harness), and the release pipeline (node binaries per arch,
-contract artifacts, deployment simulations, and the devnet state on the
-canonical geometry). The e2e and Rust workspace jobs, the only others that
-build a devnet, deploy the three-level test table. The e2e lane, which has
+anvil harness), and the release pipeline (node binaries per arch, built
+with the tag in `CARTESI_SLING_RELEASE` so the node's startup line names the
+release, which the Cargo version does not; contract artifacts, deployment
+simulations, and the devnet state on the canonical geometry). The e2e and
+Rust workspace jobs, the only others that build a devnet, deploy the
+three-level test table. The e2e lane, which has
 the released CLI, runs the corpus's CLI half and the reference CLI goldens.
 It needs no docker: the honeypot image is not a CI input. One
 smoke step keeps one scenario list; the Lua scenario deadline turns a hang

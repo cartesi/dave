@@ -17,9 +17,14 @@ async fn main() -> ExitCode {
         error!("{info}");
         default_hook(info);
     }));
+    // CI's release build sets the tag (build.yml); the Cargo version names
+    // no release.
+    let release = match option_env!("CARTESI_SLING_RELEASE") {
+        Some(tag) if !tag.is_empty() => tag,
+        _ => "unreleased build",
+    };
     info!(
-        "Hello from the sling node {} (Cartesi Machine {}, MARCHID {})",
-        env!("CARGO_PKG_VERSION"),
+        "Hello from the sling node ({release}, Cartesi Machine {}, MARCHID {})",
         cartesi_machine::format_emulator_version(cartesi_machine::Machine::version()),
         cartesi_machine::cartesi_machine_sys::CM_MARCHID,
     );
