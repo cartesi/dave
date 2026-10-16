@@ -79,14 +79,15 @@ its current signer, and a previous signer's bonds stay recoverable by anyone
 through `tryRecoveringBond`, which pays the recorded claimer. A changed store
 format or commitment semantics requires a fresh directory under the node's
 rebuild policy. The first
-start pins a directory to its application, chain and template, and every start
-checks the `--template-path` image against the application's on-chain initial
-hash; a mismatch is refused before anything is written, and so is a matching
-image that is not paused at a manual accepted yield, from which no epoch can
-start. Startup also refuses a deployment whose state transition disagrees
-with the linked Cartesi Machine library (its `CM_MARCHID` or pristine uarch
-hash), an image whose uarch state is not that pristine uarch (custom uarch
-code, or an image built by another emulator), and one whose hash tree is not
+start checks the `--template-path` image against the application's on-chain
+initial hash and pins the directory to its application, chain and that hash;
+a mismatch is refused before anything is written, and so is a matching image
+that is not paused at a manual accepted yield, from which no epoch can start.
+Later starts compare the pins and never read `--template-path`. Startup also
+refuses a deployment whose state transition disagrees with the linked Cartesi
+Machine library (its `CM_MARCHID` or pristine uarch hash), and a first start
+refuses an image whose uarch state is not that pristine uarch (custom uarch
+code, or an image built by another emulator) or whose hash tree is not
 Keccak-256.
 
 One node process owns a data directory: startup locks its `node.lock` and

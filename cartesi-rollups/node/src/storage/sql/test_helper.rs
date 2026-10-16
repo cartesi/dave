@@ -1,8 +1,8 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-use crate::engine::TournamentGeometry;
-use crate::storage::{Storage, Template};
+use crate::engine::{EngineConfig, TournamentGeometry};
+use crate::storage::{Seed, Storage, Template};
 use cartesi_machine::{
     Machine,
     cartesi_machine_sys::{
@@ -15,7 +15,7 @@ use cartesi_machine::{
         runtime::RuntimeConfig,
     },
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::{TempDir, tempdir};
 
 /// A fully initialized Storage over a real (tiny) machine image: the
@@ -34,17 +34,34 @@ pub fn setup_storage_with(geometry: &TournamentGeometry) -> (TempDir, Storage) {
     let machine_path = state_dir.join("_my_machine_image");
     store_template(&machine_path, |_| {});
 
-    let storage = Storage::initialize(
-        state_dir,
-        &Template::inspect(&machine_path).unwrap(),
-        0,
-        alloy::primitives::Address::ZERO,
-        alloy::primitives::Address::ZERO,
-        0,
-        geometry,
-    )
-    .unwrap();
+    let storage = seed_storage(state_dir, &machine_path, 0, geometry);
     (state_dir_, storage)
+}
+
+/// Initializes `state_dir`, seeded at `epoch` from the image at `image`
+/// with watermark 0, for app, consensus and chain zero, pinned to
+/// `geometry`. The image stands for the deployment's initial state, as a
+/// template does.
+pub fn seed_storage(
+    state_dir: &Path,
+    image: &Path,
+    epoch: u64,
+    geometry: &TournamentGeometry,
+) -> Storage {
+    let image = Template::inspect(image).unwrap();
+    let config = EngineConfig::for_deployment(
+        0,
+        alloy::primitives::Address::ZERO,
+        alloy::primitives::Address::ZERO,
+        *image.hash(),
+        geometry.clone(),
+    );
+    let seed = Seed {
+        image,
+        epoch,
+        watermark: 0,
+    };
+    Storage::initialize(state_dir, Some(&seed), &config).unwrap()
 }
 
 /// A stand-in published snapshot for `hash`: an empty directory at its
@@ -65,7 +82,7 @@ pub fn yield_exception(machine: &mut Machine) {
 }
 
 /// Stores the tiny template at `path`, after `adjust` edits the machine.
-pub fn store_template(path: &std::path::Path, adjust: impl FnOnce(&mut Machine)) {
+pub fn store_template(path: &Path, adjust: impl FnOnce(&mut Machine)) {
     let mut machine = Machine::create(
         &MachineConfig::new_with_ram(RAMConfig {
             length: 134217728,

@@ -17,12 +17,12 @@ use alloy::primitives::{Address, U256};
 use alloy::sol_types::SolCall;
 use cartesi_machine::constants::rollup::LOG2_MAX_UARCH_CYCLES_PER_MCYCLE;
 use cartesi_sling_node::engine::{
-    DisputeSource, Hashing, Level, MachineStf, Positioner, Quartet, Stf, Structure,
+    DisputeSource, EngineConfig, Hashing, Level, MachineStf, Positioner, Quartet, Stf, Structure,
     TournamentGeometry, constants::LOG2_EPOCH_RULER_SPAN, fold_runs,
 };
 use cartesi_sling_node::merkle::Digest;
 use cartesi_sling_node::storage::{
-    DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Storage, Template,
+    DEFAULT_SNAPSHOT_GAP_INPUTS, Input as StorageInput, InputId, Seed, Storage, Template,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -536,6 +536,20 @@ fn bench_quartets(
     Ok(())
 }
 
+/// A store seeded at epoch 0 from `image`, which stands for the
+/// deployment's initial state.
+fn seeded_storage(state_dir: &Path, image: &Path, geometry: TournamentGeometry) -> Result<Storage> {
+    let image = Template::inspect(image)?;
+    let config =
+        EngineConfig::for_deployment(0, Address::ZERO, Address::ZERO, *image.hash(), geometry);
+    let seed = Seed {
+        image,
+        epoch: 0,
+        watermark: 0,
+    };
+    Ok(Storage::initialize(state_dir, Some(&seed), &config)?)
+}
+
 /// A dispute source over a two-input epoch 0 of the workload.
 fn two_input_epoch(
     image: &Path,
@@ -546,15 +560,7 @@ fn two_input_epoch(
         evm_advance_input(0, b"hello dave"),
         evm_advance_input(1, b"hello again, dave"),
     ];
-    let mut storage = Storage::initialize(
-        &scratch(scratch_root, tag)?,
-        &Template::inspect(image)?,
-        0,
-        Address::ZERO,
-        Address::ZERO,
-        0,
-        &bench_geometry()?,
-    )?;
+    let mut storage = seeded_storage(&scratch(scratch_root, tag)?, image, bench_geometry()?)?;
     let rows: Vec<StorageInput> = inputs
         .iter()
         .enumerate()
@@ -1134,15 +1140,7 @@ mod versus {
             ],
             &structure,
         )?;
-        let mut storage = Storage::initialize(
-            &state,
-            &Template::inspect(image)?,
-            0,
-            Address::ZERO,
-            Address::ZERO,
-            0,
-            &geometry,
-        )?;
+        let mut storage = seeded_storage(&state, image, geometry)?;
         let rows: Vec<StorageInput> = (0..args.gap_inputs)
             .map(|i| StorageInput {
                 id: InputId {

@@ -21,13 +21,13 @@ use cartesi_machine::constants::break_reason;
 use cartesi_machine::machine::Machine;
 use cartesi_machine::types::{Hash, cmio::CmioResponseReason};
 use cartesi_sling_node::engine::{
-    Collector, DisputeSource, Hashing, Level, LevelCoords, MachineStf, Positioner, Quartet, Ruler,
-    Stf, Structure, TournamentGeometry, fold_runs,
+    Collector, DisputeSource, EngineConfig, Hashing, Level, LevelCoords, MachineStf, Positioner,
+    Quartet, Ruler, Stf, Structure, TournamentGeometry, fold_runs,
 };
 use cartesi_sling_node::machine_runner::MachineRunner;
 use cartesi_sling_node::merkle::{Digest, MerkleProof};
 use cartesi_sling_node::storage::{
-    Epoch, Input as StorageInput, InputId, LeafProof, Storage, Template,
+    Epoch, Input as StorageInput, InputId, LeafProof, Seed, Storage, Template,
 };
 use cartesi_sling_node::sync::ShutdownSignal;
 use common::epoch_data::EpochData;
@@ -208,16 +208,20 @@ fn initialized_storage_under(
     geometry: &TournamentGeometry,
 ) -> (tempfile::TempDir, Storage) {
     let dir = scratch();
-    let mut storage = Storage::initialize(
-        dir.path(),
-        &Template::inspect(image).unwrap(),
+    let image = Template::inspect(image).unwrap();
+    let config = EngineConfig::for_deployment(
         0,
         Address::ZERO,
         Address::ZERO,
-        0,
-        geometry,
-    )
-    .unwrap();
+        *image.hash(),
+        geometry.clone(),
+    );
+    let seed = Seed {
+        image,
+        epoch: 0,
+        watermark: 0,
+    };
+    let mut storage = Storage::initialize(dir.path(), Some(&seed), &config).unwrap();
     let rows: Vec<StorageInput> = inputs
         .into_iter()
         .enumerate()

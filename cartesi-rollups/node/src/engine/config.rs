@@ -14,7 +14,9 @@
 use super::geometry::TournamentGeometry;
 use super::structure::Structure;
 use crate::merkle::Digest;
+use alloy::primitives::Address;
 use anyhow::Result;
+use cartesi_machine::{format_emulator_version, machine::Machine, types::Hash};
 use rusqlite::{Connection, OptionalExtension, params};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,11 +28,35 @@ pub struct EngineConfig {
     /// The consensus the app answered with at initialization: the source
     /// of this store's epochs, inputs, and tournament factory.
     pub consensus: Vec<u8>,
+    /// The application's initial (epoch 0) state, read from chain. It
+    /// identifies the deployment, whatever image seeded the directory.
     pub template_hash: Digest,
     pub emulator_version: String,
     /// The deployed level table. Its root stride shapes every stored
     /// window root and settlement hash.
     pub geometry: TournamentGeometry,
+}
+
+impl EngineConfig {
+    /// The configuration of a deployment as this node runs it: the
+    /// production structure and the linked emulator.
+    pub fn for_deployment(
+        chain_id: u64,
+        app: Address,
+        consensus: Address,
+        initial_hash: Hash,
+        geometry: TournamentGeometry,
+    ) -> Self {
+        Self {
+            structure: Structure::PRODUCTION,
+            chain_id,
+            app: app.as_slice().to_vec(),
+            consensus: consensus.as_slice().to_vec(),
+            template_hash: Digest::from(initial_hash),
+            emulator_version: format_emulator_version(Machine::version()),
+            geometry,
+        }
+    }
 }
 
 /// Pins the configuration, once per database; the schema comes from

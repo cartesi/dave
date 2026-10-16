@@ -1041,16 +1041,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let template = dir.path().join("_template");
         crate::storage::sql::test_helper::store_template(&template, adjust);
-        let mut storage = Storage::initialize(
+        let mut storage = crate::storage::sql::test_helper::seed_storage(
             dir.path(),
-            &crate::storage::Template::inspect(&template).unwrap(),
-            0,
-            Address::ZERO,
-            Address::ZERO,
+            &template,
             0,
             &crate::engine::TournamentGeometry::two_level(),
-        )
-        .unwrap();
+        );
         let epoch = Epoch {
             epoch_number: 0,
             input_index_boundary: 0,
