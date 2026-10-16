@@ -59,8 +59,8 @@ carry no backlog (reviews/README.md).
   only if no relay operators use frees a held nonce within G, planning the
   timeout claim when the opponent's leaf clock cannot outlive the proof, and
   the two planner leads recorded there. (node-architecture.md)
-- Qualify Flashbots Protect (Sepolia; mainnet `/fast`) and MEV Blocker
-  `/noreverts` (mainnet) with a dedicated funded key, record the results and
+- Qualify Flashbots Protect (default and `/fast`) and MEV Blocker
+  `/noreverts` on mainnet with a small dedicated funded key, record the results and
   update the node README's candidate list: no relay is measured yet.
   (runbooks/submit-relay.md)
 

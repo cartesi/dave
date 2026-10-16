@@ -736,7 +736,8 @@ mod tests {
         // A seeded directory restarts without its image (COMP-3).
         NodeConfig::setup_with(args(&dir.path().join("vanished"))).await?;
         // A submit endpoint that does not answer fails the start, retried by
-        // the supervisor; the workers' clients build without asking anything.
+        // the supervisor. Answering endpoints give workers' clients that are
+        // built without asking anything.
         let mut silent_relay = args(&image);
         silent_relay.blockchain_http_submit_endpoint = Some("http://127.0.0.1:1".parse()?);
         let error = NodeConfig::setup_with(silent_relay)

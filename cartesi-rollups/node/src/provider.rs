@@ -937,8 +937,8 @@ mod tests {
         );
     }
 
-    /// Only another chain refuses a start: a relay that does not answer, or
-    /// serves no eth_chainId, starts the node with a warning.
+    /// An endpoint on another chain is terminal (exit 30); one that does not
+    /// answer, or serves no eth_chainId, fails the start (exit 1).
     #[tokio::test]
     async fn an_endpoint_must_answer_with_this_chain() {
         let answering = |answer: Result<u64, &'static str>| {
