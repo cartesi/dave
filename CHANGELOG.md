@@ -86,14 +86,16 @@ needed.
 - Links Cartesi Machine v0.22, which refuses machines stored by v0.21: a
   node built against v0.21 cannot start against these contracts, and v0.21
   templates and data directories do not load.
-- Start from a fresh data directory: the schema changed (tournament events
-  are no longer stored; the chain id is pinned), and the directory holds a
-  `node.lock` that refuses a second process. A fresh directory seeded from
-  the template replays every input since the application's deployment; one
-  seeded from the state the current sealed epoch starts from executes from
-  that epoch on and never touches an earlier one, so bonds its signer holds
-  there are the operator's to recover. See the README's operator notes for
-  both and for a side-by-side upgrade.
+- Start from a fresh data directory: the schema changed (tournament events are
+  no longer stored; the chain id is pinned), and the directory holds a
+  `node.lock` that refuses a second process. The store carries a format stamp,
+  so a directory an earlier release built exits 40. A stopped directory may
+  now be moved or copied: snapshot paths derive from their state hashes. A
+  fresh directory seeded from the template replays every input since the
+  application's deployment; one seeded from the state the current sealed epoch
+  starts from executes from that epoch on and never touches an earlier one, so
+  bonds its signer holds there are the operator's to recover. See the README's
+  operator notes for both and for a side-by-side upgrade.
 - Changing the signer no longer needs a fresh directory: the node recovers
   its current signer's bonds, and a previous signer's stay recoverable by
   anyone through `tryRecoveringBond`, which pays the recorded claimer. The
@@ -101,11 +103,45 @@ needed.
 - A first start checks the seed image (the template, or the last settled
   state at the finalized head) against the chain, and every start checks the
   directory's pins and each endpoint's chain id, before writing anything; an
-  endpoint on another chain exits 30. A seeded directory never reads
+  endpoint on another chain exits 30, and one that does not answer, the
+  submit endpoint included, exits 1. A seeded directory never reads
   `--template-path` again.
+- A first start also refuses a seed image whose files the node maps for
+  writing lack the owner write bit (exit 30): it would seed and then fail
+  every batch. Make such an image writable (`chmod -R u+w`).
 - Startup warns when no separate submit endpoint is set off anvil, and a send
   the submit endpoint does not answer is a WARN that pages after 5 minutes,
-  not an ERROR on every send.
+  not an ERROR on every send. The README lists what a submit relay must do,
+  answering `eth_chainId` included, and docs/runbooks/submit-relay.md
+  qualifies one; none has passed yet.
+- The exit status says why the node stopped: 0 a requested stop, 1 any other
+  error, 2 a usage error, 30 terminal (an operator must act), 40 a data
+  directory to rebuild, 101 a panic. Under systemd, set
+  `RestartPreventExitStatus=30 40`. See the README's operator notes.
+- One paging rule: a failure that would cost a dispute logs WARN while it
+  lasts and ERROR once it has lasted 5 minutes, the response window, so an
+  ERROR asks an operator to act.
+- An obligation the local commitment already missed (joins closed before it
+  joined, its clock expired, its match or its match's child is eliminable)
+  logs an ERROR every tick, and a loss names its case: elimination, another
+  class's child win, or another commitment's root win, whose ERROR says
+  whether its final state is this node's. Once a state this node did not
+  compute settles, the node stops with exit 30 at the next epoch.
+- A sentry also claims its own computed state after another commitment wins
+  the root, as the dissent a guardian reads; staging and acceptance still
+  follow only its own win.
+- The runner refuses a batch or an epoch roll with less than 1 GiB free on
+  the data directory's filesystem, where a full disk would kill it mid-batch
+  with nothing logged.
+- Every AWS KMS call is bounded like an RPC attempt (20 s), so a KMS endpoint
+  that never answers fails the tick instead of parking it.
+- Once caught up, the node logs an ERROR when the read endpoint's latest
+  block is 5 minutes old or more: such a provider answers consistently with
+  an old head while dispute clocks run.
+- The first log line names the release tag the binary was built from (or
+  says it is an unreleased build), the linked Cartesi Machine and its
+  `MARCHID`, and startup logs whether the signer is a sentry of the
+  consensus.
 - Startup also requires the deployed state transition's
   `UARCH_PRISTINE_STATE_HASH()`, the linked emulator's pristine uarch hash and
   the template's uarch state hash to be equal, beside the `CM_MARCHID` check,
@@ -162,6 +198,11 @@ needed.
   build its commitment. A dense two-level leaf takes tens of minutes to
   build, so on a devnet that mines faster an honest node can run out of
   clock.
+- The measurement tool is the node crate's example, `cargo run --example
+  measure`, which the `just measure*` recipes run; release builds no longer
+  compile it.
+- `just test-node-harness` runs the anvil harness and the other anvil tests
+  in parallel.
 - `just test-lua-client` also checks the Lua client's event layouts against
   the compiled `ITournament` ABI, so it now needs `forge`, `jq` and the PRT
   contract dependencies (`just prt-contracts::install-deps`).
