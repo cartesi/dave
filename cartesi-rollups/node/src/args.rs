@@ -23,9 +23,7 @@ use cartesi_prt_contracts::{
 use clap::{ArgGroup, Parser, Subcommand};
 use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 
-use crate::provider::{
-    TransactionLane, create_rpc_provider, create_signer, probe_submit_endpoint, rpc_provider,
-};
+use crate::provider::{TransactionLane, create_rpc_provider, create_signer, rpc_provider};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
@@ -373,16 +371,18 @@ impl NodeConfig {
             .blockchain_http_submit_endpoint
             .filter(|url| *url != args.blockchain_http_endpoint);
         match &relay {
-            Some(url) => probe_submit_endpoint(&rpc_provider(url, chain_id)?, chain_id)
-                .await
-                .context("--blockchain-http-submit-endpoint")?,
+            Some(url) => {
+                create_rpc_provider(url, chain_id)
+                    .await
+                    .context("--blockchain-http-submit-endpoint")?;
+            }
             // Anvil is the tests' chain, where nobody orders transactions.
             None if args.blockchain_id != ANVIL_CHAIN_ID => log::warn!(
                 "no separate --blockchain-http-submit-endpoint: transactions go to the read \
-                 endpoint, on a public node its public pool, where an adversary who orders transactions can land a copy of \
-                 each honest step first and make the node pay for its reverted one (up to \
-                 about 3.76M gas for a leaf proof); in production, send through a relay that \
-                 meets the node README's requirements"
+                 endpoint, on a public node its public pool, where an adversary who orders \
+                 transactions can land a copy of each honest step first and make the node pay \
+                 for its reverted one (up to about 3.76M gas for a leaf proof); in production, \
+                 send through a relay that meets the node README's requirements"
             ),
             None => {}
         }
@@ -735,11 +735,20 @@ mod tests {
         NodeConfig::setup_with(args(&image)).await?;
         // A seeded directory restarts without its image (COMP-3).
         NodeConfig::setup_with(args(&dir.path().join("vanished"))).await?;
-        // A relay that does not answer only warns, and the workers' clients
-        // build without asking it anything.
+        // A submit endpoint that does not answer fails the start, retried by
+        // the supervisor; the workers' clients build without asking anything.
         let mut silent_relay = args(&image);
         silent_relay.blockchain_http_submit_endpoint = Some("http://127.0.0.1:1".parse()?);
-        let config = NodeConfig::setup_with(silent_relay).await?;
+        let error = NodeConfig::setup_with(silent_relay)
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 1);
+        assert!(
+            format!("{error:#}").contains("--blockchain-http-submit-endpoint"),
+            "unexpected error: {error:#}"
+        );
+        let config = NodeConfig::setup_with(args(&image)).await?;
         config.transaction_lane(config.read_provider()?)?;
         drop(config);
 

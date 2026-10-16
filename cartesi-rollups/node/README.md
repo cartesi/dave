@@ -94,8 +94,8 @@ runbook records results:
   testnet endpoint is documented.
 
 At startup the node asks each endpoint its chain and refuses one on another
-chain (exit 30); a submit endpoint that does not answer only logs a warning,
-since its sends retry every tick. Without a separate submit endpoint, on any
+chain (exit 30) or one that does not answer (exit 1, retried by the
+supervisor). Without a separate submit endpoint, on any
 chain but anvil's, it warns once at startup that transactions go to the read
 endpoint's public pool. The signer must be exclusive to one node process
 because the node owns its nonce sequence. Each tick batches the applicable

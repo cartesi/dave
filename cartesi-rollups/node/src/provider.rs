@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::args::SignerArgs;
-use crate::escalation::PAGE_AFTER;
 use crate::fatal::Fatal;
 use crate::kms;
 use alloy::{
@@ -279,12 +278,18 @@ pub(crate) fn rpc_provider(url: &Url, chain: NamedChain) -> Result<DynProvider> 
 /// [`rpc_provider`], once the endpoint has said it serves `chain`.
 pub async fn create_rpc_provider(url: &Url, chain: NamedChain) -> Result<DynProvider> {
     let provider = rpc_provider(url, chain)?;
+    check_chain(&provider, chain).await?;
+    Ok(provider)
+}
+
+/// An endpoint that does not answer fails the start (exit 1, retried by the
+/// supervisor); one on another chain is terminal.
+async fn check_chain(provider: &impl Provider, chain: NamedChain) -> Result<()> {
     let served = provider
         .get_chain_id()
         .await
         .context("failed to query the endpoint's chain id")?;
-    ensure_chain(served, chain)?;
-    Ok(provider)
+    ensure_chain(served, chain)
 }
 
 /// An endpoint on another chain is a flag that disagrees with the node, which
@@ -298,24 +303,6 @@ fn ensure_chain(served: u64, chain: NamedChain) -> Result<()> {
         ))
     );
     Ok(())
-}
-
-/// Refuses a submit endpoint on another chain, and starts despite one that
-/// does not answer: reads and execution need no relay, and its sends retry
-/// every tick. A relay may serve little beyond `eth_sendRawTransaction`.
-pub(crate) async fn probe_submit_endpoint(submit: &impl Provider, chain: NamedChain) -> Result<()> {
-    match submit.get_chain_id().await {
-        Ok(served) => ensure_chain(served, chain),
-        Err(error) => {
-            warn!(
-                "could not check --blockchain-http-submit-endpoint's chain ({error}); starting \
-                 anyway: its sends retry every tick, and a call that does not land logs an \
-                 error after {} minutes",
-                PAGE_AFTER.as_secs() / 60
-            );
-            Ok(())
-        }
-    }
 }
 
 /// A labeled request bound for the lane; the label names the on-chain verb
@@ -953,7 +940,7 @@ mod tests {
     /// Only another chain refuses a start: a relay that does not answer, or
     /// serves no eth_chainId, starts the node with a warning.
     #[tokio::test]
-    async fn the_submit_probe_refuses_only_another_chain() {
+    async fn an_endpoint_must_answer_with_this_chain() {
         let answering = |answer: Result<u64, &'static str>| {
             let asserter = Asserter::new();
             match answer {
@@ -966,23 +953,24 @@ mod tests {
         };
         let anvil = NamedChain::AnvilHardhat;
 
-        let error = probe_submit_endpoint(&answering(Ok(1)), anvil)
-            .await
-            .unwrap_err();
+        let error = check_chain(&answering(Ok(1)), anvil).await.unwrap_err();
         assert_eq!(crate::fatal::exit_code(&error), 30);
         assert_eq!(
             error.to_string(),
             "the endpoint serves chain 1, not --blockchain-id 31337"
         );
 
-        probe_submit_endpoint(&answering(Ok(31337)), anvil)
-            .await
-            .unwrap();
-        probe_submit_endpoint(&answering(Err("method not found")), anvil)
-            .await
-            .unwrap();
-        let silent = rpc_provider(&"http://127.0.0.1:1".parse().unwrap(), anvil).unwrap();
-        probe_submit_endpoint(&silent, anvil).await.unwrap();
+        check_chain(&answering(Ok(31337)), anvil).await.unwrap();
+        for unanswered in [
+            check_chain(&answering(Err("method not found")), anvil).await,
+            check_chain(
+                &rpc_provider(&"http://127.0.0.1:1".parse().unwrap(), anvil).unwrap(),
+                anvil,
+            )
+            .await,
+        ] {
+            assert_eq!(crate::fatal::exit_code(&unanswered.unwrap_err()), 1);
+        }
     }
 
     #[test]
