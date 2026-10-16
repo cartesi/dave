@@ -277,6 +277,10 @@ Options:
   signer's outstanding bonds stay recoverable by anyone: a direct
   `tryRecoveringBond` call on each such tournament pays the recorded
   claimer, whoever sends it.
+- The first log line names the release the binary was built from (its tag,
+  or `unreleased build`), the linked Cartesi Machine and its `MARCHID`:
+  quote it in bug reports. Startup then logs whether the signer is a sentry
+  of the consensus.
 - Read the levels as the failure policy defines them
   ([node-architecture.md](../../docs/node-architecture.md#failure-policy)):
   an ERROR asks an operator to act; a WARN means the node carries on. A
