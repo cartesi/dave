@@ -130,7 +130,7 @@ impl World {
         world.mine(3).await?;
         let latest = world.chain.latest_block_number().await?;
         ensure!(
-            world.chain.finalized_block_number().await? == latest - 2,
+            world.chain.finalized_head().await?.number == latest - 2,
             "anvil's finalized head is not latest - 2"
         );
         Ok(world)
@@ -458,7 +458,7 @@ impl World {
             // Anvil does not reorg, so a sample after discovery is as good.
             watermark: self
                 .book
-                .initial_watermark(self.chain.finalized_block_number().await?),
+                .initial_watermark(self.chain.finalized_head().await?.number),
         };
         let config = EngineConfig::for_deployment(
             self.anvil.chain_id(),
