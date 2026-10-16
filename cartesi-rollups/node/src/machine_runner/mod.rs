@@ -10,6 +10,12 @@ use crate::storage::{AdvancePlan, Storage};
 use crate::sync::ShutdownSignal;
 use log::Level;
 
+/// Snapshot boundaries kept per epoch beyond the start and the
+/// latest: every gap-th input. This is the disk-vs-replay knob for
+/// dispute positioning; 1 keeps every boundary. It is also the
+/// advance-batch size: one commit per gap worth of inputs.
+pub const DEFAULT_SNAPSHOT_GAP_INPUTS: u64 = 64;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PlanAction {
     Idle,
@@ -50,6 +56,7 @@ fn plan_action(plan: &AdvancePlan, gap: u64) -> PlanAction {
 
 pub struct MachineRunner {
     storage: Storage,
+    snapshot_gap_inputs: u64,
     sleep_duration: Duration,
     shutdown: ShutdownSignal,
     structure: Structure,
@@ -84,12 +91,15 @@ fn ensure_free_space(storage: &Storage) -> Result<()> {
 impl MachineRunner {
     pub fn new(
         storage: Storage,
+        snapshot_gap_inputs: u64,
         sleep_duration: Duration,
         shutdown: ShutdownSignal,
     ) -> Result<Self> {
+        assert!(snapshot_gap_inputs >= 1, "snapshot gap must be positive");
         let config = storage.sling_config()?;
         Ok(Self {
             storage,
+            snapshot_gap_inputs,
             sleep_duration,
             shutdown,
             structure: config.structure,
@@ -137,8 +147,8 @@ impl MachineRunner {
             if self.shutdown.is_requested() {
                 return Ok(());
             }
-            let plan = self.storage.advance_plan()?;
-            match plan_action(&plan, self.storage.snapshot_gap_inputs()) {
+            let plan = self.storage.advance_plan(self.snapshot_gap_inputs)?;
+            match plan_action(&plan, self.snapshot_gap_inputs) {
                 PlanAction::Idle => return Ok(()),
                 PlanAction::Advance => {
                     ensure_free_space(&self.storage)?;
@@ -295,10 +305,15 @@ mod tests {
             .unwrap();
         let state_dir = storage.state_dir().to_owned();
         let run = |storage, shutdown| {
-            MachineRunner::new(storage, Duration::ZERO, shutdown)
-                .unwrap()
-                .process_rollup()
-                .unwrap()
+            MachineRunner::new(
+                storage,
+                DEFAULT_SNAPSHOT_GAP_INPUTS,
+                Duration::ZERO,
+                shutdown,
+            )
+            .unwrap()
+            .process_rollup()
+            .unwrap()
         };
 
         let stopped = ShutdownSignal::default();
@@ -340,12 +355,18 @@ mod tests {
             .insert_consensus_data(1, inputs.iter(), [&sealed].into_iter())
             .unwrap();
         let state_dir = storage.state_dir().to_owned();
-        let plan = storage.advance_plan().unwrap();
+        let plan = storage.advance_plan(DEFAULT_SNAPSHOT_GAP_INPUTS).unwrap();
         assert_eq!(plan.inputs.len(), 2);
 
         let stopped = ShutdownSignal::default();
         stopped.request();
-        let mut runner = MachineRunner::new(storage, Duration::ZERO, stopped).unwrap();
+        let mut runner = MachineRunner::new(
+            storage,
+            DEFAULT_SNAPSHOT_GAP_INPUTS,
+            Duration::ZERO,
+            stopped,
+        )
+        .unwrap();
         assert!(!runner.advance(plan).unwrap(), "a stopped batch committed");
         let mut check = Storage::new(&state_dir).unwrap();
         for input in 1..=2 {

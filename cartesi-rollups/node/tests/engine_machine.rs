@@ -1072,13 +1072,11 @@ fn reference_cli_goldens_hold() {
     check_fixture("reference_cli.json", serde_json::json!(computed));
 }
 
-/// One sealed epoch over `inputs`, ready for the runner at the given
-/// snapshot gap.
+/// One sealed epoch over `inputs`, ready for the runner.
 fn sealed_epoch(
     image: &Path,
     inputs: Vec<Vec<u8>>,
     geometry: &TournamentGeometry,
-    snapshot_gap: u64,
 ) -> (tempfile::TempDir, Storage) {
     let input_count = inputs.len() as u64;
     let (state_dir, mut storage) = initialized_storage_under(image, inputs, geometry);
@@ -1091,12 +1089,11 @@ fn sealed_epoch(
     storage
         .insert_consensus_data(1, std::iter::empty(), [&sealed].into_iter())
         .unwrap();
-    storage.set_snapshot_gap_inputs(snapshot_gap);
     (state_dir, storage)
 }
 
-fn process_rollup(storage: Storage, shutdown: ShutdownSignal) {
-    MachineRunner::new(storage, Duration::ZERO, shutdown)
+fn process_rollup(storage: Storage, snapshot_gap: u64, shutdown: ShutdownSignal) {
+    MachineRunner::new(storage, snapshot_gap, Duration::ZERO, shutdown)
         .unwrap()
         .process_rollup()
         .unwrap();
@@ -1110,8 +1107,8 @@ fn run_sealed_epoch(
     geometry: &TournamentGeometry,
     snapshot_gap: u64,
 ) -> tempfile::TempDir {
-    let (state_dir, storage) = sealed_epoch(image, inputs, geometry, snapshot_gap);
-    process_rollup(storage, ShutdownSignal::default());
+    let (state_dir, storage) = sealed_epoch(image, inputs, geometry);
+    process_rollup(storage, snapshot_gap, ShutdownSignal::default());
     state_dir
 }
 
@@ -1126,10 +1123,10 @@ fn a_stopped_runner_drops_its_batch_and_a_restart_replays_it() {
     let inputs = runner_epochs()[0].2.clone();
     let input_count = inputs.len() as u64;
     let geometry = three_level();
-    let (state_dir, storage) = sealed_epoch(&image, inputs.clone(), &geometry, 3);
+    let (state_dir, storage) = sealed_epoch(&image, inputs.clone(), &geometry);
     let stopped = ShutdownSignal::default();
     stopped.request();
-    process_rollup(storage, stopped);
+    process_rollup(storage, 3, stopped);
 
     let mut check = Storage::new(state_dir.path()).unwrap();
     for input in 1..=input_count {
@@ -1142,6 +1139,7 @@ fn a_stopped_runner_drops_its_batch_and_a_restart_replays_it() {
 
     process_rollup(
         Storage::new(state_dir.path()).unwrap(),
+        3,
         ShutdownSignal::default(),
     );
     let replayed = check

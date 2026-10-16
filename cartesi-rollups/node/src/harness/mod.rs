@@ -45,7 +45,7 @@ use crate::{
     engine::{EngineConfig, Tail, TournamentGeometry},
     epoch_manager::EpochManager,
     hero::Hero,
-    machine_runner::MachineRunner,
+    machine_runner::{DEFAULT_SNAPSHOT_GAP_INPUTS, MachineRunner},
     provider::{SendVerdict, TransactionLane},
     storage::{Seed, Storage, Template},
     sync::ShutdownSignal,
@@ -560,6 +560,7 @@ impl Node {
             BlockchainReader::new(Storage::new(state_dir.path())?, world.book, Duration::ZERO);
         let runner = MachineRunner::new(
             Storage::new(state_dir.path())?,
+            DEFAULT_SNAPSHOT_GAP_INPUTS,
             Duration::ZERO,
             ShutdownSignal::default(),
         )?;

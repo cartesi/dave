@@ -36,12 +36,6 @@ use std::{
 /// times per tick, so the extra fsync is free.
 const SYNCHRONOUS_PRAGMA: &str = "FULL";
 
-/// Snapshot boundaries kept per epoch beyond the start and the
-/// latest: every gap-th input. This is the disk-vs-replay knob for
-/// dispute positioning; 1 keeps every boundary. It is also the
-/// advance-batch size: one commit per gap worth of inputs.
-pub const DEFAULT_SNAPSHOT_GAP_INPUTS: u64 = 64;
-
 const LOCK_FILE: &str = "node.lock";
 
 /// One node process owns a state directory: a second one would sweep the
@@ -87,7 +81,6 @@ impl StateDirLock {
 pub struct Storage {
     pub(super) connection: Connection,
     pub(super) state_dir: PathBuf,
-    pub(super) snapshot_gap_inputs: u64,
 }
 
 /// The operator's machine image, inspected only to seed a new state
@@ -309,7 +302,6 @@ impl Storage {
         let mut storage = Self {
             connection,
             state_dir,
-            snapshot_gap_inputs: DEFAULT_SNAPSHOT_GAP_INPUTS,
         };
 
         match (sling_config::stored(&storage.connection)?, seed) {
@@ -377,7 +369,6 @@ impl Storage {
         Ok(Self {
             connection,
             state_dir,
-            snapshot_gap_inputs: DEFAULT_SNAPSHOT_GAP_INPUTS,
         })
     }
 
@@ -396,15 +387,6 @@ impl Storage {
         // The field widths differ across platforms.
         #[allow(clippy::unnecessary_cast)]
         Ok((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
-    }
-
-    pub fn set_snapshot_gap_inputs(&mut self, gap: u64) {
-        assert!(gap >= 1, "snapshot gap must be positive");
-        self.snapshot_gap_inputs = gap;
-    }
-
-    pub fn snapshot_gap_inputs(&self) -> u64 {
-        self.snapshot_gap_inputs
     }
 
     pub fn state_dir(&self) -> &Path {
