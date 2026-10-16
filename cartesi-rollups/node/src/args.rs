@@ -23,7 +23,9 @@ use cartesi_prt_contracts::{
 use clap::{ArgGroup, Parser, Subcommand};
 use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 
-use crate::provider::{TransactionLane, create_rpc_provider, create_signer};
+use crate::provider::{
+    TransactionLane, create_rpc_provider, create_signer, probe_submit_endpoint, rpc_provider,
+};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const ANVIL_URL: &str = "http://127.0.0.1:8545";
@@ -333,18 +335,15 @@ impl NodeConfig {
         Ok(access)
     }
 
-    pub async fn read_provider(&self) -> Result<DynProvider> {
-        create_rpc_provider(&self.ethereum_gateway, self.chain_id)
-            .await
-            .context("--blockchain-http-endpoint")
+    // Setup checked both endpoints' chains, so the workers ask nothing.
+    pub fn read_provider(&self) -> Result<DynProvider> {
+        rpc_provider(&self.ethereum_gateway, self.chain_id).context("--blockchain-http-endpoint")
     }
 
-    pub async fn transaction_lane(&self, read_provider: DynProvider) -> Result<TransactionLane> {
-        let submit_provider = create_rpc_provider(&self.ethereum_submit_gateway, self.chain_id)
-            .await
-            .context(
-                "--blockchain-http-submit-endpoint (defaults to --blockchain-http-endpoint)",
-            )?;
+    pub fn transaction_lane(&self, read_provider: DynProvider) -> Result<TransactionLane> {
+        let submit_provider = rpc_provider(&self.ethereum_submit_gateway, self.chain_id).context(
+            "--blockchain-http-submit-endpoint (defaults to --blockchain-http-endpoint)",
+        )?;
         Ok(TransactionLane::new(
             read_provider,
             submit_provider,
@@ -358,17 +357,37 @@ impl NodeConfig {
     }
 
     /// Validates everything it can before the first local write: the
-    /// deployment; then, unless a probe that creates nothing finds the data
-    /// directory seeded, the --template-path image against the chain; then,
-    /// under the state-directory lock, the directory's pins. A refused
-    /// deployment or image creates nothing, a refused pin leaves the existing
-    /// directory untouched, and a seeded directory never reads its image.
+    /// endpoints' chains and the deployment; then, unless a probe that
+    /// creates nothing finds the data directory seeded, the --template-path
+    /// image against the chain; then, under the state-directory lock, the
+    /// directory's pins. A refused endpoint, deployment or image creates
+    /// nothing, a refused pin leaves the existing directory untouched, and a
+    /// seeded directory never reads its image.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = named_chain(args.blockchain_id)?;
 
         let provider = create_rpc_provider(&args.blockchain_http_endpoint, chain_id)
             .await
             .context("--blockchain-http-endpoint")?;
+        let relay = args
+            .blockchain_http_submit_endpoint
+            .filter(|url| *url != args.blockchain_http_endpoint);
+        match &relay {
+            Some(url) => probe_submit_endpoint(&rpc_provider(url, chain_id)?, chain_id)
+                .await
+                .context("--blockchain-http-submit-endpoint")?,
+            // Anvil is the tests' chain, where nobody orders transactions.
+            None if args.blockchain_id != ANVIL_CHAIN_ID => log::warn!(
+                "no --blockchain-http-submit-endpoint: transactions go to the read endpoint's \
+                 public pool, where an adversary who orders transactions can land a copy of \
+                 each honest step first and make the node pay for its reverted one (up to \
+                 about 3.76M gas for a leaf proof); in production, send through a relay that \
+                 meets the node README's requirements"
+            ),
+            None => {}
+        }
+        let ethereum_submit_gateway =
+            relay.unwrap_or_else(|| args.blockchain_http_endpoint.clone());
         let (signer_address, wallet) = create_signer(chain_id, &args.signer).await?;
         // Sampled before the deployment blocks are read: it bounds a new
         // directory's watermark (AddressBook::initial_watermark).
@@ -418,16 +437,6 @@ impl NodeConfig {
                 watermark: address_book.initial_watermark(finalized),
             })
         };
-        let ethereum_submit_gateway = args
-            .blockchain_http_submit_endpoint
-            .unwrap_or_else(|| args.blockchain_http_endpoint.clone());
-        // Fail a wrong submit endpoint now, not when the manager starts.
-        create_rpc_provider(&ethereum_submit_gateway, chain_id)
-            .await
-            .context(
-                "--blockchain-http-submit-endpoint (defaults to --blockchain-http-endpoint)",
-            )?;
-
         let state_lock = StateDirLock::acquire(&args.data_dir)?;
         let storage = Storage::initialize(
             &args.data_dir,
@@ -662,6 +671,20 @@ mod tests {
             "unexpected error: {error:#}"
         );
 
+        // A read endpoint on another chain is a flag to fix: terminal.
+        let mut mainnet = args(&image);
+        mainnet.blockchain_id = 1;
+        let error = NodeConfig::setup_with(mainnet)
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 30, "{error:#}");
+        assert!(
+            format!("{error:#}").contains("--blockchain-id"),
+            "unexpected error: {error:#}"
+        );
+        assert!(!state_dir.exists(), "a refused start must not write");
+
         let wrong = dir.path().join("wrong");
         store_template(&wrong, |_| {});
         let error = NodeConfig::setup_with(args(&wrong))
@@ -712,6 +735,13 @@ mod tests {
         NodeConfig::setup_with(args(&image)).await?;
         // A seeded directory restarts without its image (COMP-3).
         NodeConfig::setup_with(args(&dir.path().join("vanished"))).await?;
+        // A relay that does not answer only warns, and the workers' clients
+        // build without asking it anything.
+        let mut silent_relay = args(&image);
+        silent_relay.blockchain_http_submit_endpoint = Some("http://127.0.0.1:1".parse()?);
+        let config = NodeConfig::setup_with(silent_relay).await?;
+        config.transaction_lane(config.read_provider()?)?;
+        drop(config);
 
         // A new signer reopens the same directory: a previous signer's bonds
         // stay recoverable by anyone, so rotating keys needs no replay.

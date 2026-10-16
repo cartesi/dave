@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
 use crate::args::SignerArgs;
+use crate::escalation::PAGE_AFTER;
+use crate::fatal::Fatal;
 use crate::kms;
 use alloy::{
     eips::{eip1559::Eip1559Estimation, eip2718::Encodable2718},
@@ -261,28 +263,59 @@ fn redact_url(error: TransportError, url: &str) -> TransportError {
     }
 }
 
-/// Build a signerless provider. Transaction filling is intentionally disabled:
-/// every node mutation is fully specified and signed by [`TransactionLane`].
-/// Callers name the endpoint's flag; no error, here or from any later
-/// request, quotes the URL, which may carry an API key.
-pub async fn create_rpc_provider(url: &Url, arg_chain_id: NamedChain) -> Result<DynProvider> {
+/// Build a signerless provider, sending no request. Transaction filling is
+/// intentionally disabled: every node mutation is fully specified and signed
+/// by [`TransactionLane`]. Callers name the endpoint's flag; no error, here
+/// or from any later request, quotes the URL, which may carry an API key.
+pub(crate) fn rpc_provider(url: &Url, chain: NamedChain) -> Result<DynProvider> {
     let client = create_client(url)?;
-    let provider = ProviderBuilder::new()
+    Ok(ProviderBuilder::new()
         .disable_recommended_fillers()
-        .with_chain(arg_chain_id)
-        .connect_client(client);
+        .with_chain(chain)
+        .connect_client(client)
+        .erased())
+}
 
-    let chain_id = provider
+/// [`rpc_provider`], once the endpoint has said it serves `chain`.
+pub async fn create_rpc_provider(url: &Url, chain: NamedChain) -> Result<DynProvider> {
+    let provider = rpc_provider(url, chain)?;
+    let served = provider
         .get_chain_id()
         .await
         .context("failed to query the endpoint's chain id")?;
-    ensure!(
-        chain_id == arg_chain_id as u64,
-        "the endpoint serves chain {chain_id}, not --blockchain-id {}",
-        arg_chain_id as u64
-    );
+    ensure_chain(served, chain)?;
+    Ok(provider)
+}
 
-    Ok(provider.erased())
+/// An endpoint on another chain is a flag that disagrees with the node, which
+/// no restart fixes.
+fn ensure_chain(served: u64, chain: NamedChain) -> Result<()> {
+    ensure!(
+        served == chain as u64,
+        Fatal::terminal(format!(
+            "the endpoint serves chain {served}, not --blockchain-id {}",
+            chain as u64
+        ))
+    );
+    Ok(())
+}
+
+/// Refuses a submit endpoint on another chain, and starts despite one that
+/// does not answer: reads and execution need no relay, and its sends retry
+/// every tick. A relay may serve little beyond `eth_sendRawTransaction`.
+pub(crate) async fn probe_submit_endpoint(submit: &impl Provider, chain: NamedChain) -> Result<()> {
+    match submit.get_chain_id().await {
+        Ok(served) => ensure_chain(served, chain),
+        Err(error) => {
+            warn!(
+                "could not check --blockchain-http-submit-endpoint's chain ({error}); starting \
+                 anyway: its sends retry every tick, and a call that does not land logs an \
+                 error after {} minutes",
+                PAGE_AFTER.as_secs() / 60
+            );
+            Ok(())
+        }
+    }
 }
 
 /// A labeled request bound for the lane; the label names the on-chain verb
@@ -889,6 +922,41 @@ mod tests {
             error.to_string().contains("error sending request"),
             "{error}"
         );
+    }
+
+    /// Only another chain refuses a start: a relay that does not answer, or
+    /// serves no eth_chainId, starts the node with a warning.
+    #[tokio::test]
+    async fn the_submit_probe_refuses_only_another_chain() {
+        let answering = |answer: Result<u64, &'static str>| {
+            let asserter = Asserter::new();
+            match answer {
+                Ok(chain) => asserter.push_success(&U64::from(chain)),
+                Err(message) => asserter.push_failure_msg(message),
+            }
+            ProviderBuilder::new()
+                .disable_recommended_fillers()
+                .connect_mocked_client(asserter)
+        };
+        let anvil = NamedChain::AnvilHardhat;
+
+        let error = probe_submit_endpoint(&answering(Ok(1)), anvil)
+            .await
+            .unwrap_err();
+        assert_eq!(crate::fatal::exit_code(&error), 30);
+        assert_eq!(
+            error.to_string(),
+            "the endpoint serves chain 1, not --blockchain-id 31337"
+        );
+
+        probe_submit_endpoint(&answering(Ok(31337)), anvil)
+            .await
+            .unwrap();
+        probe_submit_endpoint(&answering(Err("method not found")), anvil)
+            .await
+            .unwrap();
+        let silent = rpc_provider(&"http://127.0.0.1:1".parse().unwrap(), anvil).unwrap();
+        probe_submit_endpoint(&silent, anvil).await.unwrap();
     }
 
     #[test]

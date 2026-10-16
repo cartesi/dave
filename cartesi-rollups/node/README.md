@@ -64,11 +64,16 @@ reverted copies of the steps another node landed first. The relay must not
 land reverting transactions and must reach builders covering most blocks. For
 example, MEV Blocker's `/noreverts` endpoint qualifies, while its default
 endpoint lands reverts, and Flashbots Protect's default endpoint reaches only
-the Flashbots builder. The signer must be exclusive to
-one node process because the node owns its nonce sequence. Each tick batches
-the applicable dispute or cleanup action, settlement step, and all available
-bond recoveries at consecutive nonces from the latest mined count. The next
-tick rebuilds the batch from chain state without waiting for receipts.
+the Flashbots builder. At startup the node asks each endpoint its chain and
+refuses one on another chain (exit 30); a submit endpoint that does not
+answer only logs a warning, since its sends retry every tick. Without a
+separate submit endpoint, on any chain but anvil's, it warns once at startup
+that transactions go to the read endpoint's public pool. The signer must be
+exclusive to one node process because the node owns its nonce sequence. Each
+tick batches the applicable dispute or cleanup action, settlement step, and
+all available bond recoveries at consecutive nonces from the latest mined
+count. The next tick rebuilds the batch from chain state without waiting for
+receipts.
 
 The node completes epochs in order: it waits for finalized settlement and its
 winning bond recoveries before participating in the next epoch. It resumes the
