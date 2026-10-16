@@ -268,13 +268,18 @@ pub enum SignerArgs {
         )]
         auth_aws_kms_key_id_file: Option<PathBuf>,
 
-        /// aws endpoint url
-        #[arg(long, env)]
+        // No env: the AWS SDK reads these variables itself, with its own
+        // precedence (AWS_ENDPOINT_URL_KMS over AWS_ENDPOINT_URL).
+        /// KMS endpoint URL, overriding the one the AWS SDK resolves
+        /// (AWS_ENDPOINT_URL_KMS, AWS_ENDPOINT_URL, the profile, FIPS, the
+        /// region's partition)
+        #[arg(long)]
         aws_endpoint_url: Option<String>,
 
-        /// aws region
-        #[arg(long, env, default_value = "us-east-1")]
-        aws_region: String,
+        /// AWS region, overriding the one the AWS SDK resolves (AWS_REGION,
+        /// the profile, instance metadata)
+        #[arg(long)]
+        aws_region: Option<String>,
     },
 }
 
