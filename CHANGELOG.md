@@ -117,7 +117,7 @@ needed.
 - The exit status says why the node stopped: 0 a requested stop, 1 any other
   error, 2 a usage error, 30 terminal (an operator must act), 40 a data
   directory to rebuild, 101 a panic. Under systemd, set
-  `RestartPreventExitStatus=30 40`. See the README's operator notes.
+  `RestartPreventExitStatus=2 30 40`. See the README's operator notes.
 - One paging rule: a failure that would cost a dispute logs WARN while it
   lasts and ERROR once it has lasted 5 minutes, the response window, so an
   ERROR asks an operator to act.

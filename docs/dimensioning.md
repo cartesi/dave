@@ -151,7 +151,7 @@ hardware slack 2), the hash-cost curve in docs/measurements/constants.md
 (stress workload, measured on v0.21) gives about 3.5 ns per big cycle sampled
 at stride 2^38 (its 2^18 row: 557 us of run plus 370 us of root hash per 2^18
 big cycles). Replaying whole inputs is one unbroken run, which its long rows
-put at about 1.1 ns per big cycle, close to the v0.21 positioning in
+put at about 1.1 ns per big cycle, close to the positioning in
 docs/measurements/node-vs-emulator.md. With `G` halved by the slack to 150 s,
 the contract is near 2^35.3 big cycles per input at a gap of 1
 (150 s / 3.5 ns), and near 2^30.9 at the default gap of 64 (63 replayed
