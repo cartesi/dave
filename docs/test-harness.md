@@ -243,7 +243,11 @@ sealed-leaf timeout scenarios run in the node's in-crate harness
 (`cartesi-rollups/node/src/harness/`, `just test-node-harness`), where the
 test owns the chain's clock; large inputs and the node's witnesses at every
 transition shape are checked against the contracts in Foundry
-(`NodeWitnessesTest`, `NodeProofsTest`).
+(`NodeWitnessesTest`, `NodeProofsTest`). The start from the last settled
+state runs there too (`harness/settled_start.rs`): a node seeded from
+another node's snapshot of a sealed epoch's start settles that epoch and
+never takes an earlier one, an unsettled state seeds nothing, and a restart
+reads no image.
 
 ## Steering disputes: patch chains
 
