@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v3.0.0-alpha.6
 
 A new deployment generation (cartesi/dave#287). Nodes from earlier releases
 cannot read these contracts, this node cannot start against earlier ones, and
@@ -80,6 +80,23 @@ needed.
     12 s block time (their addresses equal Ethereum's and Sepolia's). The
     node does not support them and stops at startup: contracts there measure
     clocks in the parent chain's block numbers, while logs use Arbitrum's.
+
+### Addresses
+
+The CREATE2 addresses the deploy scripts produce, as in the
+`deployment-addresses` asset. These moved:
+
+| Contract | Ethereum mainnet | Sepolia |
+| --- | --- | --- |
+| `CanonicalTournamentParametersProvider` | `0xF536648a9cc6c20c4824dDf653C03145A2A31DD9` | `0x008C22Ba3Fb5CBAb17A78188EC3251e31Df5e719` |
+| `MultiLevelTournamentFactory` | `0xeF9028820bA365Cd0368ACe2681BfdD78815C000` | `0x66f3d801Aa9b047113fc9Ca09Fe9Efd9A338F397` |
+| `DaveAppFactory` | `0x37238515E8161486C53741abe615EF1452309128` | `0xBD2a661328595113669a6b4c235126eec8c06A15` |
+| `CartesiStateTransition` | `0x81d9bD8A7EdAC76B7A5b6635076944924883383a` | same |
+| `Tournament` | `0x070d2c95Da45F665D383C3757476A76a5b0Be237` | same |
+
+The rollups contracts (cartesi-rollups-contracts 3.0.0-alpha.10) keep their
+v3.0.0-alpha.5 addresses on both chains, `InputBox` at
+`0xEbE9f4Dfc04ae10bBeE663859c3dc5A23f94eA3C` among them.
 
 ### Node
 
