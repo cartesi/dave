@@ -23,9 +23,7 @@ use cartesi_prt_contracts::{
 use clap::{ArgGroup, Parser, Subcommand};
 use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 
-use crate::provider::{
-    TransactionLane, check_signer_source, create_rpc_provider, create_signer, rpc_provider,
-};
+use crate::provider::{SignerSource, TransactionLane, create_rpc_provider, rpc_provider};
 
 const ANVIL_CHAIN_ID: u64 = 31337;
 const POLLING_INTERVAL: u64 = 30;
@@ -375,7 +373,7 @@ impl NodeConfig {
     /// seeded directory never reads its image.
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = named_chain(args.blockchain_id)?;
-        check_signer_source(&args.signer)?;
+        let signer = SignerSource::prepare(&args.signer)?;
 
         let provider = create_rpc_provider(&args.blockchain_http_endpoint, chain_id)
             .await
@@ -401,7 +399,7 @@ impl NodeConfig {
         }
         let ethereum_submit_gateway =
             relay.unwrap_or_else(|| args.blockchain_http_endpoint.clone());
-        let (signer_address, wallet) = create_signer(chain_id, &args.signer).await?;
+        let (signer_address, wallet) = signer.into_wallet(chain_id).await?;
         // Sampled before the deployment blocks are read: it bounds a new
         // directory's watermark (AddressBook::initial_watermark).
         let finalized = Chain::new(provider.clone())

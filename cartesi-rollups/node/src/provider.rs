@@ -36,92 +36,103 @@ use std::{
     time::Duration,
 };
 
-/// Errors name the flag and add no key material: a key parse error may
-/// quote the key's characters, so it is dropped.
-pub(crate) async fn create_signer(
-    chain_id: NamedChain,
-    signer_args: &SignerArgs,
-) -> Result<(Address, EthereumWallet)> {
-    let signer: Box<dyn TxSigner<Signature> + Send + Sync> = match signer_args {
-        SignerArgs::Pk {
-            auth_private_key_file,
-        } => Box::new(private_key_signer(
-            auth_private_key_file.as_deref(),
-            std::env::var_os(PRIVATE_KEY_ENV),
-        )?),
-        SignerArgs::AwsKms {
-            auth_aws_kms_key_id,
-            auth_aws_kms_key_id_file,
-            aws_endpoint_url,
-            aws_region,
-        } => {
-            let key_id = if let Some(file) = auth_aws_kms_key_id_file {
-                fs::read_to_string(file)
-                    .with_context(|| {
-                        format!(
-                            "failed to read --auth-aws-kms-key-id-file `{}`",
-                            file.display()
-                        )
-                    })?
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string()
-            } else {
-                auth_aws_kms_key_id.clone().unwrap()
-            };
-
-            let kms_signer = kms::kms_signer(
-                key_id,
-                chain_id.into(),
-                aws_region.as_deref(),
-                aws_endpoint_url.as_deref(),
-            )
-            .await
-            .context(
-                "failed to create the AWS KMS signer (--auth-aws-kms-key-id(-file), \
-                     --aws-endpoint-url, --aws-region)",
-            )?;
-
-            Box::new(kms_signer)
-        }
-    };
-
-    let wallet = EthereumWallet::from(signer);
-    let wallet_address =
-        <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
-
-    Ok((wallet_address, wallet))
+/// The signer as configured, prepared from local sources only. Each key
+/// source is read once, here, before anything reaches the network: a source
+/// that yields its contents once (a pipe such as /dev/stdin) is never read
+/// twice, and a configuration to fix is reported before any endpoint is asked.
+/// Errors name the flag and add no key material.
+pub(crate) enum SignerSource {
+    Local(PrivateKeySigner),
+    Kms {
+        key_id: String,
+        region: Option<String>,
+        endpoint: Option<String>,
+    },
 }
 
-/// Refuses a `pk` signer with no key source, or two, before anything reaches
-/// the network: a configuration to fix is reported first.
-pub(crate) fn check_signer_source(signer_args: &SignerArgs) -> Result<()> {
-    match signer_args {
-        SignerArgs::Pk {
-            auth_private_key_file,
-        } => private_key_signer(
-            auth_private_key_file.as_deref(),
-            std::env::var_os(PRIVATE_KEY_ENV),
-        )
-        .map(drop),
-        SignerArgs::AwsKms { .. } => Ok(()),
+impl SignerSource {
+    pub(crate) fn prepare(signer_args: &SignerArgs) -> Result<Self> {
+        Ok(match signer_args {
+            SignerArgs::Pk {
+                auth_private_key_file,
+            } => Self::Local(private_key_signer(
+                auth_private_key_file.as_deref(),
+                std::env::var_os(PRIVATE_KEY_ENV),
+            )?),
+            SignerArgs::AwsKms {
+                auth_aws_kms_key_id,
+                auth_aws_kms_key_id_file,
+                aws_endpoint_url,
+                aws_region,
+            } => {
+                let key_id = match auth_aws_kms_key_id_file {
+                    Some(file) => fs::read_to_string(file)
+                        .with_context(|| {
+                            format!(
+                                "failed to read --auth-aws-kms-key-id-file `{}`",
+                                file.display()
+                            )
+                        })?
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string(),
+                    None => auth_aws_kms_key_id.clone().unwrap(),
+                };
+                Self::Kms {
+                    key_id,
+                    region: aws_region.clone(),
+                    endpoint: aws_endpoint_url.clone(),
+                }
+            }
+        })
+    }
+
+    /// The wallet and its address; a KMS signer asks AWS for its public key.
+    pub(crate) async fn into_wallet(
+        self,
+        chain_id: NamedChain,
+    ) -> Result<(Address, EthereumWallet)> {
+        let signer: Box<dyn TxSigner<Signature> + Send + Sync> = match self {
+            Self::Local(signer) => Box::new(signer),
+            Self::Kms {
+                key_id,
+                region,
+                endpoint,
+            } => Box::new(
+                kms::kms_signer(
+                    key_id,
+                    chain_id.into(),
+                    region.as_deref(),
+                    endpoint.as_deref(),
+                )
+                .await
+                .context(
+                    "failed to create the AWS KMS signer (--auth-aws-kms-key-id(-file), \
+                     --aws-endpoint-url, --aws-region)",
+                )?,
+            ),
+        };
+        let wallet = EthereumWallet::from(signer);
+        let wallet_address =
+            <EthereumWallet as NetworkWallet<Ethereum>>::default_signer_address(&wallet);
+        Ok((wallet_address, wallet))
     }
 }
 
-/// The `pk` signer's key and the name of its source: the key file or, given
-/// no file, the environment variable (empty counts as unset). Neither or both
-/// is a configuration to fix, which no restart does.
 /// The `pk` signer from its one key source. A key that does not parse is a
-/// configuration to fix too; the parse error is dropped, since it may quote
-/// the key's characters.
+/// configuration to fix; the parse error is dropped, since it may quote the
+/// key's characters.
 fn private_key_signer(file: Option<&Path>, env: Option<OsString>) -> Result<PrivateKeySigner> {
     let (key, source) = private_key(file, env)?;
     PrivateKeySigner::from_str(&key)
         .map_err(|_| Fatal::terminal(format!("{source} does not hold a valid private key")).into())
 }
 
+/// The `pk` signer's key and the name of its source: the key file or, given
+/// no file, the environment variable (empty counts as unset). Neither or both
+/// is a configuration to fix, which no restart does.
 fn private_key(file: Option<&Path>, env: Option<OsString>) -> Result<(String, &'static str)> {
     match (file, env.filter(|value| !value.is_empty())) {
         (Some(file), None) => {
@@ -905,6 +916,37 @@ mod tests {
             assert_eq!(crate::fatal::exit_code(&error), 30, "{error:#}");
             assert!(error.to_string().contains(PRIVATE_KEY_ENV), "{error:#}");
         }
+    }
+
+    /// A key source that yields its contents once, like /dev/stdin, is read
+    /// once: preparing reads it, and building the wallet does not touch it.
+    #[tokio::test]
+    async fn a_piped_key_source_is_read_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("key");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: a NUL-terminated path; mkfifo only creates the node.
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let anvil = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+        let writer = {
+            let fifo = fifo.clone();
+            std::thread::spawn(move || fs::write(fifo, format!("{anvil}\n")).unwrap())
+        };
+
+        let source = SignerSource::prepare(&SignerArgs::Pk {
+            auth_private_key_file: Some(fifo.clone()),
+        })
+        .unwrap();
+        writer.join().unwrap();
+        // A second read of the pipe would now block or fail; none happens.
+        fs::remove_file(&fifo).unwrap();
+        let (address, _) = source.into_wallet(NamedChain::AnvilHardhat).await.unwrap();
+        assert_eq!(
+            address,
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+                .parse::<Address>()
+                .unwrap()
+        );
     }
 
     #[test]
