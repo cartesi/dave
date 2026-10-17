@@ -5,14 +5,6 @@ clause of why, and the living doc that owns its reasoning. A done item is
 deleted; the commit that lands it updates the owner doc. Dated review records
 carry no backlog (reviews/README.md).
 
-## Next release
-
-- Cut a release candidate after the canonical two-level switch for the
-  staging pipeline and testnet; it does not wait for the validator-grade
-  confirmation below. It is a new deployment generation, whose notes are
-  CHANGELOG.md's Unreleased section: at the cut, title it with the tag and
-  add the generation's addresses. (build-system.md, CHANGELOG.md)
-
 ## Before the audited release
 
 - Confirm `[38, 0]` / `[54, 38]` at `T = 120` on validator-grade hardware

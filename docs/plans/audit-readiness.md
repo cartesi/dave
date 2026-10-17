@@ -205,7 +205,8 @@ addresses (build-system.md).
    It changed only the provider: the `Tournament` and factory fingerprints
    held, the provider's initcode and the addresses built from it moved, and
    it moved no gas; the reserve checkpoint pins its bonds.
-3. A release candidate for the staging pipeline and testnet. It is a new
+3. A release candidate for the staging pipeline and testnet: done,
+   v3.0.0-alpha.6, which also moves to Cartesi Machine v0.22. It is a new
    generation: #287's child-return refill changed the
    `TournamentParameters` row and the clone arguments, so this node cannot
    start against earlier contracts, and #287's node fixes (the
