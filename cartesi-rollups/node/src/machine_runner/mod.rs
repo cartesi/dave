@@ -67,15 +67,16 @@ pub struct MachineRunner {
     failing: Persistence,
 }
 
-/// The free space an open epoch's batch needs before it starts. Working
+/// The free space a batch without a clock needs before it starts. Working
 /// clones are mapped shared, so a full filesystem kills the node by SIGBUS
 /// mid-batch with nothing logged (exit 135). An open epoch's batch runs beside
-/// the previous epoch's live dispute and can wait, so below the floor it stops
-/// first, with an error the paging rule reports, and leaves the space to the
-/// work that carries a clock: a sealed epoch's batches, which its root join
-/// waits on while nothing else has a deadline, and the Hero's crossings. The
-/// roll maps nothing shared. About one stored machine: a margin, not a bound,
-/// since without reflinks a rotation briefly holds a few copies.
+/// the previous epoch's live dispute and can wait, and a settled epoch's
+/// replay has no clock, so below the floor they stop first, with an error the
+/// paging rule reports, and leave the space to the work that carries a clock:
+/// the newest sealed epoch's batches, which its root join waits on while
+/// nothing else has a deadline, and the Hero's crossings. The roll maps
+/// nothing shared. About one stored machine: a margin, not a bound, since
+/// without reflinks a rotation briefly holds a few copies.
 const FREE_SPACE_FLOOR: u64 = 1 << 30;
 
 fn ensure_free_space(storage: &Storage) -> Result<()> {
@@ -84,8 +85,8 @@ fn ensure_free_space(storage: &Storage) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("could not read the data directory's free space: {e}"))?;
     ensure!(
         free >= FREE_SPACE_FLOOR,
-        "only {} MiB free on the data directory's filesystem, below the {} MiB an open epoch's \
-         batch needs: free space there",
+        "only {} MiB free on the data directory's filesystem, below the {} MiB a batch needs: \
+         free space there",
         free >> 20,
         FREE_SPACE_FLOOR >> 20
     );
@@ -155,7 +156,7 @@ impl MachineRunner {
             match plan_action(&plan, self.snapshot_gap_inputs) {
                 PlanAction::Idle => return Ok(()),
                 PlanAction::Advance => {
-                    if !plan.sealed {
+                    if !plan.sealed || plan.settled {
                         ensure_free_space(&self.storage)?;
                     }
                     if !self.advance(plan)? {
@@ -293,6 +294,7 @@ mod tests {
             boundary_input: boundary,
             input_count,
             sealed,
+            settled: false,
             inputs,
             boundary_hash: [0; 32],
         }

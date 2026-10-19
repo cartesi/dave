@@ -37,6 +37,9 @@ pub(crate) struct AdvancePlan {
     pub(crate) boundary_input: u64,
     pub(crate) input_count: u64,
     pub(crate) sealed: bool,
+    /// Sealed with its successor sealed too, so accepted: no clock waits
+    /// on its work, unlike the newest sealed epoch's root join.
+    pub(crate) settled: bool,
     pub(crate) inputs: Vec<Input>,
     pub(crate) boundary_hash: Hash,
 }
@@ -184,6 +187,8 @@ impl Storage {
                 "durable boundary {boundary_input} outruns epoch {epoch}'s {input_count} inputs"
             );
             let sealed = epoch_is_sealed_in(tx, epoch)?;
+            // An epoch seals only once its predecessor is accepted.
+            let settled = sealed && epoch_is_sealed_in(tx, epoch + 1)?;
             let available = input_count - boundary_input;
             let planned = if sealed || available >= gap {
                 available.min(gap)
@@ -237,6 +242,7 @@ impl Storage {
                 boundary_input,
                 input_count,
                 sealed,
+                settled,
                 inputs,
                 boundary_hash,
             })
@@ -991,8 +997,23 @@ mod tests {
         s.insert_boundary(0, 5, &start_hash).unwrap();
         let plan = s.advance_plan(3).unwrap();
         assert!(plan.sealed);
+        assert!(
+            !plan.settled,
+            "the newest sealed epoch's root join waits on it"
+        );
         assert_eq!((plan.boundary_input, plan.input_count), (5, 5));
         assert!(plan.inputs.is_empty());
+
+        // Its successor seals only once it is accepted: no clock waits on
+        // its work any more.
+        let next = Epoch {
+            epoch_number: 1,
+            block_created_number: 3,
+            ..epoch
+        };
+        s.insert_consensus_data(3, [].iter(), [&next].into_iter())
+            .unwrap();
+        assert!(s.advance_plan(3).unwrap().settled);
     }
 
     #[test]
