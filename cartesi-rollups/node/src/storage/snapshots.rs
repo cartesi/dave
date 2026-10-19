@@ -97,74 +97,6 @@ pub(super) fn assert_runner_boundary_root(
 }
 
 impl Storage {
-    /// The dispute write-back: commits a raw machine sitting at an
-    /// input boundary - stored only when the content-addressed
-    /// directory is absent, then registered. The row's write-once
-    /// cell makes the whole verb idempotent AND a cross-regime
-    /// nondeterminism tripwire: a replay that reaches a boundary
-    /// regime 1 recorded must produce the identical hash or fail
-    /// loudly. Returns the committed directory (the caller's revert
-    /// point).
-    pub fn commit_boundary_machine(
-        &mut self,
-        epoch_number: u64,
-        input_number: u64,
-        state_hash: &Hash,
-        machine: &mut Machine,
-    ) -> Result<PathBuf> {
-        let actual_hash = machine.root_hash()?;
-        assert_eq!(
-            actual_hash, *state_hash,
-            "dispute boundary CAS key disagrees with the machine root"
-        );
-        let dest = self.stage_machine_store(state_hash, |staging| machine.store(staging))?;
-        self.insert_boundary(epoch_number, input_number, state_hash)?;
-        Ok(dest)
-    }
-
-    /// Serializes into a unique staging directory before durable CAS
-    /// publication. Staging names are never keyed by hash: the hero's
-    /// write-back and the runner's batch commit may publish an identical
-    /// state concurrently, and publish_staged settles the race.
-    fn stage_machine_store(
-        &self,
-        state_hash: &Hash,
-        store: impl FnOnce(&Path) -> cartesi_machine::error::MachineResult<()>,
-    ) -> anyhow::Result<PathBuf> {
-        let snapshots = snapshots_path(self.state_dir());
-        let dest = snapshot_path(self.state_dir(), state_hash);
-
-        if !dest.exists() {
-            static SEQ: AtomicU64 = AtomicU64::new(0);
-            let staging = snapshots.join(format!(
-                ".part-{}-{}",
-                std::process::id(),
-                SEQ.fetch_add(1, Ordering::Relaxed)
-            ));
-
-            if let Err(machine_err) = store(&staging) {
-                // cleanup partial store before returning error.
-                let fs_status = std::fs::remove_dir_all(&staging);
-
-                if let Err(fs_err) = fs_status {
-                    anyhow::bail!(
-                        "Failed to cleanup partial store {fs_err}, caused by {machine_err}"
-                    );
-                } else {
-                    return Err(machine_err.into());
-                }
-            }
-
-            return self.publish_staged(staging, state_hash);
-        }
-
-        // A concurrent publisher may have made the directory visible
-        // before its own parent fsync completed. Adoption establishes
-        // durability independently before any caller registers a row.
-        Machine::sync_stored(&dest)?;
-        Ok(dest)
-    }
-
     /// The one durable CAS publication boundary. The staged machine
     /// is root-verified, synced, and renamed without replacement.
     /// Only a destination that won the same CAS race makes a failed
@@ -242,7 +174,8 @@ impl Storage {
     }
 
     /// Startup ritual: removes staging leftovers a crash orphaned -
-    /// partial stores (.part-*) and working clones (.work-*). Runs at
+    /// working clones (.work-*), and the partial stores (.part-*) of
+    /// versions that still stored dispute boundaries. Runs at
     /// open, under the directory lock and before seeding, so no clone is
     /// held yet; never touches committed directories.
     pub fn sweep_stale_staging(&self) -> Result<()> {
@@ -590,86 +523,6 @@ mod tests {
         let _ = s.insert_boundary(7, 3, &[6u8; 32]);
     }
 
-    /// The dispute write-back verb: stores only when the CAS misses,
-    /// absorbs identical recommits, and fails loudly on a divergent
-    /// hash for a written boundary (the cross-regime tripwire).
-    #[test]
-    fn commit_boundary_machine_is_idempotent_and_loud() {
-        let (_handle, mut s) = setup_storage();
-        let template = s.snapshot_dir(0, 0).unwrap().unwrap();
-        let mut machine = cartesi_machine::machine::Machine::load(
-            &template,
-            &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
-        )
-        .unwrap();
-        let hash = machine.root_hash().unwrap();
-
-        // The CAS already holds this state (it is the template), so
-        // the commit only registers the row.
-        let dest = s
-            .commit_boundary_machine(7, 3, &hash, &mut machine)
-            .unwrap();
-        assert_eq!(dest, template);
-        assert_eq!(s.snapshot_dir(7, 3).unwrap().unwrap(), dest);
-
-        // An identical recommit absorbs.
-        s.commit_boundary_machine(7, 3, &hash, &mut machine)
-            .unwrap();
-
-        // A boundary whose state the CAS misses gets stored under the
-        // root derived from the actual machine.
-        machine
-            .write_memory(cartesi_machine::constants::ar::RAM_START, &[0xA5])
-            .unwrap();
-        let other = machine.root_hash().unwrap();
-        assert_ne!(other, hash);
-        let dest2 = s
-            .commit_boundary_machine(7, 4, &other, &mut machine)
-            .unwrap();
-        assert_ne!(dest2, dest);
-        assert!(dest2.join("config.json").exists());
-    }
-
-    /// A divergent hash for a written boundary is nondeterminism (the
-    /// cross-regime tripwire): PANIC, never a retryable error.
-    #[test]
-    #[should_panic(expected = "disagrees with its stored row")]
-    fn commit_boundary_machine_divergence_panics() {
-        let (_handle, mut s) = setup_storage();
-        let template = s.snapshot_dir(0, 0).unwrap().unwrap();
-        let mut machine = cartesi_machine::machine::Machine::load(
-            &template,
-            &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
-        )
-        .unwrap();
-        let hash = machine.root_hash().unwrap();
-        s.commit_boundary_machine(7, 3, &hash, &mut machine)
-            .unwrap();
-
-        machine
-            .write_memory(cartesi_machine::constants::ar::RAM_START, &[0x5A])
-            .unwrap();
-        let divergent = machine.root_hash().unwrap();
-        assert_ne!(divergent, hash);
-        let _ = s.commit_boundary_machine(7, 3, &divergent, &mut machine);
-    }
-
-    #[test]
-    #[should_panic(expected = "CAS key disagrees")]
-    fn commit_boundary_machine_refuses_a_supplied_wrong_root() {
-        let (_handle, mut s) = setup_storage();
-        let template = s.snapshot_dir(0, 0).unwrap().unwrap();
-        let mut machine = cartesi_machine::machine::Machine::load(
-            &template,
-            &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
-        )
-        .unwrap();
-        let mut wrong = machine.root_hash().unwrap();
-        wrong[0] ^= 0xFF;
-
-        let _ = s.commit_boundary_machine(7, 3, &wrong, &mut machine);
-    }
-
     /// The floor query answers the nearest surviving boundary,
     /// skipping rows whose directories vanished.
     #[test]
@@ -699,43 +552,6 @@ mod tests {
 
         // A different epoch has no floor at all.
         assert!(s.nearest_boundary_at_or_before(6, 100).is_err());
-    }
-
-    /// GC never removes a directory a crossing can adopt (the argument is in
-    /// node-architecture.md); one that vanished anyway is skipped by
-    /// positioning and republished by the next crossing.
-    #[test]
-    fn a_vanished_dispute_boundary_is_republished() {
-        let (_handle, mut s) = setup_storage();
-        let template = s.snapshot_dir(0, 0).unwrap().unwrap();
-        let mut machine = cartesi_machine::machine::Machine::load(
-            &template,
-            &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
-        )
-        .unwrap();
-        let start = machine.root_hash().unwrap();
-        s.commit_boundary_machine(7, 0, &start, &mut machine)
-            .unwrap();
-        machine
-            .write_memory(cartesi_machine::constants::ar::RAM_START, &[0xA5])
-            .unwrap();
-        let hash = machine.root_hash().unwrap();
-        let dest = s
-            .commit_boundary_machine(7, 4, &hash, &mut machine)
-            .unwrap();
-
-        std::fs::remove_dir_all(&dest).unwrap();
-        let (floor, _) = s.nearest_boundary_at_or_before(7, 4).unwrap();
-        assert_eq!(floor, InputBoundary(0));
-
-        let republished = s
-            .commit_boundary_machine(7, 4, &hash, &mut machine)
-            .unwrap();
-        assert_eq!(republished, dest);
-        assert!(dest.join("config.json").exists());
-        assert_eq!(s.snapshot_hash(7, 4).unwrap(), Some(hash));
-        let (floor, _) = s.nearest_boundary_at_or_before(7, 4).unwrap();
-        assert_eq!(floor, InputBoundary(4));
     }
 
     /// A release orphans exactly the states no remaining boundary names,
