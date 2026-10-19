@@ -371,6 +371,11 @@ authority for one transition. The release corpus is immutable conformance
 evidence; the release CLI replays it through the emulator's collectors, so it
 is not independent of the node's bulk path. The node's stepped path, the Lua
 client and the test-only prototype builder are the independent lineages.
+The node's Merkle container is a port of the Lua client's builder, so the
+emulator's frontier, through the release corpus, is the independent check on
+how repeated runs fold into roots; that is one reason the node keeps its
+persisted quartet rows rather than porting the emulator's frontier forest,
+which holds the same tree in memory.
 Agreement alone is not evidence (at seam 2 the node and an earlier release
 CLI once agreed and were both wrong): a divergence between any two is settled by
 proving the transition through Solidity, and a golden is regenerated only
