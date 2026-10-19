@@ -316,6 +316,22 @@ positioning is the other publisher: it crosses whole windows from the nearest
 boundary on the same clone chain and publishes only the disputed input's
 boundary, which every later action of that dispute resumes from.
 
+Every input, accepted or rejected, pays a fixed overhead on top of the
+application's work: the close, clone and `SHARING_ALL` reload of the
+rotation, about 140-200 ms per input measured on macOS (measurements.md).
+It caps the runner near a handful of inputs per second whatever the
+application does, and a crossing costs it once per crossed input. That is
+why the gap stays a fixed input count. A policy that keeps a bounded number
+of boundaries and widens their spacing as the epoch grows (the emulator's
+prt recipe keeps eight) spaces them about n/K inputs apart for an n the
+adversary chooses, so a crossing's overhead grows with the input count even
+when every input is fast; the recipe affords it because its checkpoints are
+in-memory forks. Spacing by accumulated work alone fails the same way. The
+gap bounds both clock-path costs it touches, the first crossing below a
+window root and the open tail a seal leaves for the root join, by gap - 1
+inputs of overhead plus work; disk is bounded by the runner's throughput,
+and on XFS the link limit never binds.
+
 The runner's newest registered boundary - its durable cursor - is strict state,
 not a best-effort cache. If its path has vanished or cannot be inspected as a
 directory, or if its loaded root cannot be verified against the database row,
