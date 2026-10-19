@@ -244,12 +244,15 @@ impl<F: RulerFactory> DisputeSource<F> {
         // beyond the prefix - a dispute descent through a padding
         // window's root stores its fanout there - and counting those
         // once bricked reconstruction after the hero's own join. A
-        // store the runner never processed (the engine harnesses; a
-        // freshly initialized node) has an empty prefix and the machine
-        // serves everything - the pre-frontier full-replay behavior.
-        // A nonzero prefix must match the closed epoch's input count
-        // exactly; anything else is corruption. The padding value is
-        // the final boundary hash.
+        // store the runner never processed has an empty prefix, so the
+        // machine serves every quartet, which it can only where the
+        // quartet feeds at most one input: the dispute feeder feeds only
+        // its positioned window. Production never disputes such a store
+        // with inputs, since a hero starts only once the runner rolled
+        // the epoch; the engine harnesses replay wider levels on the
+        // scratch feeder. A nonzero prefix must match the closed epoch's
+        // input count exactly; anything else is corruption. The padding
+        // value is the final boundary hash.
         let interior_height = structure.log2_window_span() - log2_run_stride;
         let inputs = storage.input_count(epoch)?;
         let rows = storage.window_root_count(epoch, log2_run_stride, interior_height, inputs)?;
