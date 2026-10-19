@@ -67,11 +67,15 @@ pub struct MachineRunner {
     failing: Persistence,
 }
 
-/// The free space a batch or a roll needs before it starts: about one stored
-/// machine, the most a publication writes on a filesystem without reflinks.
-/// Working clones are mapped shared, so a full filesystem would kill the node
-/// by SIGBUS mid-batch, with nothing logged; below the floor the runner stops
-/// first, with an error the paging rule reports.
+/// The free space an open epoch's batch needs before it starts. Working
+/// clones are mapped shared, so a full filesystem kills the node by SIGBUS
+/// mid-batch with nothing logged (exit 135). An open epoch's batch runs beside
+/// the previous epoch's live dispute and can wait, so below the floor it stops
+/// first, with an error the paging rule reports, and leaves the space to the
+/// work that carries a clock: a sealed epoch's batches, which its root join
+/// waits on while nothing else has a deadline, and the Hero's crossings. The
+/// roll maps nothing shared. About one stored machine: a margin, not a bound,
+/// since without reflinks a rotation briefly holds a few copies.
 const FREE_SPACE_FLOOR: u64 = 1 << 30;
 
 fn ensure_free_space(storage: &Storage) -> Result<()> {
@@ -80,8 +84,8 @@ fn ensure_free_space(storage: &Storage) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("could not read the data directory's free space: {e}"))?;
     ensure!(
         free >= FREE_SPACE_FLOOR,
-        "only {} MiB free on the data directory's filesystem, below the {} MiB a batch needs: \
-         free space there",
+        "only {} MiB free on the data directory's filesystem, below the {} MiB an open epoch's \
+         batch needs: free space there",
         free >> 20,
         FREE_SPACE_FLOOR >> 20
     );
@@ -151,7 +155,9 @@ impl MachineRunner {
             match plan_action(&plan, self.snapshot_gap_inputs) {
                 PlanAction::Idle => return Ok(()),
                 PlanAction::Advance => {
-                    ensure_free_space(&self.storage)?;
+                    if !plan.sealed {
+                        ensure_free_space(&self.storage)?;
+                    }
                     if !self.advance(plan)? {
                         return Ok(());
                     }
@@ -160,7 +166,6 @@ impl MachineRunner {
                     self.failing.cleared();
                 }
                 PlanAction::Roll => {
-                    ensure_free_space(&self.storage)?;
                     let epoch = plan.epoch;
                     self.storage.roll_epoch()?;
                     self.failing.cleared();
