@@ -60,6 +60,11 @@ smoke:
         CHAOS_SEED=${CHAOS_SEED:-1} just test "$program" "$scenario"
         rc=$?
         cp "$log" "_smoke/$program-$scenario.log" 2>/dev/null
+        # An ERROR asks an operator to act, so an honest run logs none.
+        if [ "$rc" -eq 0 ] && grep -q ' ERROR ' "_smoke/$program-$scenario.log" 2>/dev/null; then
+            echo "[smoke] $program $scenario: the node logged an ERROR"
+            rc=1
+        fi
         [ "$rc" -eq 0 ] || failures=$((failures + 1))
         echo "$program $scenario rc=$rc $((SECONDS - start))s" >> _smoke/results.txt
     done
