@@ -324,7 +324,8 @@ Options:
   without `--blockchain-http-submit-endpoint`, accepting paid reverts on the
   public pool.
 - Alert on every ERROR line, on restart loops, on free space on the data
-  directory's filesystem (the node refuses a batch below 1 GiB), and on the
+  directory's filesystem (the node refuses an open epoch's batch below 1
+  GiB, leaving that space to a sealed epoch and its dispute), and on the
   signer's balance against the funding floor above, which the node checks
   only when a batch is due.
 - Keep `--data-dir` on a filesystem with reflinks (XFS, Btrfs, APFS) in
