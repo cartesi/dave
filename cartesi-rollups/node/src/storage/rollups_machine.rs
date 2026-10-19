@@ -582,6 +582,8 @@ mod tests {
             htif_tohost
         );
         assert!(proof.settles());
+        // The engine classifies it as the step does: awaiting input.
+        assert!(crate::engine::machine_stf::awaits_input(&mut machine).unwrap());
         Ok(())
     }
 
