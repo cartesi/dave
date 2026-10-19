@@ -22,6 +22,11 @@ use crate::sync::ShutdownSignal;
 use alloy::primitives::U256;
 use anyhow::{Context, Result, bail, ensure};
 use cartesi_machine::{
+    cartesi_machine_sys::{
+        CM_HTIF_CMD_MASK, CM_HTIF_CMD_SHIFT, CM_HTIF_DEV_MASK, CM_HTIF_DEV_SHIFT,
+        CM_HTIF_DEV_YIELD, CM_HTIF_REASON_MASK, CM_HTIF_REASON_SHIFT, CM_HTIF_YIELD_CMD_MANUAL,
+        CM_REG_HTIF_TOHOST,
+    },
     config::runtime::RuntimeConfig,
     constants::{
         break_reason,
@@ -112,11 +117,25 @@ fn runtime_config(hashing: Hashing) -> RuntimeConfig {
     config
 }
 
+/// The pending manual yield's reason, read from the HTIF header as the step
+/// reads it: iflags.Y, then tohost's device, command and reason, never its
+/// data field, whose guest-declared length cm_receive_cmio_request refuses
+/// past the TX buffer. Execution sets Y only on a manual yield; a preset
+/// header with Y and another device or command is a fixed point the step
+/// neither feeds nor reverts, so it reads as a reason that is no input's.
 fn manual_yield_reason(machine: &mut Machine) -> Result<Option<u16>> {
     if !machine.iflags_y()? {
         return Ok(None);
     }
-    Ok(Some(machine.receive_cmio_request()?.reason()))
+    let tohost = machine.read_reg(CM_REG_HTIF_TOHOST)?;
+    let field = |mask: u64, shift: u32| (tohost & mask) >> shift;
+    let manual = field(CM_HTIF_DEV_MASK, CM_HTIF_DEV_SHIFT) == u64::from(CM_HTIF_DEV_YIELD)
+        && field(CM_HTIF_CMD_MASK, CM_HTIF_CMD_SHIFT) == u64::from(CM_HTIF_YIELD_CMD_MANUAL);
+    Ok(Some(if manual {
+        field(CM_HTIF_REASON_MASK, CM_HTIF_REASON_SHIFT) as u16
+    } else {
+        u16::MAX
+    }))
 }
 
 /// Whether `machine` awaits an input: a manual RX_ACCEPTED yield, the only
@@ -963,6 +982,15 @@ mod tests {
         Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
     }
 
+    /// iflags.Y set over a preset tohost, which execution never produces.
+    fn preset_yield_machine(tohost: u64) -> Result<Machine> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.iflags.y = 1;
+        config.processor.registers.htif.tohost = tohost;
+        Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
+    }
+
     /// Halted with no yield pending: terminal, and the step's delivery is
     /// a no-op that reads only iflags.
     fn halted_machine() -> Result<Machine> {
@@ -1041,6 +1069,12 @@ mod tests {
                 halted_yield_machine()?,
                 false,
                 true,
+            ),
+            (
+                "Y set under an automatic yield's header",
+                preset_yield_machine((2u64 << 56) | (u64::from(RX_ACCEPTED) << 32))?,
+                true,
+                false,
             ),
         ];
         for (name, machine, terminal, yielded) in cases {

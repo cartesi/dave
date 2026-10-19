@@ -30,10 +30,9 @@ mechanisms (requiring emulator support) are future research, far off.
 Until then the assumption is explicit: the app developer is trusted,
 and trusted specifically to keep input-reachable behavior disputable.
 The developer also authors the template machine, which must carry the
-deployed step's pristine uarch (docs/computation-hash.md) and yield through
-well-formed requests as libcmt writes them: the off-chain clients classify
-a yield through the emulator's CMIO request, which is stricter than the
-step, so a guest writing its own malformed yield can stop them.
+deployed step's pristine uarch (docs/computation-hash.md). The node reads a
+yield as the step does, from the HTIF header alone, so a guest's malformed
+yield length cannot stop it.
 
 ## The rule
 
