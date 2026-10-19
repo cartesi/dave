@@ -89,7 +89,9 @@ fn check_fixture(name: &str, computed: serde_json::Value) {
         computed,
         read_fixture(&path),
         "{name} diverged; if the emulator or an image changed \
-         intentionally, regenerate with UPDATE_FIXTURES=1"
+         intentionally, regenerate with UPDATE_FIXTURES=1; if commitment \
+         construction changed, also bump COMMITMENT_SEMANTICS \
+         (src/storage/sql/schema.rs, docs/computation-hash.md)"
     );
 }
 
@@ -501,12 +503,24 @@ fn refused_as_non_pristine(image: &Path) -> bool {
     }
 }
 
+/// The mcycle cases whose application is terminal after its input.
+const TERMINAL_MCYCLE_CASES: [&str; 5] = [
+    "mcycle-halt",
+    "mcycle-halt-nonzero",
+    "mcycle-exception",
+    "mcycle-manual-other",
+    "mcycle-overflow",
+];
+
 /// Dave against the released answers: every mcycle case as a whole-epoch
 /// root, and every uarch case as a stride-0 leaf of height 29 (period 9,
-/// the big-cycle-root builder). The two error-no-hash uarch cases have no
-/// released hash: uarch-overflow-tail, and uarch-near-limit-tail, whose
-/// template is out of model (docs/computation-hash.md). The node refuses
-/// that template at startup, and the test asserts the refusal.
+/// the big-cycle-root builder). The terminal mcycle cases also run through
+/// the production runner with one more input, which the chain still
+/// delivers and the step ignores, so the released root must hold, settled
+/// and served. The two error-no-hash uarch cases have no released hash:
+/// uarch-overflow-tail, and uarch-near-limit-tail, whose template is out of
+/// model (docs/computation-hash.md). The node refuses that template at
+/// startup, and the test asserts the refusal.
 #[test]
 #[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus; run `just test-computation-hash-corpus-dave`"]
 fn computation_hash_corpus_dave_matches_release_manifest() {
@@ -527,7 +541,7 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
             no_hash += 1;
             continue;
         };
-        let inputs = case["inputs"]
+        let inputs: Vec<Vec<u8>> = case["inputs"]
             .as_array()
             .unwrap()
             .iter()
@@ -535,6 +549,21 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
             .collect();
         let geometry = &case["geometry"];
         let log2_period = geometry["log2_mcycle_period"].as_u64().unwrap();
+        if TERMINAL_MCYCLE_CASES.contains(&id) {
+            let root_stride = log2_period + structure.log2_uarch_span;
+            let table = self::geometry(&[
+                (root_stride, structure.log2_ruler_span() - root_stride),
+                (0, root_stride),
+            ]);
+            let mut later = inputs.clone();
+            later.push(later.last().cloned().unwrap_or_default());
+            let (settled, served, _) = runner_settlement(&image, later, &table);
+            assert_eq!(
+                (settled.as_str(), served.as_str()),
+                (expected, expected),
+                "{id}: runner with a later input vs release manifest"
+            );
+        }
         let level = match case["level"].as_str().unwrap() {
             "mcycle" => {
                 mcycle += 1;

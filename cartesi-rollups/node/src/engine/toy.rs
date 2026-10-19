@@ -297,7 +297,8 @@ impl Stf for ToyStf {
     }
 
     fn log_feed(&mut self, window: u64) -> Result<Vec<u8>> {
-        if (window as usize) < self.script.len() {
+        // As in send_cmio_response, delivery to a halted machine is a no-op.
+        if (window as usize) < self.script.len() && !self.halted {
             self.feed(window)?;
         }
         Ok(b"toy-feed;".to_vec())
