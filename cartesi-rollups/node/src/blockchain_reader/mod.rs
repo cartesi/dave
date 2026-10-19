@@ -304,6 +304,9 @@ impl BlockchainReader {
 
     pub async fn execution_loop(mut self, shutdown: ShutdownSignal, chain: Chain) -> Result<()> {
         let mut failing = Persistence::default();
+        // Anvil mines only with a transaction, so there an old latest block
+        // says nothing about the endpoint.
+        let watch_head_age = self.storage.sling_config()?.chain_id != crate::args::ANVIL_CHAIN_ID;
         loop {
             // A failed tick is retried, not fatal: the tick is
             // re-derived from finalized state, so a provider hiccup
@@ -348,6 +351,7 @@ impl BlockchainReader {
             // already taken while clocks run. It is outside the trust model,
             // so it is only reported.
             if caught_up
+                && watch_head_age
                 && let Ok(age) = chain.latest_age().await
                 && age >= PAGE_AFTER
             {

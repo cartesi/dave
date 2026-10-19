@@ -220,8 +220,9 @@ hardcoded, since the node knows no block time to convert the table's budgets;
 revisit it if a deployment's G departs from 5 minutes. A read endpoint that
 stops following the chain fails nothing (it answers consistently with its old
 head), so the reader also logs ERROR on
-every tick whose latest block is older than G; a stalled provider is outside
-the trust model, so it is reported, not worked around. An ingestion check
+every tick whose latest block is older than G (not on anvil's chain, which
+mines only with a transaction); a stalled provider is outside the trust
+model, so it is reported, not worked around. An ingestion check
 that keeps failing means the provider keeps
 omitting logs (point the node at a complete one), or a stored chunk lacks
 one: its page names both remedies. That is the one stall a retry never heals:
