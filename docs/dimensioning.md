@@ -67,10 +67,13 @@ where input-priced attacks cost about a thousand times less and bonds do
 not. An attack that fills a resource (disk, links, memory,
 provider quota) for less than that is a wall to close; a guard against one
 that costs more, or that is out of model, is a door not worth its code. The
-figures rest on one machine's overhead and are re-measured on Linux
-(todo.md). A faster runner raises the price by about four times at most:
-below about 36 ms per input (a week over 2^24) the input span binds first,
-at about 5e11 gas, provided the snapshot disk keeps up.
+figures rest on one machine's overhead on emulator v0.22.0 and stay
+provisional until the Linux measurement, with the runner and a dispute
+sharing the host and the disk under pressure (todo.md). A faster runner
+raises the price by about four times at most: below about 36 ms per input (a
+week over 2^24) the input span binds first, at about 5e11 gas, provided the
+snapshot disk keeps up. The next emulator release's cold-load fix (about
+2.5 ms per input, preliminary) would put the node there.
 
 Evenly distributed effort. The trusted application's work arrives spread over
 the epoch enough for the runner to keep up: one input that runs for days at
@@ -238,8 +241,8 @@ per-input contract, by design: it meters effort per input and prices it,
 with prices that rise as the epoch's effort is consumed, so that underpriced
 inputs are dismissed cheaply. Inputs that execute nearly instantly do not make
 it slack: the node pays its fixed per-input overhead on every input, accepted
-or rejected, so the runner tops out near a handful of inputs per second
-whatever the application does, and an app's pricing can dismiss an input but
+or rejected, so on emulator v0.22.0 the runner tops out near a handful of
+inputs per second whatever the application does, and an app's pricing can dismiss an input but
 not that overhead. The contract therefore binds for every application, at the
 reference price above. The trigger, sealing with no input cap or minimum
 notice, belongs to DaveConsensus and is priced in that campaign; a smaller

@@ -325,9 +325,10 @@ rotation, about 140-200 ms per input measured on macOS
 clone's 50 MB page hash-tree cache (`hash_tree.phtc`): the emulator walks it
 one dependent page at a time, and a fresh clone is a new inode with nothing
 in the page cache, so a warm reload of the same directory takes about 2 ms
-whatever the sharing mode (an upstream ask, todo.md).
-It caps the runner near a handful of inputs per second whatever the
-application does, and a crossing costs it once per crossed input. That is
+whatever the sharing mode. The next emulator release fixes the cold read
+(about 2.5 ms per input in a preliminary implementation; todo.md, Upstream).
+On v0.22.0 the overhead caps the runner near a handful of inputs per second
+whatever the application does, and a crossing costs it once per crossed input. That is
 why the gap stays a fixed input count. A policy that keeps a bounded number
 of boundaries and widens their spacing as the epoch grows (the emulator's
 prt recipe keeps eight) spaces them about n/K inputs apart for an n the
