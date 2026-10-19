@@ -204,7 +204,11 @@ replay dominates. Each replayed input also pays the node's fixed overhead
 and that overhead alone caps any gap near `G / (2 x overhead)`. The gap also
 bounds the open tail a seal leaves unexecuted, which the root join waits for.
 These are estimates on one workload; a re-measurement on validator-grade
-hardware confirms or replaces them. Heavy applications lower the gap.
+hardware confirms or replaces them. Heavy applications lower the gap, which
+trades disk for the contract: at gap 1 a flood of cheap inputs makes one
+snapshot each, so it fills disk at about a hundredth of the reference price,
+and a heavy application needs boundaries spaced by work as well as count
+(todo.md) before it runs at a low gap in production.
 
 An overrun is charged to the honest clock beyond `G` and draws on `C`: it
 spends censorship tolerance before it loses a dispute. Past the contract, as

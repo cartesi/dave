@@ -65,6 +65,14 @@ carry no backlog (reviews/README.md).
 
 ## Node
 
+- Before a heavy application runs at a low snapshot gap in production:
+  publish a boundary once a batch's executed work reaches the contract's
+  replay budget as well as at the gap's count, whichever comes first, so a
+  heavy application keeps the default gap and a cheap-input flood keeps one
+  snapshot per gap inputs. Append-only and deterministic (the work is the
+  machine's mcycle). A count cap that thins old boundaries (about 2^14 per
+  epoch) also bounds disk, but adds a deletion path in a live epoch.
+  (dimensioning.md, per-input contract)
 - Measure and write down the node's supported workload envelope (inputs,
   live tournaments, provider capacity, action latency), in the steady state
   and under the dimensioned attack, the post-closure staggered-release
