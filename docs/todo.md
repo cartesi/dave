@@ -12,7 +12,10 @@ carry no backlog (reviews/README.md).
   changed); the per-input compute contract
   and the worst-case leaf proof plus fallback latency (CF-01, one shared
   `G` for both landings) follow from it, and re-measure the heaviest
-  instruction's usteps while there.
+  instruction's usteps while there. Time one root response and one leaf
+  build while a runner batch of stress inputs runs (the two share cores with
+  no priority), and count one re-preparation of a leaf proof still pending
+  at the next tick in the fallback latency.
   (measurements/constants.md, dimensioning.md)
 - Price input volume against the root window in the DaveConsensus campaign:
   sealing takes every input before the acceptance block with no cap or
@@ -25,6 +28,12 @@ carry no backlog (reviews/README.md).
   even height, so commitment two seals), the step proof and settlement, since
   nothing has run the canonical table node-against-chain.
   (computation-hash.md, dispute-game.md)
+- Have someone who did not write them review the commitment and proof paths
+  (engine/ruler.rs, engine/machine_stf.rs, engine/dispute.rs,
+  storage/rollups_machine.rs, storage/advance.rs), with computation-hash.md
+  as the guide, preferably from the machine team: the budget-seam leaf bug
+  of September 2026 was shared by the Lua oracle, so the oracles share blind
+  spots. (computation-hash.md)
 
 ## Upstream (Cartesi Machine, arm's length: nothing waits on it)
 
@@ -33,6 +42,10 @@ carry no backlog (reviews/README.md).
   assert for a non-pristine uarch; and a CLI that delivers to a halted
   template with an input yield pending, as the step does (a lead).
   (computation-hash.md)
+- Ask for EMLINK in `os::clone_file`'s copy fallback: a clone hard-links every
+  read-only file (each snapshot's PMA file), so on btrfs and ext4 live
+  snapshots stop at about 65k links per inode, and the runner and positioning
+  stall there. (node README, filesystem)
 - Track upstream PR #390 (new pristine uarch hash and proof format) as its own
   coordinated generation. (build-system.md)
 - On the emulator release that supports `cm_verify_hash_tree` (v0.22.0 has
