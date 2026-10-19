@@ -527,7 +527,7 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
     let structure = Structure::PRODUCTION;
 
-    let (mut mcycle, mut uarch, mut no_hash) = (0, 0, 0);
+    let (mut mcycle, mut uarch, mut no_hash, mut terminal) = (0, 0, 0, 0);
     for case in &cases {
         let id = case["id"].as_str().unwrap();
         let image = corpus.join(case["template"].as_str().unwrap());
@@ -550,6 +550,7 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
         let geometry = &case["geometry"];
         let log2_period = geometry["log2_mcycle_period"].as_u64().unwrap();
         if TERMINAL_MCYCLE_CASES.contains(&id) {
+            terminal += 1;
             let root_stride = log2_period + structure.log2_uarch_span;
             let table = self::geometry(&[
                 (root_stride, structure.log2_ruler_span() - root_stride),
@@ -592,8 +593,8 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
         println!("{id}: {engine_hash}");
     }
     assert_eq!(
-        (mcycle, uarch, no_hash),
-        (18, 16, 2),
+        (mcycle, uarch, no_hash, terminal),
+        (18, 16, 2, TERMINAL_MCYCLE_CASES.len()),
         "unexpected v0.22 corpus shape"
     );
 }

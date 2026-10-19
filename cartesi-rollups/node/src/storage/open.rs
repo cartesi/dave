@@ -809,7 +809,10 @@ mod tests {
 
     /// A seed killed mid-clone leaves its working clone; under a stable PID
     /// the next seed's clone would take the same name and fail on it, so
-    /// initialize sweeps staging before seeding.
+    /// initialize sweeps staging before seeding. The checkout counter is
+    /// process-wide, so the suite proves the sweep; the collision with the
+    /// planted `-0` name, and so the ordering, only when this test runs
+    /// alone.
     #[test]
     fn a_seed_starts_from_swept_staging() {
         let dir = tempfile::tempdir().unwrap();
