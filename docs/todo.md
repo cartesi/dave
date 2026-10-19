@@ -15,10 +15,13 @@ carry no backlog (reviews/README.md).
   instruction's usteps while there. Time one root response and one leaf
   build while a runner batch of stress inputs runs (the two share cores with
   no priority), and count one re-preparation of a leaf proof still pending
-  at the next tick in the fallback latency. Measure the per-snapshot disk
-  cost at the default gap and the per-input clone time on Linux XFS on a
-  cloud volume: every figure so far is APFS, and a Linux clone writes back
-  the source's dirty pages first.
+  at the next tick in the fallback latency. Measure on Linux XFS on a cloud
+  volume, since every figure so far is APFS and a Linux clone writes back
+  the source's dirty pages first: the per-input overhead (close, clone,
+  `SHARING_ALL` reload; about 140-200 ms on macOS, where the reload alone is
+  20 times a template load, unexplained), the runner's sustained inputs per
+  second, and the disk per snapshot at the default gap. The default gap and
+  the aggregate-throughput price follow from them.
   (measurements/constants.md, dimensioning.md)
 - Price input volume against the root window in the DaveConsensus campaign:
   sealing takes every input before the acceptance block with no cap or
