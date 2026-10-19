@@ -83,11 +83,21 @@ impl Chain {
     /// provider that stopped following the chain keeps serving an old head
     /// and answers everything else consistently with it.
     pub async fn latest_age(&self) -> Result<Duration> {
+        self.tagged_age(Latest, "latest").await
+    }
+
+    /// How long ago the finalized block was produced: finality that stops
+    /// while the chain goes on stalls ingestion, joins and completion.
+    pub async fn finalized_age(&self) -> Result<Duration> {
+        self.tagged_age(Finalized, "finalized").await
+    }
+
+    async fn tagged_age(&self, tag: BlockNumberOrTag, label: &str) -> Result<Duration> {
         let block = self
             .provider
-            .get_block(Latest.into())
+            .get_block(tag.into())
             .await?
-            .ok_or_else(|| anyhow!("provider has no latest block"))?;
+            .ok_or_else(|| anyhow!("provider has no {label} block"))?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .context("the system clock is before 1970")?;
@@ -369,8 +379,14 @@ mod tests {
 
         // A head stamped ahead of this clock is fresh, not negative.
         block.header.inner.timestamp = now + 60;
-        asserter.push_success(&Some(block));
+        asserter.push_success(&Some(block.clone()));
         assert_eq!(chain.latest_age().await.unwrap(), std::time::Duration::ZERO);
+
+        // The finalized block ages the same way.
+        block.header.inner.timestamp = now - 3_600;
+        asserter.push_success(&Some(block));
+        let age = chain.finalized_age().await.unwrap();
+        assert!((3_600..3_610).contains(&age.as_secs()), "{age:?}");
     }
 
     /// The `[fromBlock, toBlock]` of every get_logs request, in order.
