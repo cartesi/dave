@@ -394,6 +394,20 @@ impl Storage {
         Ok((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
     }
 
+    /// The data directory's filesystem type, for the startup line:
+    /// production expects XFS with reflinks (README).
+    pub fn filesystem(&self) -> std::io::Result<String> {
+        use std::os::unix::ffi::OsStrExt;
+        let path = std::ffi::CString::new(self.state_dir.as_os_str().as_bytes())?;
+        let mut stat = std::mem::MaybeUninit::<libc::statfs>::zeroed();
+        // SAFETY: a NUL-terminated path and a buffer statfs fills on success.
+        if unsafe { libc::statfs(path.as_ptr(), stat.as_mut_ptr()) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: statfs succeeded, so it initialized the buffer.
+        Ok(filesystem_name(&unsafe { stat.assume_init() }))
+    }
+
     pub fn state_dir(&self) -> &Path {
         &self.state_dir
     }
@@ -506,6 +520,31 @@ pub fn snapshots_path(state_dir: &Path) -> PathBuf {
 pub fn create_empty_state_dir_if_needed(state_dir: &Path) -> Result<()> {
     fs::create_dir_all(state_dir).with_context(|| format!("creating `{}`", state_dir.display()))?;
     Ok(())
+}
+
+/// The magic numbers of the filesystems the README names (linux/magic.h).
+#[cfg(target_os = "linux")]
+fn filesystem_name(stat: &libc::statfs) -> String {
+    // f_type's width differs across architectures; the magics are 32-bit.
+    let name = match stat.f_type as u32 {
+        0x5846_5342 => "xfs",
+        0xEF53 => "ext4",
+        0x9123_683E => "btrfs",
+        0x2FC1_2FC1 => "zfs",
+        0x0102_1994 => "tmpfs",
+        0x794C_7630 => "overlayfs",
+        0x6969 => "nfs",
+        other => return format!("{other:#x}"),
+    };
+    name.to_owned()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn filesystem_name(stat: &libc::statfs) -> String {
+    // SAFETY: the kernel NUL-terminates f_fstypename.
+    unsafe { std::ffi::CStr::from_ptr(stat.f_fstypename.as_ptr()) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn create_directory_structure(state_dir: &Path) -> Result<()> {
@@ -911,6 +950,7 @@ mod tests {
         let storage =
             initialize_at(&dir.path().join("state"), &template, 0, Address::ZERO, 1).unwrap();
         assert!(storage.free_bytes().unwrap() > 0);
+        assert!(!storage.filesystem().unwrap().is_empty());
     }
 
     #[test]

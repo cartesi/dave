@@ -15,7 +15,10 @@ carry no backlog (reviews/README.md).
   instruction's usteps while there. Time one root response and one leaf
   build while a runner batch of stress inputs runs (the two share cores with
   no priority), and count one re-preparation of a leaf proof still pending
-  at the next tick in the fallback latency.
+  at the next tick in the fallback latency. Measure the per-snapshot disk
+  cost at the default gap and the per-input clone time on Linux XFS on a
+  cloud volume: every figure so far is APFS, and a Linux clone writes back
+  the source's dirty pages first.
   (measurements/constants.md, dimensioning.md)
 - Price input volume against the root window in the DaveConsensus campaign:
   sealing takes every input before the acceptance block with no cap or
@@ -42,10 +45,11 @@ carry no backlog (reviews/README.md).
   assert for a non-pristine uarch; and a CLI that delivers to a halted
   template with an input yield pending, as the step does (a lead).
   (computation-hash.md)
-- Ask for EMLINK in `os::clone_file`'s copy fallback: a clone hard-links every
-  read-only file (each snapshot's PMA file), so on btrfs and ext4 live
-  snapshots stop at about 65k links per inode, and the runner and positioning
-  stall there. (node README, filesystem)
+- Ask for EMLINK in `os::clone_file`'s copy fallback, low priority: a clone
+  hard-links every read-only file (each snapshot's PMA file), so on btrfs and
+  ext4 live snapshots stop at about 65k links per inode, and the runner and
+  positioning stall there. XFS, the one production filesystem, makes it
+  unreachable. (node README, filesystem)
 - Track upstream PR #390 (new pristine uarch hash and proof format) as its own
   coordinated generation. (build-system.md)
 - On the emulator release that supports `cm_verify_hash_tree` (v0.22.0 has

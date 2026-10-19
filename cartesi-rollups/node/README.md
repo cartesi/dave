@@ -168,11 +168,26 @@ once, as safely as SIGKILL. A restart refetches the live tournaments' logs.
 Upgrade or rebuild the data directory between disputes: a fresh directory
 rebuilds every engaged level's commitment on the dispute clock.
 
-Put `--data-dir` on a filesystem with reflinks (APFS, btrfs, or XFS with
-`reflink=1`). Every input clones a stored machine; a reflinked clone shares
-unchanged extents, while elsewhere (ext4) the emulator falls back to sparse
-copies, which stay correct but cost disk and clone time in proportion to the
-machine. Performance is the operator's to size. The node aims to add no work
+Put `--data-dir` on XFS with reflinks (`reflink=1`, the mkfs.xfs default
+since xfsprogs 5.1; check with `xfs_info <mountpoint> | grep reflink=1`), on
+a volume or bind mount, not a container's writable layer or a network
+filesystem. That is the one production filesystem: every accepted input
+clones the stored machine, XFS shares the unchanged extents, and its per-file
+link limit is far above any epoch's snapshot count. The startup line names
+the data directory's filesystem, and on Linux the node warns when it is not
+XFS. Elsewhere:
+
+- ext4 has no reflinks, so every clone is a sparse copy: each input pays a
+  copy of the machine, and each kept snapshot costs the machine's allocated
+  size. Development and small applications only (many cloud volumes default
+  to it).
+- btrfs is for development only: it caps a file at 65,535 links, every kept
+  snapshot links the machine's read-only files, and at that count clones
+  fail and the node stops computing.
+- ZFS is untested; APFS (macOS) is for development; tmpfs does not survive a
+  reboot.
+
+Performance is the operator's to size. The node aims to add no work
 over the emulator's own (work-count tests guard the algorithms; a comparison
 against the emulator on the same host is a release measurement), and the Hero
 logs how long each action took from reading the chain through commitment
@@ -244,7 +259,7 @@ Options:
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
           execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS] [default: 64]
       --data-dir <DATA_DIR>
-          node data directory (database and machine snapshots); keep it across restarts, on a filesystem with reflinks [env: CARTESI_SLING_DATA_DIR]
+          node data directory (database and machine snapshots); keep it across restarts, on XFS with reflink=1 [env: CARTESI_SLING_DATA_DIR]
   -h, --help
           Print help
 ```
@@ -347,11 +362,17 @@ Options:
   GiB, leaving that space to a sealed epoch and its dispute), and on the
   signer's balance against the funding floor above, which the node checks
   only when a batch is due.
-- Keep `--data-dir` on a filesystem with reflinks (XFS, Btrfs, APFS) in
-  production: an epoch keeps one machine snapshot per
-  `--snapshot-gap-inputs` inputs until it completes, a few MB each with
-  reflinks and up to the whole machine (hundreds of MB) without. Move or copy
-  the directory only while the node is stopped.
+- Keep `--data-dir` on XFS with `reflink=1` in production (above). An epoch
+  keeps one snapshot per `--snapshot-gap-inputs` accepted inputs until it
+  completes, and about two epochs are live at once, so size the disk for
+  2 x (1 + accepted inputs per epoch / gap) snapshots: a few MB to tens of
+  MB each with reflinks (the pages the application dirties across one gap),
+  up to the whole machine without. The database also keeps every input
+  payload since the deployment, so size it for the application's input
+  volume too. Move or copy the directory only while the node is stopped,
+  and only within the filesystem (`cp -a --reflink=always`): any other copy
+  expands every snapshot to its full size. To relocate, seed a fresh
+  directory from the last settled state instead.
 - The signer must be a plain account that accepts ETH transfers, not one
   delegated (EIP-7702) to code that refuses or spends a payment: refunds and
   bonds are paid to it within a fixed gas allowance, and a recovery payment it

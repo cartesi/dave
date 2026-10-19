@@ -267,7 +267,7 @@ pub struct PRTArgs {
     pub snapshot_gap_inputs: u64,
 
     /// node data directory (database and machine snapshots); keep it across
-    /// restarts, on a filesystem with reflinks
+    /// restarts, on XFS with reflink=1
     #[arg(long, env = "CARTESI_SLING_DATA_DIR")]
     pub data_dir: PathBuf,
 }
@@ -331,6 +331,7 @@ pub struct NodeConfig {
 
     // State
     pub state_dir: PathBuf,
+    filesystem: String,
 
     // Misc
     pub sleep_duration: Duration,
@@ -364,7 +365,12 @@ impl fmt::Display for NodeConfig {
             "<redacted>"
         };
         write!(f, ", Ethereum submit gateway: {submit_gateway}")?;
-        write!(f, ", Data directory: {}", self.state_dir.display())?;
+        write!(
+            f,
+            ", Data directory: {} ({})",
+            self.state_dir.display(),
+            self.filesystem
+        )?;
         write!(
             f,
             ", Polling interval: {} seconds",
@@ -503,10 +509,22 @@ impl NodeConfig {
             ),
         )
         .context("could not open the data directory")?;
+        let filesystem = storage
+            .filesystem()
+            .unwrap_or_else(|e| format!("filesystem unknown: {e}"));
+        // Elsewhere every input copies the machine (ext4, the default of
+        // many cloud volumes) or clones hit a link cap (btrfs).
+        if cfg!(target_os = "linux") && filesystem != "xfs" {
+            log::warn!(
+                "the data directory is on {filesystem}; production expects XFS with reflink=1 \
+                 (node README)"
+            );
+        }
 
         Ok(Self {
             address_book,
             state_dir: storage.state_dir().to_owned(),
+            filesystem,
             machine_path: args.template_path,
             chain_id,
             signer_address,
