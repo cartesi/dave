@@ -820,7 +820,7 @@ mod tests {
     use crate::engine::constants::UARCH_MASK_TO_BARCH;
     use crate::engine::ruler::Run;
     use crate::merkle::MerkleBuilder;
-    use cartesi_machine::constants::ar::RAM_START;
+    use cartesi_machine::constants::ar::{RAM_START, TX_LOG2_SIZE};
     use cartesi_machine::constants::cmio::tohost::manual::TX_EXCEPTION;
     use cartesi_machine::constants::rollup::{
         LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
@@ -938,16 +938,15 @@ mod tests {
         (2u64 << 56) | (1u64 << 48) | (u64::from(reason) << 32)
     }
 
-    /// Runs the guest until its budget or its x19 yield stops it. With
-    /// imcyclemax = 3 the x19 yield executes on the budget's last cycle;
-    /// with imcyclemax = 2 the budget runs out before the yield.
-    fn seam_guest(imcyclemax: u64, x19_reason: u16) -> Result<Machine> {
+    /// Runs the guest until its budget or its x19 yield stops it; x19 and
+    /// x20 hold the whole tohost words it yields.
+    fn yield_guest(imcyclemax: u64, x19: u64, x20: u64) -> Result<Machine> {
         let mut config = Machine::default_config()?;
         config.ram.length = 4096;
         config.processor.registers.pc = RAM_START;
         config.processor.registers.imcyclemax = imcyclemax;
-        config.processor.registers.x19 = manual_yield(x19_reason);
-        config.processor.registers.x20 = manual_yield(RX_ACCEPTED);
+        config.processor.registers.x19 = x19;
+        config.processor.registers.x20 = x20;
         let mut machine = Machine::create(&config, &RuntimeConfig::quiet_console())?;
         let program: Vec<u8> = BUDGET_SEAM_PROGRAM
             .iter()
@@ -955,6 +954,17 @@ mod tests {
             .collect();
         machine.write_memory(RAM_START, &program)?;
         machine.run(u64::MAX)?;
+        Ok(machine)
+    }
+
+    /// With imcyclemax = 3 the x19 yield executes on the budget's last
+    /// cycle; with imcyclemax = 2 the budget runs out before the yield.
+    fn seam_guest(imcyclemax: u64, x19_reason: u16) -> Result<Machine> {
+        let mut machine = yield_guest(
+            imcyclemax,
+            manual_yield(x19_reason),
+            manual_yield(RX_ACCEPTED),
+        )?;
         assert_eq!(machine.mcycle()?, imcyclemax);
         Ok(machine)
     }
@@ -996,6 +1006,29 @@ mod tests {
         config.ram.length = 4096;
         config.processor.registers.iflags.h = 1;
         Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
+    }
+
+    /// `tohost` with a data field declaring one byte past the TX buffer, as
+    /// a guest that bypasses libcmt can yield it: cm_receive_cmio_request
+    /// refuses that length, while the step reads only the header.
+    fn oversized(tohost: u64) -> u64 {
+        tohost | ((1u64 << TX_LOG2_SIZE) + 1)
+    }
+
+    /// Awaits input under an oversized RX_ACCEPTED yield, and accepts the
+    /// input under another.
+    fn oversized_accepted_machine() -> Result<Machine> {
+        let accepted = oversized(manual_yield(RX_ACCEPTED));
+        yield_guest(u64::MAX, accepted, accepted)
+    }
+
+    /// Awaits input, and rejects it under an oversized RX_REJECTED yield.
+    fn oversized_rejected_machine() -> Result<Machine> {
+        yield_guest(
+            u64::MAX,
+            manual_yield(RX_ACCEPTED),
+            oversized(manual_yield(RX_REJECTED)),
+        )
     }
 
     fn scratch_stf(machine: Machine, work_dir: PathBuf, inputs: Vec<Vec<u8>>) -> MachineStf {
@@ -1449,6 +1482,78 @@ mod tests {
             assert_eq!(mcycles, vec![4, 6]);
         }
         Ok(())
+    }
+
+    /// A yield past the TX buffer, which the bindings refuse to read, ends
+    /// window 0 as the step's reset classifies it by the header: the
+    /// runner's collect takes the input, or reverts it to the pre-input
+    /// state when `rejects`. Dense leaves agree bulk and stepped, so the
+    /// emulator's collector classifies it alike.
+    fn assert_classified_by_header(make: fn() -> Result<Machine>, rejects: bool) -> Result<()> {
+        let structure = Structure::PRODUCTION;
+        let payload = b"seam".to_vec();
+
+        let mut oracle = make()?;
+        let pre = oracle.root_hash()?;
+        oracle.send_cmio_response(CmioResponseReason::Advance, &payload, Some(&pre))?;
+        oracle.run(u64::MAX)?;
+        assert!(oracle.iflags_y()?);
+        assert!(
+            oracle.receive_cmio_request().is_err(),
+            "premise: the bindings refuse the yield"
+        );
+        // The step's verdict: its reset reverts a rejection to the revert
+        // root and leaves an accepted yield as it is.
+        let yielded = oracle.root_hash()?;
+        let reset = oracle.log_reset_uarch(LogType::default())?;
+        let expected = Digest::from(Machine::verify_reset_uarch(&yielded, &reset)?);
+        assert_eq!(expected == Digest::from(pre), rejects);
+
+        let work = tempfile::tempdir()?;
+        let boundary = work.path().join("boundary");
+        let mut machine = make()?;
+        machine.store(&boundary)?;
+        let log2_run_stride = TournamentGeometry::two_level().root_stride();
+        let stf = MachineStf::over_advancing(machine, 0, payload.clone(), boundary);
+        let mut ruler = Ruler::new(stf, structure, 1);
+        let runs = ruler.collect(structure.window_start(1), log2_run_stride)?;
+        let stf = ruler.into_stf();
+        assert_eq!(stf.took_revert(), rejects);
+        assert_eq!(Digest::from(stf.into_machine().root_hash()?), expected);
+        assert_eq!(
+            runs,
+            vec![Run {
+                hash: expected,
+                repetitions: U256::from(1) << (structure.log2_window_span() - log2_run_stride)
+            }]
+        );
+
+        let to = U256::from(4) << structure.log2_uarch_span;
+        let [bulk, stepped] = [Collector::Bulk, Collector::Stepped].map(|collector| {
+            let work = tempfile::tempdir().unwrap();
+            let stf = scratch_stf(
+                make().unwrap(),
+                work.path().to_path_buf(),
+                vec![payload.clone()],
+            )
+            .with_collector(collector);
+            Ruler::new(stf, structure, 1)
+                .collect_big_cycle_roots(to)
+                .unwrap()
+        });
+        assert_eq!(bulk, stepped);
+        Ok(())
+    }
+
+    #[test]
+    fn an_accepted_yield_declaring_data_past_the_tx_buffer_takes_the_input() -> Result<()> {
+        assert_opening_delivers(oversized_accepted_machine)?;
+        assert_classified_by_header(oversized_accepted_machine, false)
+    }
+
+    #[test]
+    fn a_rejected_yield_declaring_data_past_the_tx_buffer_reverts() -> Result<()> {
+        assert_classified_by_header(oversized_rejected_machine, true)
     }
 
     /// Drift guard: the engine structure and the machine constants must
