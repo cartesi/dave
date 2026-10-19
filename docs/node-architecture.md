@@ -76,7 +76,7 @@ create or alter local state. The runner samples each window at the pinned
 root stride. Other operator mistakes (an unknown chain id, an unreadable or
 invalid key, an endpoint on another chain, an address that is not a Dave
 application) are errors that name their flag too, and add no key material;
-no error quotes an endpoint's URL (RPC client). An unknown chain id and an
+no error quotes an endpoint's URL (RPC client, flag parsing). An unknown chain id and an
 endpoint on another chain are terminal (exit 30). Before any read above,
 startup asks each endpoint its chain, once, and one that does not answer
 fails the start (exit 1, which the supervisor retries): the workers build

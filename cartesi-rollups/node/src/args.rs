@@ -181,6 +181,37 @@ async fn log_sentry_role(book: &AddressBook, signer: Address, provider: &impl Pr
     }
 }
 
+/// Parses an endpoint URL without ever quoting it. One can carry a secret
+/// (an API key in the path, a relay token), and clap's own parse error
+/// prints the rejected value, whether it came from a flag or from the
+/// environment.
+#[derive(Clone)]
+struct EndpointUrl;
+
+impl clap::builder::TypedValueParser for EndpointUrl {
+    type Value = Url;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Url, clap::Error> {
+        // url::ParseError's text never contains the input.
+        let reason = match value.to_str().map(Url::parse) {
+            Some(Ok(url)) => return Ok(url),
+            Some(Err(e)) => e.to_string(),
+            None => "not UTF-8".to_owned(),
+        };
+        let flag = arg.and_then(clap::Arg::get_long).unwrap_or("endpoint");
+        Err(clap::Error::raw(
+            clap::error::ErrorKind::ValueValidation,
+            format!("--{flag} is not a valid URL ({reason}); the value is withheld\n"),
+        )
+        .with_cmd(cmd))
+    }
+}
+
 #[derive(Clone, Parser)]
 #[command(about = "The sling node: a PRT validator for Cartesi Rollups applications")]
 // Help never echoes an env value: one can carry a secret (a signer key, an
@@ -201,11 +232,15 @@ pub struct PRTArgs {
     pub template_path: PathBuf,
 
     /// blockchain read gateway endpoint URL
-    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT")]
+    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT", value_parser = EndpointUrl)]
     pub blockchain_http_endpoint: Url,
 
     /// raw-transaction submission endpoint URL; defaults to the read gateway
-    #[arg(long, env = "CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT")]
+    #[arg(
+        long,
+        env = "CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT",
+        value_parser = EndpointUrl
+    )]
     pub blockchain_http_submit_endpoint: Option<Url>,
 
     /// blockchain chain id
@@ -574,6 +609,32 @@ mod tests {
             cmd.get_subcommands().for_each(check);
         }
         check(&<PRTArgs as clap::CommandFactory>::command());
+    }
+
+    /// A pasted URL without its scheme still carries the key in its path.
+    #[test]
+    fn a_malformed_endpoint_is_never_echoed() {
+        const SECRET: &str = "mainnet.example/v3/NOT-A-REAL-KEY";
+        for flag in [
+            "--blockchain-http-endpoint",
+            "--blockchain-http-submit-endpoint",
+        ] {
+            let mut args = REQUIRED.to_vec();
+            match REQUIRED.iter().position(|arg| *arg == flag) {
+                Some(at) => args[at + 1] = SECRET,
+                None => args.extend([flag, SECRET]),
+            }
+            args.extend(["pk", "--auth-private-key-file", "/tmp/unread-by-the-parser"]);
+            let error = PRTArgs::try_parse_from(args)
+                .err()
+                .unwrap_or_else(|| panic!("a URL without a scheme must not parse for {flag}"));
+            assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+            let text = error.to_string();
+            assert!(
+                text.contains(flag) && !text.contains("NOT-A-REAL-KEY"),
+                "{text}"
+            );
+        }
     }
 
     #[test]

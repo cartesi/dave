@@ -106,6 +106,11 @@ because the node owns its nonce sequence. Each tick batches the applicable
 dispute or cleanup action, settlement step, and all available bond
 recoveries at consecutive nonces from the latest mined count. The next tick
 rebuilds the batch from chain state without waiting for receipts.
+An endpoint URL that embeds an API key or a token belongs in
+`CARTESI_SLING_BLOCKCHAIN_HTTP_ENDPOINT` or
+`CARTESI_SLING_BLOCKCHAIN_HTTP_SUBMIT_ENDPOINT`, not on the command line,
+which any local user can read; a malformed one is refused without being
+quoted (exit 2).
 
 The signer is a private key (`pk`) or an AWS KMS key (`aws-kms`). The `pk`
 signer reads its key from the `CARTESI_SLING_AUTH_PRIVATE_KEY` environment
