@@ -303,6 +303,10 @@ impl Storage {
             connection,
             state_dir,
         };
+        // Before the seed: its working clone's name repeats on every start
+        // where the PID does (a container's PID 1), so a seed interrupted
+        // there would otherwise find the name taken forever.
+        storage.sweep_stale_staging()?;
 
         match (sling_config::stored(&storage.connection)?, seed) {
             (Some(pinned), seed) => {
@@ -333,8 +337,9 @@ impl Storage {
         let image = &seed.image;
         // Clone the image into the store - no 500 MB re-serialization
         // through machine memory. Cross-filesystem imports degrade to a
-        // sparse copy inside the clone. A crash before the commit below
-        // orphans the directory, which the next seed adopts.
+        // sparse copy inside the clone. A crash before the clone is
+        // published leaves staging, which the next start sweeps; one after
+        // it orphans the directory, which the next seed adopts.
         let working = self.checkout(image.path())?;
         self.commit_clone(working, image.hash())?;
 
@@ -759,6 +764,32 @@ mod tests {
         store_template(&template, |_| {});
         initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
         assert!(Storage::is_seeded(&state_dir).unwrap());
+    }
+
+    /// A seed killed mid-clone leaves its working clone; under a stable PID
+    /// the next seed's clone would take the same name and fail on it, so
+    /// initialize sweeps staging before seeding.
+    #[test]
+    fn a_seed_starts_from_swept_staging() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_dir = dir.path().join("state");
+        let snapshots = snapshots_path(&state_dir);
+        let leftovers = [
+            snapshots.join(format!(".work-{}-0", std::process::id())),
+            snapshots.join(".part-0xdead"),
+        ];
+        for leftover in &leftovers {
+            fs::create_dir_all(leftover).unwrap();
+            fs::write(leftover.join("config.json"), b"torn").unwrap();
+        }
+
+        let template = dir.path().join("template");
+        store_template(&template, |_| {});
+        initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
+        assert!(Storage::is_seeded(&state_dir).unwrap());
+        for leftover in &leftovers {
+            assert!(!leftover.exists(), "`{}` survived", leftover.display());
+        }
     }
 
     /// A seeded directory never reads its image again (COMP-3).

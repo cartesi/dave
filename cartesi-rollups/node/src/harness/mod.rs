@@ -554,7 +554,8 @@ pub(crate) struct Node {
 
 impl Node {
     fn start(world: &World, state_dir: TempDir, key: usize) -> Result<Self> {
-        // The startup ritual lib.rs runs before spawning the workers.
+        // The staging sweep Storage::initialize runs at every production
+        // start; restart() reopens without initialize, so it runs here.
         Storage::new(state_dir.path())?.sweep_stale_staging()?;
         let reader =
             BlockchainReader::new(Storage::new(state_dir.path())?, world.book, Duration::ZERO);
