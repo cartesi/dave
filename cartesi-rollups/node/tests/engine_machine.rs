@@ -241,13 +241,9 @@ fn initialized_storage_under(
     (dir, storage)
 }
 
-/// The engine answer for the same span, through the facade.
+/// The engine answer for the same span over the echo inputs.
 fn engine_root(image: &Path, log2_stride: u64, height: u64) -> String {
-    let (guards, mut source) = machine_source(image);
-    let quartet = Quartet::level_root(0, log2_stride, height);
-    let root = source.node(&quartet).unwrap().to_hex();
-    drop(guards);
-    root
+    engine_root_with_inputs(image, echo_inputs(), &three_level(), log2_stride, height)
 }
 
 fn engine_root_with_inputs(
@@ -265,16 +261,22 @@ fn engine_root_with_inputs(
     )
 }
 
-/// The facade's root for one level, replayed on a fresh store. A dense
-/// level builds both ways, with the production bulk collector and the
-/// stepped reference, which must agree: an answer checked here is never
-/// the collect API's alone (computation-hash.md).
+/// One level's root, replayed from the template. A level inside one
+/// window is the facade's on a fresh store, and a dense one builds both
+/// ways, with the production bulk collector and the stepped reference,
+/// which must agree: an answer checked here is never the collect API's
+/// alone (computation-hash.md). A wider level replays on the scratch
+/// feeder: the dispute feeder feeds only the window it was positioned
+/// at, and production serves such levels from the runner's rows.
 fn engine_level_root(
     image: &Path,
     inputs: Vec<Vec<u8>>,
     geometry: &TournamentGeometry,
     level: &LevelCoords,
 ) -> String {
+    if level.log2_stride + level.height > Structure::PRODUCTION.log2_window_span() {
+        return scratch_quartet_root(image, &inputs, level).to_hex();
+    }
     let collectors: &[Collector] = if level.log2_stride == 0 {
         &[Collector::Bulk, Collector::Stepped]
     } else {
@@ -1220,9 +1222,9 @@ fn runner_settlement(
 }
 
 /// The eager runner on a real machine. Under both tables, the root it
-/// settles must be the reference CLI's, and the dispute facade must serve
-/// that same root both from the runner's rows and by replay on a fresh
-/// store.
+/// settles must be the reference CLI's, the dispute facade must serve
+/// that same root from the runner's rows, and a replay from the template
+/// must reproduce it.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
 fn runner_settles_the_reference_root() {
@@ -1240,7 +1242,7 @@ fn runner_settles_the_reference_root() {
             let (settled, served, final_state) =
                 runner_settlement(&image, inputs.clone(), &geometry);
             let root = &geometry.levels()[0];
-            let fresh = engine_root_with_inputs(
+            let replayed = engine_root_with_inputs(
                 &image,
                 inputs.clone(),
                 &geometry,
@@ -1256,7 +1258,10 @@ fn runner_settles_the_reference_root() {
                 served, settled,
                 "{label}: root served from the runner's rows"
             );
-            assert_eq!(fresh, settled, "{label}: root replayed on a fresh store");
+            assert_eq!(
+                replayed, settled,
+                "{label}: root replayed from the template"
+            );
             assert_eq!(
                 final_state,
                 goldens[&format!("{program}/final_state")],
@@ -1543,18 +1548,18 @@ fn positioning_resumes_from_the_nearest_gap_snapshot() {
     );
 }
 
-/// A stride-0 quartet's root replayed from the template on the scratch
-/// feeder: no storage, no crossing.
+/// A level's root replayed from the template on the scratch feeder: no
+/// storage, no crossing.
 fn scratch_quartet_root(image: &Path, inputs: &[Vec<u8>], level: &LevelCoords) -> Digest {
     let work = scratch();
-    let stf = MachineStf::load(image, Hashing::PerStep)
+    let stf = MachineStf::load(image, Hashing::for_stride(level.log2_stride))
         .unwrap()
         .with_inputs(inputs.to_vec(), work.path().to_path_buf());
     let mut ruler = Ruler::new(stf, Structure::PRODUCTION, inputs.len() as u64);
     ruler.advance(level.base_cycle).unwrap();
-    let end = level.base_cycle + (U256::from(1) << level.height);
+    let end = level.base_cycle + (U256::from(1) << (level.log2_stride + level.height));
     let mut builder = cartesi_sling_node::merkle::MerkleBuilder::default();
-    for run in ruler.collect(end, 0).unwrap() {
+    for run in ruler.collect(end, level.log2_stride).unwrap() {
         builder.append_repeated(run.hash, run.repetitions);
     }
     builder.build().root_hash()
