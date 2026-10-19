@@ -1699,6 +1699,31 @@ fn positioning_over_rejected_inputs_keeps_the_floor() {
     assert_eq!(staging_leftovers(state_dir.path()), Vec::<String>::new());
 }
 
+/// A rejection fed at a positioned boundary above the epoch start reverts
+/// to the directory the crossing published. Echo rejects input 2, which
+/// runs about 151k mcycles, inside the three-level table's middle level
+/// over window 2, so the level ends idle on the reverted state.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn a_rejection_at_a_crossed_boundary_reverts_to_it() {
+    let image = echo_image();
+    let inputs = encode_inputs(&[&b"zero"[..], b"one", b"two", b"three"]);
+    let (state_dir, storage) = initialized_storage_with(&image, inputs.clone());
+    let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(2), 27, 17);
+    let mut source = DisputeSource::on_store(storage, 0).unwrap();
+    let root = source.node(&level.root()).unwrap();
+    assert_eq!(root, scratch_quartet_root(&image, &inputs, &level));
+
+    let mut storage = Storage::new(state_dir.path()).unwrap();
+    let crossed = storage.snapshot_hash(0, 2).unwrap().unwrap();
+    assert_ne!(storage.snapshot_hash(0, 0).unwrap(), Some(crossed));
+    assert_eq!(
+        source.prove_last(&level).unwrap().node,
+        Digest::from(crossed),
+        "the level ends on the reverted boundary"
+    );
+}
+
 /// Leaf commitments on a real machine, dense spans and reverts included,
 /// against the released CLI's answers (see leaf_cases). The CLI computes
 /// them through the collect API, as the node's bulk collector does, so the
