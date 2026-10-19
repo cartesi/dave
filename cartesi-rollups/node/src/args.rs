@@ -25,7 +25,7 @@ use std::{fmt, path::PathBuf, sync::Arc, time::Duration};
 
 use crate::provider::{SignerSource, TransactionLane, create_rpc_provider, rpc_provider};
 
-const ANVIL_CHAIN_ID: u64 = 31337;
+pub(crate) const ANVIL_CHAIN_ID: u64 = 31337;
 const POLLING_INTERVAL: u64 = 30;
 
 /// One `tournamentParameters(level)` row: (levels, log2step, height).
