@@ -1638,6 +1638,35 @@ fn a_torn_dispute_boundary_stops_the_node() {
         .node(&level.root());
 }
 
+/// A dispute boundary whose directory vanished is skipped, and the
+/// crossing to it publishes it again under its row. Echo at gap 2 keeps
+/// boundaries 0, 2 and 4; without boundary 2, a window-2 query crosses
+/// from the start and republishes boundary 2 as a clone.
+#[test]
+#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
+fn a_vanished_dispute_boundary_is_crossed_to_again() {
+    let image = echo_image();
+    let inputs = encode_inputs(&[&b"zero"[..], b"one", b"two", b"three"]);
+    let state_dir = run_sealed_epoch(&image, inputs.clone(), &three_level(), 2);
+    let mut storage = Storage::new(state_dir.path()).unwrap();
+    let hash = storage.snapshot_hash(0, 2).unwrap();
+    let vanished = storage.snapshot_dir(0, 2).unwrap().unwrap();
+    std::fs::remove_dir_all(&vanished).unwrap();
+
+    let level = LevelCoords::new(0, Structure::PRODUCTION.window_start(2), 0, 20);
+    let root = DisputeSource::on_store(Storage::new(state_dir.path()).unwrap(), 0)
+        .unwrap()
+        .node(&level.root())
+        .unwrap();
+    assert_eq!(root, scratch_quartet_root(&image, &inputs, &level));
+
+    assert_eq!(storage.snapshot_hash(0, 2).unwrap(), hash);
+    assert!(vanished.join("config.json").exists(), "boundary 2 is back");
+    let start = read_only_inodes(&storage.snapshot_dir(0, 0).unwrap().unwrap());
+    assert_eq!(read_only_inodes(&vanished), start, "a clone, not a store");
+    assert_eq!(staging_leftovers(state_dir.path()), Vec::<String>::new());
+}
+
 /// A crossing whose every input is rejected ends on the state it began
 /// from, so the target's row reuses the floor's directory.
 #[test]
