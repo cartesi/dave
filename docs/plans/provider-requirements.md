@@ -66,9 +66,17 @@ range and response size, latency), and the action latency that results.
   points: one 10,000-block chunk of USDC logs (349,084) took 138 s on
   Infura, and Alchemy's free tier caps `eth_getLogs` at 10 blocks.
 
+Sybils buy read load. On the two-level table each live child tournament
+costs the adversary about two root bonds (about 0.72 ETH at 50 gwei), and
+each tick reads one `eth_getLogs` per live tournament, one after another,
+plus a standing and a bond read each; around 1,000 live children the reads
+alone take most of `G` before the Hero acts, at 0.1-0.2 s per call.
+
 If reads dominate, the first lever is which reads the next action needs:
 reading only the tournaments on the honest commitment's path would make
-the reads follow the work. Then come the tick's ordering and the read
+the reads follow the work. A smaller one keeps the full fold: one
+multi-address `eth_getLogs` per generation of live tournaments, as the
+recovery walk already reads (up to 100 addresses per request). Then come the tick's ordering and the read
 concurrency. Failure isolation and
 more retries come last: dispute planning's reads still fail together under
 a per-second cap, but that is worth machinery only once measured.
