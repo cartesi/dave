@@ -326,6 +326,7 @@ pub struct NodeConfig {
     pub ethereum_gateway: Url,
     pub ethereum_submit_gateway: Url,
     pub signer_address: Address,
+    signer_kind: &'static str,
 
     // State
     pub state_dir: PathBuf,
@@ -347,7 +348,7 @@ impl fmt::Display for NodeConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.address_book)?;
         write!(f, ", Template path: {}", self.machine_path.display())?;
-        write!(f, ", Signer address: {}", self.signer_address)?;
+        write!(f, ", Signer: {} {}", self.signer_kind, self.signer_address)?;
         write!(
             f,
             ", Chain Id: {} ({})",
@@ -409,6 +410,10 @@ impl NodeConfig {
     pub async fn setup_with(args: PRTArgs) -> Result<Self> {
         let chain_id = named_chain(args.blockchain_id)?;
         let signer = SignerSource::prepare(&args.signer)?;
+        let signer_kind = match &args.signer {
+            SignerArgs::Pk { .. } => "pk",
+            SignerArgs::AwsKms { .. } => "aws-kms",
+        };
 
         let provider = create_rpc_provider(&args.blockchain_http_endpoint, chain_id)
             .await
@@ -504,6 +509,7 @@ impl NodeConfig {
             machine_path: args.template_path,
             chain_id,
             signer_address,
+            signer_kind,
             ethereum_gateway: args.blockchain_http_endpoint,
             ethereum_submit_gateway,
             sleep_duration: Duration::from_secs(args.polling_interval),

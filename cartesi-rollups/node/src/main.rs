@@ -11,10 +11,11 @@ use std::process::ExitCode;
 async fn main() -> ExitCode {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     // A panic in any thread reaches the log as an ERROR record when it
-    // happens; the default hook still prints it, with any backtrace.
+    // happens; the default hook still prints it, with any backtrace. One
+    // line, so a line-oriented pipeline keeps the message with its level.
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        error!("{info}");
+        error!("{}", info.to_string().replace('\n', " | "));
         default_hook(info);
     }));
     // CI's release build sets the tag (build.yml); the Cargo version names
