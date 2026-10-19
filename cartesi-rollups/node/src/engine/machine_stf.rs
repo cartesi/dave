@@ -963,6 +963,15 @@ mod tests {
         Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
     }
 
+    /// Halted with no yield pending: terminal, and the step's delivery is
+    /// a no-op that reads only iflags.
+    fn halted_machine() -> Result<Machine> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.iflags.h = 1;
+        Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
+    }
+
     fn scratch_stf(machine: Machine, work_dir: PathBuf, inputs: Vec<Vec<u8>>) -> MachineStf {
         MachineStf {
             machine,
@@ -1040,11 +1049,7 @@ mod tests {
             assert_eq!(stf.yielded()?, yielded, "{name}: yielded");
         }
 
-        let mut config = Machine::default_config()?;
-        config.ram.length = 4096;
-        config.processor.registers.iflags.h = 1;
-        let halted = Machine::create(&config, &RuntimeConfig::quiet_console())?;
-        assert!(scratch_stf(halted, PathBuf::new(), vec![]).terminal()?);
+        assert!(scratch_stf(halted_machine()?, PathBuf::new(), vec![]).terminal()?);
         Ok(())
     }
 
@@ -1107,12 +1112,14 @@ mod tests {
         assert_opening_delivers(halted_yield_machine)
     }
 
-    /// The input budget's seams as chain witnesses for the Solidity step,
-    /// which NodeWitnessesTest (cartesi-rollups/contracts) replays: RX_ACCEPTED
-    /// openings on the budget's last cycle and on a halted machine (seam 2),
-    /// and an RX_REJECTED closing on the budget's last cycle (seam 1). No input can
-    /// reach seam 1 by execution (it would run 2^48 - 1 cycles), so, as in
-    /// the Lua vectors, the budget shrinks after a physical delivery.
+    /// The input budget's seams and the terminal openings as chain witnesses
+    /// for the Solidity step, which NodeWitnessesTest (cartesi-rollups/contracts)
+    /// replays: RX_ACCEPTED openings on the budget's last cycle and on a
+    /// halted machine (seam 2), an RX_REJECTED closing on the budget's last
+    /// cycle (seam 1), and openings that feed a terminal machine, whose
+    /// delivery is the step's no-op (one shape with Y set, one without). No
+    /// input can reach seam 1 by execution (it would run 2^48 - 1 cycles),
+    /// so, as in the Lua vectors, the budget shrinks after a physical delivery.
     /// UPDATE_FIXTURES=1 regenerates tests/fixtures/node_seam_witnesses.json.
     #[test]
     fn seam_witness_vectors_hold() -> Result<()> {
@@ -1136,6 +1143,11 @@ mod tests {
         for (name, machine) in [
             ("budget_seam_accepted_opening", budget_seam_machine()?),
             ("halted_accepted_opening", halted_yield_machine()?),
+            // The chain still delivers to a terminal app. The proof must log
+            // the no-op delivery, which the node's post-state check cannot
+            // see (the state is unchanged) but the step parses.
+            ("exception_noop_opening", seam_guest(3, TX_EXCEPTION)?),
+            ("halted_noop_opening", halted_machine()?),
         ] {
             let mut machine = machine;
             let pre: Digest = machine.root_hash()?.into();
@@ -1200,7 +1212,9 @@ mod tests {
         let stored: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
         assert_eq!(
             computed, stored,
-            "seam witnesses diverged; regenerate with UPDATE_FIXTURES=1 after review"
+            "seam witnesses diverged; regenerate with UPDATE_FIXTURES=1 after review, \
+             and if commitment construction changed, bump COMMITMENT_SEMANTICS \
+             (storage/sql/schema.rs, docs/computation-hash.md)"
         );
         Ok(())
     }
