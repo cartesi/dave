@@ -455,6 +455,14 @@ The submit endpoint shares this configuration on purpose: resending the same
 raw transaction on a rate limit is idempotent, and the 20 s timeout only
 bounds a hang, while a shorter one would make a slow relay fail every send.
 
+The node takes one read endpoint and does not fail over between providers.
+Transport redundancy is generic and belongs in a proxy in front of it (node
+README), which the node sees as it sees any load-balanced provider; what
+only the node can do with an endpoint (split ranges, order logs, pin hashes,
+classify pool verdicts) stays here. alloy's fallback layer does not fit: with
+one active transport it never fails over, and with more it sends every read
+to each of them.
+
 ## Chain ingestion stance
 
 Epoch and input ingestion consumes logs only up to the chain's finalized block

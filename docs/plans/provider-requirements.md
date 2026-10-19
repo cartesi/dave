@@ -61,6 +61,11 @@ range and response size, latency), and the action latency that results.
   4m40s for 10,000 blocks, and after a restart the recovery walk spans the
   epoch's whole history. Time a prepared dispute action through a degraded
   scan and a large live tree before changing anything.
+- How each supported client and hosted provider answers `eth_getLogs` over
+  a range that ends past its own head: with an error, or with a clamped,
+  short result. The tournament fold trusts log completeness, and a
+  load-balanced or proxied endpoint mixes backends a few blocks apart
+  within one harvest, so a short result would be silent there.
 - Hosted plans' caps (Infura, Alchemy, a self-hosted node) against the
   measured load. The live tests (`just test-live-rpc`) are the first data
   points: one 10,000-block chunk of USDC logs (349,084) took 138 s on
