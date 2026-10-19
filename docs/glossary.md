@@ -72,12 +72,14 @@ level. Terms marked (code) appear verbatim in identifiers.
   reads only the pending yield. Dave, the emulator's collector and its CLI
   follow the step at both since v0.22 (computation-hash.md, the CLI
   exclusions).
-- collect API, bulk collector (code: `Collector::Bulk`): the emulator's
+- collect API, bulk collector: the emulator's
   `cm_collect_uarch_cycle_root_hashes` and `cm_collect_mcycle_root_hashes`,
   which run a span and return its sampled roots in one call (wrapped in
-  machine/rust-bindings `types/collect.rs`). The node builds tall leaves
-  (stride 0, height 28 or more: the two-level table's height-38 leaf) with
-  the uarch collector, bundled per big cycle; every other quartet, every
+  machine/rust-bindings `types/collect.rs`). The node calls only the uarch
+  collector (code: `Collector::Bulk`); the mcycle collector is bound but
+  unused. It builds tall leaves (stride 0, height 28 or more: the two-level
+  table's leaf level, heights 38 and 30) with it, bundled per big cycle;
+  every other quartet, every
   three-level leaf included, is stepped. `Collector::Stepped` steps tall
   leaves too, as the collector's test reference. The release CLI is
   built on the same collectors, so it is not an independent oracle.
