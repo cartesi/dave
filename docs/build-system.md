@@ -247,7 +247,12 @@ archive and manifest digests), and the per-image producers under
 also live in the safe Rust wrapper, node configuration, and computation-corpus gate. An emulator bump
 must update every matching guard and artifact together with both machine
 submodules and regenerated program images; search for the current version
-rather than treating the acquisition list as exhaustive.
+rather than treating the acquisition list as exhaustive. The settlement
+proof's register addresses are the exception: DaveConsensus takes them from
+the solidity-step copy bundled in its cartesi-rollups-contracts dependency,
+not from `machine/step`, so moving them needs a rollups-contracts release.
+`machine_validity_proof_geometry_matches_solidity` (engine/constants.rs) and
+`NodeProofsTest` guard that copy against the linked emulator.
 
 Development may pin unreleased upstream commits; anything Dave ships links a
 tagged emulator release. Upstream is at arm's length: nothing on Dave's
@@ -395,4 +400,7 @@ Machine provider coverage is intentional: package lanes exercise the external
 archive, while release-node builds prepare and execute a wrapper test against
 the source fallback. The full corpus is explicit locally because it downloads
 release evidence, but CI owns one required execution so release conformance
-cannot silently rot.
+cannot silently rot. That execution is on x86 against the build job's library:
+no commitment test runs against the release binaries' own emulator build, and
+the arm64 claim rests on upstream's native arm64 corpus run against a Debian
+trixie build, the release image's toolchain family.

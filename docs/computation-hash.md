@@ -314,8 +314,10 @@ stratum of its stored fanout (256 spans, 1024 big cycles each at height 38),
 storing each span's row as it completes, so a stopped build keeps its
 finished spans and the next one resumes after them; those rows are ones a
 whole build stores anyway. Only such tall quartets use the collector, so
-only the two-level table's height-38 leaf does: every other quartet, every leaf
-of the three-level table (height 27) included, is stepped through
+only the two-level table's leaf level does, at its top two fanout strata
+(height 38, and height 30 when a descent rebuilds below the stored fanout):
+every other quartet, every leaf of the three-level table (height 27)
+included, is stepped through
 `Ruler::collect`. `Collector::Stepped`, which steps a tall build as well, stays
 permanently as the collector's test reference. Bulk collection cannot take an
 input delivered at mcycle 2^64 - 1, whose saturated budget leaves no cycle to

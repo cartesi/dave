@@ -99,10 +99,11 @@ truth.
   and CREATE2-derived addresses, and a rebuilt devnet state for e2e
   (`just rollups-contracts::build-devnet`; `just doctor-e2e` fingerprints
   a stale one).
-- The outputs-proof position and the data-provider seam tie this contract
-  to `machine/step` constants and off-chain commitment construction;
-  changes there require coordinated node, Lua-client, and documentation
-  work.
+- The outputs-proof position ties this contract to the solidity-step copy
+  bundled in its cartesi-rollups-contracts dependency (register addresses),
+  and the data-provider seam to `machine/step` constants (input hashing)
+  and off-chain commitment construction; changes there require coordinated
+  node, Lua-client, and documentation work.
 - Sentry semantics changes must preserve "shorten, never veto or
   corrupt", or explicitly re-argue the safety statement here and in
   docs/epoch-lifecycle.md.
