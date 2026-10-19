@@ -288,6 +288,8 @@ impl Storage {
     /// seed image stored (filesystem first), then one transaction for the
     /// seed's watermark, its epoch's start boundary, the completion cursor at
     /// that epoch and the pin, so a pinned directory is always a seeded one.
+    /// The caller holds the directory's lock ([`StateDirLock`]): the staging
+    /// sweep removes working clones no other process may still hold.
     pub fn initialize(
         state_dir: &Path,
         seed: Option<&Seed>,
