@@ -150,8 +150,6 @@ pub async fn run(config: NodeConfig) -> Result<()> {
         std::process::exit(code.into());
     });
 
-    // A failure during the drain is the run's failure too, unless an
-    // earlier one already is; a stop signal does not make it graceful.
     let mut failure = failure;
     for (done, name, handle) in [
         (finished.0, "machine runner", machine_runner),
@@ -161,12 +159,7 @@ pub async fn run(config: NodeConfig) -> Result<()> {
         if done {
             continue;
         }
-        if let Some(e) = drained_failure(name, handle.await) {
-            match failure {
-                None => failure = Some(e),
-                Some(_) => error!("{e:#}"),
-            }
-        }
+        failure = merged_failure(failure, drained_failure(name, handle.await));
     }
 
     match failure {
@@ -185,6 +178,22 @@ fn worker_failure(name: &str, joined: std::result::Result<Result<()>, JoinError>
     }
 }
 
+/// A failure during the drain is the run's failure too, unless an earlier
+/// one already is, which keeps its exit status; a stop signal does not make
+/// a failed drain graceful.
+fn merged_failure(
+    failure: Option<anyhow::Error>,
+    drained: Option<anyhow::Error>,
+) -> Option<anyhow::Error> {
+    match (failure, drained) {
+        (Some(failure), Some(later)) => {
+            error!("{later:#}");
+            Some(failure)
+        }
+        (failure, drained) => failure.or(drained),
+    }
+}
+
 fn drained_failure(
     name: &str,
     joined: std::result::Result<Result<()>, JoinError>,
@@ -198,5 +207,38 @@ fn drained_failure(
         Err(join_error) => {
             Some(Panicked(format!("{name} panicked during shutdown: {join_error}")).into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fatal::{Fatal, exit_code};
+
+    fn terminal() -> std::result::Result<Result<()>, JoinError> {
+        Ok(Err(Fatal::terminal("diverged").into()))
+    }
+
+    async fn panicked() -> std::result::Result<Result<()>, JoinError> {
+        tokio::spawn(async { panic!("worker bug") }).await
+    }
+
+    /// The exit status operators configure their supervisor against.
+    #[tokio::test]
+    async fn the_run_keeps_the_status_of_its_first_failure() {
+        // A stop signal, then a worker failing during the drain: not graceful.
+        let drained = merged_failure(None, drained_failure("epoch manager", terminal()));
+        assert_eq!(exit_code(&drained.unwrap()), 30);
+
+        // A worker failure keeps its status over a later drain failure.
+        let first = Some(worker_failure("blockchain reader", terminal()));
+        let later = drained_failure("machine runner", panicked().await);
+        assert_eq!(exit_code(&merged_failure(first, later).unwrap()), 30);
+
+        // A panic during the drain exits as a panic.
+        let drained = merged_failure(None, drained_failure("machine runner", panicked().await));
+        assert_eq!(exit_code(&drained.unwrap()), 101);
+
+        assert!(merged_failure(None, drained_failure("epoch manager", Ok(Ok(())))).is_none());
     }
 }
