@@ -139,9 +139,6 @@ carry no backlog (reviews/README.md).
 - Open: whether the node compares its own latency with `G`: it drops
   `responseBudget` at startup, so a poll, preparation or inclusion that
   outgrows `G` draws on `C` silently. (dimensioning.md)
-- Open: decode the revert reason an overdue call's ERROR quotes against the
-  bindings' error enums; it quotes the raw RPC error, a custom error as hex.
-  (node-architecture.md, Mutation scheduling and transaction submission)
 - Open: whether AWS KMS signs deterministically. The lane re-signs a pending
   slot every tick and expects the pool to answer already known, which only a
   local key (RFC 6979) is tested for: one manual check against real KMS, then
