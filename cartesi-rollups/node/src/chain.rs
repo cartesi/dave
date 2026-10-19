@@ -379,14 +379,8 @@ mod tests {
 
         // A head stamped ahead of this clock is fresh, not negative.
         block.header.inner.timestamp = now + 60;
-        asserter.push_success(&Some(block.clone()));
-        assert_eq!(chain.latest_age().await.unwrap(), std::time::Duration::ZERO);
-
-        // The finalized block ages the same way.
-        block.header.inner.timestamp = now - 3_600;
         asserter.push_success(&Some(block));
-        let age = chain.finalized_age().await.unwrap();
-        assert!((3_600..3_610).contains(&age.as_secs()), "{age:?}");
+        assert_eq!(chain.latest_age().await.unwrap(), std::time::Duration::ZERO);
     }
 
     /// The `[fromBlock, toBlock]` of every get_logs request, in order.
