@@ -32,7 +32,12 @@ carry no backlog (reviews/README.md).
   span-by-span, resumable tall build, which only the spec and engine-machine
   tests exercise. Take a dispute there through the height-38 leaf seal (an
   even height, so commitment two seals), the step proof and settlement, since
-  nothing has run the canonical table node-against-chain.
+  nothing has run the canonical table node-against-chain. Run it on Linux XFS
+  with `reflink=1`, operated from the README by someone who did not write the
+  node, and run the harness once on the canonical devnet bundle first (its
+  tail adversary's stride must come from the pinned table). Fill a small XFS
+  volume once, during a runner batch and during a crossing, and check that
+  the node stops cleanly and settles the same root after space returns.
   (computation-hash.md, dispute-game.md)
 - Have someone who did not write them review the commitment and proof paths
   (engine/ruler.rs, engine/machine_stf.rs, engine/dispute.rs,
@@ -40,6 +45,15 @@ carry no backlog (reviews/README.md).
   as the guide, preferably from the machine team: the budget-seam leaf bug
   of September 2026 was shared by the Lua oracle, so the oracles share blind
   spots. (computation-hash.md)
+
+## Before mainnet funds
+
+- Rehearse the backstop for an undetected node bug: on a throwaway Sepolia
+  application, hold the node out past join closure, let a fabricated claim
+  win, and have the guardian foreclose inside the claim staging period. Then
+  tell integrators that the staging period must exceed the guardian's
+  reaction time, run two or more nodes on independent providers as sentries,
+  and route their ERROR and restart alerts to the guardian. (epoch-lifecycle.md)
 
 ## Upstream (Cartesi Machine, arm's length: nothing waits on it)
 
@@ -130,6 +144,9 @@ carry no backlog (reviews/README.md).
   (node-architecture.md, Chain ingestion stance)
 - Optional: a steered divergence point for the harness's tail adversary, to
   dispute active spans in-process. (test-harness.md)
+- Two honest nodes on different keys defending one epoch against one
+  adversary, in the harness: no test has run two sling nodes at once.
+  (test-harness.md)
 - Release-candidate hardening: a harness test in which a terminal
   application's epoch is defended, won and held through the real contracts.
   It needs a guest that turns terminal on an input, a new test image, since
