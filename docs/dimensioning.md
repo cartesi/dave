@@ -68,7 +68,9 @@ not. An attack that fills a resource (disk, links, memory,
 provider quota) for less than that is a wall to close; a guard against one
 that costs more, or that is out of model, is a door not worth its code. The
 figures rest on one machine's overhead and are re-measured on Linux
-(todo.md).
+(todo.md). A faster runner raises the price by about four times at most:
+below about 36 ms per input (a week over 2^24) the input span binds first,
+at about 5e11 gas, provided the snapshot disk keeps up.
 
 Evenly distributed effort. The trusted application's work arrives spread over
 the epoch enough for the runner to keep up: one input that runs for days at
@@ -241,7 +243,8 @@ whatever the application does, and an app's pricing can dismiss an input but
 not that overhead. The contract therefore binds for every application, at the
 reference price above. The trigger, sealing with no input cap or minimum
 notice, belongs to DaveConsensus and is priced in that campaign; a smaller
-per-input overhead is the node's lever.
+per-input overhead is the node's lever, worth at most a factor of about
+four (One reference price, above).
 
 ## Base-layer censorship model
 
