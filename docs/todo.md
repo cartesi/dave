@@ -139,10 +139,5 @@ carry no backlog (reviews/README.md).
 - Open: whether the node compares its own latency with `G`: it drops
   `responseBudget` at startup, so a poll, preparation or inclusion that
   outgrows `G` draws on `C` silently. (dimensioning.md)
-- Open: whether AWS KMS signs deterministically. The lane re-signs a pending
-  slot every tick and expects the pool to answer already known, which only a
-  local key (RFC 6979) is tested for: one manual check against real KMS, then
-  a sentence in the lane paragraph. (node-architecture.md, Mutation
-  scheduling and transaction submission)
 - Open: a `--version` flag; the startup line, which names the release tag,
   stands in for it. (node README, operator notes)
