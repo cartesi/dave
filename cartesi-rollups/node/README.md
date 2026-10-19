@@ -99,7 +99,9 @@ runbook records results:
 
 At startup the node asks each endpoint its chain and refuses one on another
 chain (exit 30) or one that does not answer (exit 1, retried by the
-supervisor). Without a separate submit endpoint, on any
+supervisor). An endpoint must omit `error` from a successful JSON-RPC
+response: alloy, like go-ethereum since v1.17.5, rejects `"error": null`, and
+the failure quotes the response. Without a separate submit endpoint, on any
 chain but anvil's, it warns once at startup that transactions go to the read
 endpoint's public pool. The signer must be exclusive to one node process
 because the node owns its nonce sequence. Each tick batches the applicable
@@ -238,7 +240,7 @@ Options:
       --blockchain-id <BLOCKCHAIN_ID>
           blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID]
       --polling-interval <POLLING_INTERVAL>
-          polling interval in seconds [env: CARTESI_SLING_POLLING_INTERVAL] [default: 30]
+          polling interval in seconds; a due response can wait one interval before the node sees it, out of a 5-minute response window [env: CARTESI_SLING_POLLING_INTERVAL] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
           execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS] [default: 64]
       --data-dir <DATA_DIR>
@@ -305,21 +307,38 @@ Options:
   it has lasted 5 minutes, the response window past which a late response
   draws on the dispute's censorship budget, so a transient blip never pages
   and a page means the node is losing clock.
-- Run the node under a supervisor that restarts it with backoff. Its exit
-  status says why it stopped: 0 a requested stop; 1 any other error
-  (restart); 2 a usage error; 30 terminal, when a flag, the seed image, the
-  deployment or the settled chain disagrees with the node (do not restart:
-  an operator must act); 40 the data directory was built under another
-  store format, commitment semantics, emulator, consensus or tournament geometry
-  (start a fresh one beside it, as above); 101 a
-  panic (restart with backoff and page, since a loop means a bug or corrupt
-  local state). With systemd, `RestartPreventExitStatus=2 30 40`. An exit by
-  SIGKILL (137) is usually the kernel's out-of-memory killer: size memory for
-  the application's machine plus a dispute's.
+- Run the node under a supervisor that never stops restarting it and waits
+  well under 5 minutes between restarts. Startup exits 1 when an endpoint does
+  not answer, so a node that starts before its RPC (after a reboot) fails
+  fast, and a supervisor that gives up leaves it down while clocks run. With
+  systemd: `Restart=on-failure`, `RestartSec=5s`, `StartLimitIntervalSec=0`
+  in `[Unit]` (the defaults stop the unit for good after five failed starts
+  in 10 seconds), and `RestartPreventExitStatus=2 30 40`. Docker and
+  Kubernetes restart any failure status (unless Kubernetes v1.35+ restart
+  rules filter it), so alert on a last exit of 30 or 40.
+- The exit status says why the node stopped: 0 a requested stop; 1 any other
+  error (restart); 2 a usage error; 30 terminal, when a flag, the seed image,
+  the deployment or the settled chain disagrees with the node (do not
+  restart: an operator must act); 40 the data directory was built under
+  another store format, commitment semantics, emulator, consensus or
+  tournament geometry (start a fresh one beside it, as above); 101 a panic
+  (restart with backoff and page, since a loop means a bug or corrupt local
+  state). A 101 loop at a snapshot-root assert means corrupt local state:
+  rebuild the data directory beside it as for 40, never delete a row or a
+  snapshot directory alone, which a replay would adopt again. A death by
+  signal logs nothing of its own: 137 (SIGKILL) is usually the kernel's
+  out-of-memory killer; 135 (SIGBUS, systemd `status=7/BUS`) means the data
+  directory's filesystem filled while a machine was mapped for writing; 134
+  and 139 are crashes below the panic path, to report with stderr's last
+  lines. Size memory for the application's machine plus a dispute's, plus
+  about three times the input bytes of the densest 10,000 blocks since the
+  deployment, which a catch-up holds at once: an out-of-memory kill there
+  repeats on every restart.
 - Behind a relay, an error that a call has been planned for some minutes
   without landing, naming a last verdict rather than a revert at latest,
   means the relay holds, drops or refuses its sends; the nonce it names is
-  the stuck one ([submit-relay.md](../../docs/runbooks/submit-relay.md) says
+  the stuck one (a nonce that advances each tick instead means the call mines
+  without effect; [submit-relay.md](../../docs/runbooks/submit-relay.md) says
   how to find the held transaction). Until the relay recovers, restart
   without `--blockchain-http-submit-endpoint`, accepting paid reverts on the
   public pool.
@@ -336,7 +355,8 @@ Options:
 - The signer must be a plain account that accepts ETH transfers, not one
   delegated (EIP-7702) to code that refuses or spends a payment: refunds and
   bonds are paid to it within a fixed gas allowance, and a recovery payment it
-  refuses holds the node out of every later epoch.
+  refuses holds the node out of every later epoch and mines one no-op
+  `tryRecoveringBond` per tick until the signer is fixed.
 - A steady-state tick refuses an incomplete log response before committing
   and heals on the next tick. During a cold-start catch-up, a chunk that ends
   before the finalized head is checked for contiguity only, so an input or

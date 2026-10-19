@@ -250,7 +250,8 @@ pub struct PRTArgs {
     #[clap(subcommand)]
     pub signer: SignerArgs,
 
-    /// polling interval in seconds
+    /// polling interval in seconds; a due response can wait one interval
+    /// before the node sees it, out of a 5-minute response window
     #[arg(long, env = "CARTESI_SLING_POLLING_INTERVAL", default_value_t = POLLING_INTERVAL)]
     pub polling_interval: u64,
 
