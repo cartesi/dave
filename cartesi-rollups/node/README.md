@@ -357,6 +357,21 @@ Options:
   how to find the held transaction). Until the relay recovers, restart
   without `--blockchain-http-submit-endpoint`, accepting paid reverts on the
   public pool.
+- The read endpoint is part of the node's trust base: its answers are taken
+  as true and its logs as complete. While it does not answer or stops
+  following the chain, the node cannot act, and after 5 minutes each due
+  response draws on the dispute's censorship budget, a week on Ethereum but
+  hours on a testnet. Give it redundancy outside the node: point
+  `--blockchain-http-endpoint` at a JSON-RPC proxy that fails over between
+  two or more independent upstreams and stops routing to one that lags,
+  ideally one of them an execution and consensus client you run. A plain
+  HTTP balancer covers a dead upstream, not a lagging one. Each upstream
+  must serve the node's chain (the startup check sees only the one that
+  answers it), answer a request for a block it does not have with an error,
+  not a short result, and not be served `latest` or `finalized` from a stale
+  cache. Prefer upstreams other validators of the application do not use:
+  honest nodes behind one provider stop together. Keep
+  `--blockchain-http-submit-endpoint` out of the proxy.
 - Alert on every ERROR line, on restart loops, on free space on the data
   directory's filesystem (the node refuses an open epoch's batch below 1
   GiB, leaving that space to a sealed epoch and its dispute), and on the
