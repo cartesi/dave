@@ -273,6 +273,11 @@ impl AddressBook {
     }
 }
 
+/// How old the finalized block may grow before the reader pages. Ethereum
+/// finalizes 13 to 19 minutes behind its head, so an hour is an incident,
+/// not lag; OP Stack chains, experimental here, may lag longer.
+const FINALITY_PAGE: Duration = Duration::from_secs(60 * 60);
+
 /// Finalized blocks ingested and committed per tick: the in-memory bound on
 /// a cold start or a long downtime, and about the `eth_getLogs` range many
 /// providers already cap, so chunking adds few calls.
@@ -350,18 +355,34 @@ impl BlockchainReader {
             // an old head, so nothing else fails: the Hero waits on turns
             // already taken while clocks run. It is outside the trust model,
             // so it is only reported.
-            if caught_up
-                && watch_head_age
-                && let Ok(age) = chain.latest_age().await
-                && age >= PAGE_AFTER
-            {
-                log::error!(
-                    "the read endpoint's latest block is {} min old: it is not following the \
-                     chain (or this host's clock is ahead), so the node sees no new blocks \
-                     while dispute clocks run; point --blockchain-http-endpoint at a synced \
-                     provider",
-                    age.as_secs() / 60
-                );
+            if caught_up && watch_head_age {
+                match chain.latest_age().await {
+                    Ok(age) if age >= PAGE_AFTER => log::error!(
+                        "the read endpoint's latest block is {} min old: it is not following \
+                         the chain (or this host's clock is ahead), so the node sees no new \
+                         blocks while dispute clocks run; point --blockchain-http-endpoint at a \
+                         synced provider",
+                        age.as_secs() / 60
+                    ),
+                    // Finality is a dependency the node cannot work around:
+                    // reported, never handled (dimensioning.md, one delay
+                    // ledger).
+                    Ok(_) => {
+                        if let Ok(age) = chain.finalized_age().await
+                            && age >= FINALITY_PAGE
+                        {
+                            log::error!(
+                                "the finalized block is {} min old while the chain goes on: \
+                                 ingestion, joins and epoch completion wait for finality, and a \
+                                 late join draws on the dispute's censorship budget; on \
+                                 Ethereum that is a finality incident, otherwise check the \
+                                 endpoint's finalized tag",
+                                age.as_secs() / 60
+                            );
+                        }
+                    }
+                    Err(_) => {}
+                }
             }
 
             // Catch up chunk by chunk without a polling sleep, observing

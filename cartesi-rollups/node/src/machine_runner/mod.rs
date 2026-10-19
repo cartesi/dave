@@ -183,6 +183,12 @@ impl MachineRunner {
     fn advance(&mut self, plan: AdvancePlan) -> Result<bool> {
         assert!(!plan.inputs.is_empty());
         let expected = plan.inputs.len();
+        let started = std::time::Instant::now();
+        let (epoch, from, backlog) = (
+            plan.epoch,
+            plan.boundary_input,
+            plan.input_count - plan.boundary_input - expected as u64,
+        );
         let (mut machine, mut batch) = self.storage.begin_planned_advances(&plan)?;
 
         for input in plan.inputs {
@@ -246,6 +252,16 @@ impl MachineRunner {
         assert_eq!(batch.len(), expected);
         drop(machine);
         self.storage.commit_advances(batch)?;
+        // The runner's throughput, which bounds the inputs it can keep up
+        // with (dimensioning.md, the reference price) and sizes the disk.
+        let elapsed = started.elapsed();
+        log::info!(
+            "published inputs {epoch}:{from}..{} in {:.1} s ({} ms per input); {backlog} more \
+             wait",
+            from + expected as u64,
+            elapsed.as_secs_f64(),
+            elapsed.as_millis() / expected as u128
+        );
         Ok(true)
     }
 }
