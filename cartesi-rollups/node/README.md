@@ -331,11 +331,25 @@ Options:
   well under 5 minutes between restarts. Startup exits 1 when an endpoint does
   not answer, so a node that starts before its RPC (after a reboot) fails
   fast, and a supervisor that gives up leaves it down while clocks run. With
-  systemd: `Restart=on-failure`, `RestartSec=5s`, `StartLimitIntervalSec=0`
-  in `[Unit]` (the defaults stop the unit for good after five failed starts
-  in 10 seconds), and `RestartPreventExitStatus=2 30 40`. Docker and
-  Kubernetes restart any failure status (unless Kubernetes v1.35+ restart
-  rules filter it), so alert on a last exit of 30 or 40.
+  systemd, the start limit belongs in `[Unit]` and the restart policy in
+  `[Service]`; the default start limit stops the unit for good after five
+  failed starts in 10 seconds:
+
+  ```ini
+  [Unit]
+  StartLimitIntervalSec=0
+
+  [Service]
+  Restart=on-failure
+  RestartSec=5s
+  # systemd 254+ backs off to a minute; older versions keep 5s
+  RestartSteps=5
+  RestartMaxDelaySec=60s
+  RestartPreventExitStatus=2 30 40
+  ```
+
+  Docker and Kubernetes restart any failure status (unless Kubernetes v1.35+
+  restart rules filter it), so alert on a last exit of 30 or 40.
 - The exit status says why the node stopped: 0 a requested stop; 1 any other
   error (restart); 2 a usage error; 30 terminal, when a flag, the seed image,
   the deployment or the settled chain disagrees with the node (do not
