@@ -685,8 +685,8 @@ impl DisputeSource<Positioner> {
 
     /// Machines loaded so far, which moves exactly when a build,
     /// recompute or proof ran the machine; not one per build, since
-    /// positioning loads again after crossing inputs or skipping a torn
-    /// snapshot. Cached and frontier-served nodes load none.
+    /// positioning loads again after crossing inputs. Cached and
+    /// frontier-served nodes load none.
     pub fn trips(&self) -> usize {
         self.factory().spawned
     }
@@ -749,7 +749,7 @@ impl RulerFactory for Positioner {
     type S = MachineStf;
 
     fn ruler_at(&mut self, position: U256, hashing: Hashing) -> Result<Ruler<MachineStf>> {
-        let mut target = self.structure.decompose(position).input;
+        let target = self.structure.decompose(position).input;
         let (boundary, stf) = loop {
             let (boundary, path) = self
                 .store
@@ -765,41 +765,39 @@ impl RulerFactory for Positioner {
 
             // Assert-on-load: the emulator validates nothing, so the
             // loaded machine must reproduce its row's hash (nearly
-            // free - committed boundaries carry exact sidecars). A
-            // torn snapshot is skipped, not fatal: any earlier
-            // boundary only lengthens the replay. A later feed still
-            // adopts its directory as a revert checkpoint, which
-            // restore_rejected checks.
+            // free - committed boundaries carry exact sidecars).
+            // Publication verifies before its rename, so a mismatch is
+            // corrupt local state, which stops the node as the runner's
+            // cursor does. Skipping it would heal only sidecar damage at
+            // an accepted input, at the price of full machine stores,
+            // since the write-back would re-adopt the torn directory.
             let expected = self
                 .store
                 .snapshot_hash(self.epoch, boundary.0)?
                 .expect("nearest answered from an existing row");
-            if stf.state_hash()? == Digest::from(expected) {
-                let to = target.min(self.fed_windows);
-                if boundary.0 < to {
-                    drop(stf);
-                    self.cross(boundary.0, expected, to)?;
-                    continue;
-                }
-                break (boundary, stf);
-            }
-            log::error!(
-                "stored boundary {} of epoch {} does not hash to its row: \
-                 torn snapshot? skipping it",
+            assert_eq!(
+                stf.state_hash()?,
+                Digest::from(expected),
+                "stored boundary {} of epoch {} (`{}`) does not hash to its row: corrupt \
+                 local state; rebuild the data directory",
                 boundary.0,
-                self.epoch
+                self.epoch,
+                path.display()
             );
-            ensure!(boundary.0 > 0, "the epoch start snapshot is corrupt");
-            target = boundary.0 - 1;
+            let to = target.min(self.fed_windows);
+            if boundary.0 < to {
+                drop(stf);
+                self.cross(boundary.0, expected, to)?;
+                continue;
+            }
+            break (boundary, stf);
         };
 
         // The seam's one boundary-to-position conversion.
         let at = boundary.position(&self.structure);
         assert!(at <= position, "boundary store answered past the target");
 
-        // Left to cross: padding windows past the inputs, or, when a torn
-        // snapshot lowered the target, the windows above it, whose feeds
-        // commit their boundaries through the store.
+        // Left to cross: padding windows past the inputs.
         let stf = stf.with_write_back(
             Storage::new(self.store.state_dir())?,
             self.epoch,

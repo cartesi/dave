@@ -257,7 +257,7 @@ the local commitment already missed (joins closed before it joined, its clock
 expired, its match or its match's child is eliminable), a won epoch that
 cannot settle, a submission the endpoint rejected (one it did not answer is
 WARN until its call pages), a batch the signer cannot cover, a failure or a
-planned call that persists past G (the paging rule above), a torn snapshot, a
+planned call that persists past G (the paging rule above), a
 worker exit, or a contract answer the node does not know (an unknown bond
 disposition holds the epoch, and with it the next one). WARN
 means the node carries on: the next tick retries, an action is skipped or
@@ -323,15 +323,18 @@ the node panics instead of laundering the invariant violation through the
 polling retry loop. Normal filesystem-first publication cannot create that
 state; it indicates a node bug, external mutation, or an underlying storage
 failure.
-Dispute positioning remains different: an intermediate boundary only shortens
-replay, so an unavailable one may fall back to an earlier verified boundary
-within the epoch.
+Dispute positioning treats a boundary whose loaded root differs from its row
+the same way, as corrupt local state to rebuild: skipping it would heal only
+sidecar damage at an accepted input, at the price of full machine stores,
+since the crossing would re-adopt the torn directory by its name. A boundary
+whose directory vanished is different: positioning falls back to an earlier
+one and the crossing republishes it (below).
 
 Publication adopts an existing content-addressed directory without rehashing
 it. Every directory this process published was root-verified and synced
 before its rename, so a crash-orphaned one is a complete, verified machine;
 the lock excludes another node process, and every load verifies the root
-against its row (the runner stops, dispute positioning skips the boundary).
+against its row (the runner and dispute positioning stop).
 External mutation of the store is unsupported, like manual database mutation.
 
 Schema initialization owns one create-only `storage/sql/schema.sql`; there are
