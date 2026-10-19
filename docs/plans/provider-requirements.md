@@ -78,10 +78,10 @@ plus a standing and a bond read each; around 1,000 live children the reads
 alone take most of `G` before the Hero acts, at 0.1-0.2 s per call.
 
 If reads dominate, the first lever is which reads the next action needs:
-reading only the tournaments on the honest commitment's path would make
-the reads follow the work. A smaller one keeps the full fold: one
-multi-address `eth_getLogs` per generation of live tournaments, as the
-recovery walk already reads (up to 100 addresses per request). Then come the tick's ordering and the read
-concurrency. Failure isolation and
-more retries come last: dispute planning's reads still fail together under
-a per-second cap, but that is worth machinery only once measured.
+reading only the tournaments on the honest commitment's path would make the
+reads follow the work. A smaller one keeps the full fold: one multi-address
+`eth_getLogs` per generation of live tournaments, as the recovery walk already
+reads (up to 100 addresses per request). Then come the tick's ordering and the
+read concurrency. Failure isolation and more retries come last: dispute
+planning's reads still fail together under a per-second cap, but that is worth
+machinery only once measured.

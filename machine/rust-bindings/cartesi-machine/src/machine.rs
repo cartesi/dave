@@ -212,8 +212,8 @@ impl Machine {
     /// either falls back to a sparse-aware copy where unsupported - so
     /// the clone is cheap where the filesystem cooperates. A hard link
     /// past the filesystem's per-file cap (EMLINK: about 65k on ext4 and
-    /// btrfs) is not in the emulator's fallback, so a chain of clones of
-    /// one machine fails there. Refuses an existing destination. Fails while the
+    /// btrfs) is not in the emulator's fallback, so a clone fails once
+    /// about 65k live clones of one machine exist there. Refuses an existing destination. Fails while the
     /// source is loaded with [`SharingMode::All`] (the load holds the
     /// lock); drop that machine first.
     pub fn clone_stored(from_dir: &Path, to_dir: &Path) -> Result<()> {

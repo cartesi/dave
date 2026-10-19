@@ -326,9 +326,9 @@ table, whatever the canonical geometry is ([build-system.md](build-system.md),
 the devnet bundle). Dense two-level leaves do not fit the e2e clock: the
 harness keeps mining a block per poll while the node builds, and with no
 censorship slack on the devnet (`C = 0`) a dense two-level leaf outlasts the
-clock. The Lua sybil also holds every distinct leaf hash it builds (about
-0.8 KB each, about 450 KB per dense big cycle), so such a leaf exceeds its
-memory as well. The scenarios test the node and the transition shapes, not the level
+clock. The Lua sybil also holds every distinct leaf hash it builds (about 0.8
+KB each, about 450 KB per dense big cycle), so such a leaf exceeds its memory
+as well. The scenarios test the node and the transition shapes, not the level
 count; Foundry owns contract correctness, and the node's two-level paths (tall
 leaves, two-level roots) are tested in `engine_machine` and the engine spec.
 The two-level e2e passes recorded on 2026-09-30 were an artifact: the Lua
@@ -339,8 +339,9 @@ scenarios patch at `1 << 44`, an idle leaf.
 
 The smoke list lives in the `smoke` recipe of `test/e2e/rollups/justfile`, and
 CI and local runs share it. It runs serially and past failures, keeps each node
-log in `_smoke/`, prints a results table, exits with the failure count, and
-warns about any scenario file the list omits.
+log in `_smoke/`, fails a passing scenario whose node log holds an ERROR (an
+honest run asks no operator to act), prints a results table, exits with the
+failure count, and warns about any scenario file the list omits.
 
 
 ## Known coverage gaps
@@ -518,4 +519,7 @@ Foundry. Only what needs the node as a process lands here:
    scenario runs on any table.
 3. Add `<program> <name>` to the `smoke` recipe's list in
    `test/e2e/rollups/justfile`; per-PR CI runs that list, and the smoke
-   warns about any scenario file missing from it.
+   warns about any scenario file missing from it. A smoke scenario passes
+   only if the honest node logs no ERROR, which `just e2e` alone does not
+   check, so a scenario where the node must page (a terminal application, an
+   honest loss) does not belong on the list.
