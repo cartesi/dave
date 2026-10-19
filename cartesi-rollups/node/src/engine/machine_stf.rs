@@ -46,10 +46,9 @@ use std::path::{Path, PathBuf};
 /// aspects of the one fused verb. Scratch carries explicit payload
 /// vectors and the directory its checkpoints go to (the storage-less
 /// harnesses: measure, the differential tests). Store is the dispute
-/// path's mode: payloads come from the inputs table and the pre-feed
-/// snapshot commits into the boundary store; positioning has usually
-/// published it already (Positioner::cross), so the commit adopts it,
-/// and the row insert is a cross-regime nondeterminism tripwire.
+/// path's mode: it feeds only the window it was positioned at, its
+/// payload from the inputs table, and the pre-feed snapshot is that
+/// window's stored boundary, the directory positioning loaded.
 /// Advance is the mode of the machine runner and of positioning's
 /// crossed windows: one window, its payload handed in, and the
 /// pre-feed snapshot is the batch's closed checkpoint. It may be
@@ -65,7 +64,8 @@ enum Feeder {
     Store {
         storage: Storage,
         epoch: u64,
-        next_input: u64,
+        window: u64,
+        boundary: PathBuf,
     },
     Advance {
         window: u64,
@@ -250,15 +250,22 @@ impl MachineStf {
         matches!(self.feeder, Feeder::Advance { reverted: true, .. })
     }
 
-    /// Upgrades the feeder into the node's storage: this machine sits
-    /// at `next_input`'s boundary of `epoch`; every window it feeds
-    /// from here reads its payload from the inputs table and commits
-    /// the crossed boundary.
-    pub fn with_write_back(mut self, storage: Storage, epoch: u64, next_input: u64) -> Self {
+    /// The dispute path's feeder: this machine was loaded from
+    /// `boundary`, the stored boundary of `epoch` before input `window`.
+    /// It feeds that window alone, its payload from the inputs table,
+    /// and a rejection reloads `boundary`.
+    fn at_stored_boundary(
+        mut self,
+        storage: Storage,
+        epoch: u64,
+        window: u64,
+        boundary: PathBuf,
+    ) -> Self {
         self.feeder = Feeder::Store {
             storage,
             epoch,
-            next_input,
+            window,
+            boundary,
         };
         self
     }
@@ -375,13 +382,13 @@ impl Stf for MachineStf {
             Feeder::Store {
                 storage,
                 epoch,
-                next_input,
+                window: expected,
+                boundary,
             } => {
                 assert_eq!(
-                    window, *next_input,
-                    "windows feed sequentially from the resume point"
+                    window, *expected,
+                    "the dispute stf feeds only the window it was positioned at"
                 );
-                *next_input += 1;
                 let payload = storage
                     .input(&InputId {
                         epoch_number: *epoch,
@@ -389,13 +396,9 @@ impl Stf for MachineStf {
                     })?
                     .expect("fed windows lie in the ingested contiguous prefix")
                     .data;
-                // The write-back: this boundary joins the store
-                // (stored only where regime 1 has not already), and
-                // the committed directory is the revert point -
-                // never removed here, it is the store's.
-                let dir =
-                    storage.commit_boundary_machine(*epoch, window, &root, &mut self.machine)?;
-                (dir, payload)
+                // Positioning verified the directory against its row, and
+                // nothing ran before this feed.
+                (boundary.clone(), payload)
             }
             Feeder::Advance {
                 window: expected,
@@ -750,7 +753,7 @@ impl RulerFactory for Positioner {
 
     fn ruler_at(&mut self, position: U256, hashing: Hashing) -> Result<Ruler<MachineStf>> {
         let target = self.structure.decompose(position).input;
-        let (boundary, stf) = loop {
+        let (boundary, path, stf) = loop {
             let (boundary, path) = self
                 .store
                 .nearest_boundary_at_or_before(self.epoch, target)?;
@@ -768,9 +771,10 @@ impl RulerFactory for Positioner {
             // free - committed boundaries carry exact sidecars).
             // Publication verifies before its rename, so a mismatch is
             // corrupt local state, which stops the node as the runner's
-            // cursor does. Skipping it would heal only sidecar damage at
-            // an accepted input, at the price of full machine stores,
-            // since the write-back would re-adopt the torn directory.
+            // cursor does. Skipping it would mean feeding the windows
+            // above an earlier boundary, since a crossing re-adopts the
+            // torn directory by its name, and the dispute feeder feeds
+            // only the window it is positioned at.
             let expected = self
                 .store
                 .snapshot_hash(self.epoch, boundary.0)?
@@ -790,7 +794,7 @@ impl RulerFactory for Positioner {
                 self.cross(boundary.0, expected, to)?;
                 continue;
             }
-            break (boundary, stf);
+            break (boundary, path, stf);
         };
 
         // The seam's one boundary-to-position conversion.
@@ -798,10 +802,11 @@ impl RulerFactory for Positioner {
         assert!(at <= position, "boundary store answered past the target");
 
         // Left to cross: padding windows past the inputs.
-        let stf = stf.with_write_back(
+        let stf = stf.at_stored_boundary(
             Storage::new(self.store.state_dir())?,
             self.epoch,
             boundary.0,
+            path,
         );
         let mut ruler = Ruler::new_at(stf, self.structure, self.fed_windows, at);
         ruler.advance(position)?;

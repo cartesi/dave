@@ -352,9 +352,10 @@ polling retry loop. Normal filesystem-first publication cannot create that
 state; it indicates a node bug, external mutation, or an underlying storage
 failure.
 Dispute positioning treats a boundary whose loaded root differs from its row
-the same way, as corrupt local state to rebuild: skipping it would heal only
-sidecar damage at an accepted input, at the price of full machine stores,
-since the crossing would re-adopt the torn directory by its name. A boundary
+the same way, as corrupt local state to rebuild. It cannot skip it: the
+crossing would re-adopt the torn directory by its name, and a dispute ruler
+cannot replay from an earlier boundary instead, since it feeds only the window
+it was positioned at, whose stored boundary is its revert checkpoint. A boundary
 whose directory vanished is different: positioning falls back to an earlier
 one and crosses from there, publishing only the disputed input's boundary.
 

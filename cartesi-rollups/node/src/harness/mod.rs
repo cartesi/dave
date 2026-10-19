@@ -484,7 +484,7 @@ impl World {
     ) -> Result<Adversary> {
         // A private copy of the node's store, as an independent sybil would
         // have: the adversary reads the node's rolled material, but its
-        // event cache, quartet rows and write-backs stay out of the node's
+        // event cache, quartet rows and crossings stay out of the node's
         // store, so the node computes and harvests everything itself. Its
         // snapshots link the node's, which are immutable once published;
         // linked after the copy, so every copied row finds its directory.
