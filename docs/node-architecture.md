@@ -651,7 +651,9 @@ stops at the EIP-7825 cap when the estimate fits under it, so the padding
 never makes an admissible call inadmissible (a fork that lifts the cap leaves
 the clamp conservative, never harmful); estimation failing other than by a
 revert falls back to 15M. A call that already reverts at latest is not sent:
-it costs nothing, and the lane warns with its revert reason. The manager logs
+it costs nothing, and the lane warns with its revert reason: the custom error
+decoded against the consensus, tournament and step bindings by name, or the
+RPC error as is. The manager logs
 an error, with that reason, once the same call (verb, target and calldata)
 has been planned for G, since the node keeps planning a step it cannot take;
 one skip is routine with several honest nodes on one commitment, when another

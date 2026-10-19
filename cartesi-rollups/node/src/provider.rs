@@ -578,8 +578,9 @@ impl TransactionLane {
         match self.read_provider.estimate_gas(probe).latest().await {
             Ok(estimate) => Ok(gas_limit_for(estimate)),
             Err(error) if is_revert(&error) => {
-                warn!("{label} is not sent: it reverts at latest: {error}");
-                Err(error.to_string())
+                let reason = describe_revert(&error);
+                warn!("{label} is not sent: it reverts at latest: {reason}");
+                Err(reason)
             }
             Err(error) => {
                 warn!("{label} gas estimation failed, using {FALLBACK_GAS_LIMIT}: {error}");
@@ -833,6 +834,27 @@ fn is_revert(error: &TransportError) -> bool {
         .is_some_and(|payload| payload.message.to_ascii_lowercase().contains("revert"))
 }
 
+/// A revert as the operator reads it: the custom error named by its
+/// signature in the contracts the node calls, with its raw data for the
+/// arguments, or the RPC error as is. Only bindings text and hex reach the
+/// log, so the contract's bytes stay inert.
+fn describe_revert(error: &TransportError) -> String {
+    use cartesi_dave_contracts::dave_consensus::DaveConsensus::DaveConsensusErrors;
+    use cartesi_prt_contracts::{
+        cartesi_state_transition::CartesiStateTransition::CartesiStateTransitionErrors,
+        tournament::Tournament::TournamentErrors,
+    };
+    let named = error.as_error_resp().and_then(|payload| {
+        let data = payload.as_revert_data()?;
+        let selector: [u8; 4] = data.get(..4)?.try_into().ok()?;
+        let signature = DaveConsensusErrors::signature_by_selector(selector)
+            .or_else(|| TournamentErrors::signature_by_selector(selector))
+            .or_else(|| CartesiStateTransitionErrors::signature_by_selector(selector))?;
+        Some(format!("{}: {signature}, data {data}", payload.message))
+    });
+    named.unwrap_or_else(|| error.to_string())
+}
+
 fn classify_submission_error(error: &TransportError) -> SubmissionErrorKind {
     // A transport error carries no answer; any other error without a payload
     // is an answer that is not a hash (a malformed or null result), from an
@@ -890,6 +912,37 @@ mod tests {
             message: message.into(),
             data: None,
         })
+    }
+
+    /// The overdue ERROR quotes a custom error by name, not as hex.
+    #[test]
+    fn a_revert_names_its_custom_error() {
+        use alloy::sol_types::SolError;
+        use cartesi_dave_contracts::dave_consensus::DaveConsensus::ApplicationForeclosed;
+        let revert = |data: Bytes| -> TransportError {
+            RpcError::ErrorResp(ErrorPayload {
+                code: 3,
+                message: "execution reverted".into(),
+                data: Some(serde_json::value::to_raw_value(&data).unwrap()),
+            })
+        };
+
+        let app = alloy::primitives::Address::repeat_byte(0xa1);
+        let foreclosed = revert(
+            ApplicationForeclosed { appContract: app }
+                .abi_encode()
+                .into(),
+        );
+        let text = describe_revert(&foreclosed);
+        assert!(
+            text.starts_with("execution reverted: ApplicationForeclosed(address), data 0x")
+                && text.to_ascii_lowercase().contains(&"a1".repeat(20)),
+            "{text}"
+        );
+
+        // A selector no binding knows keeps the RPC error as is.
+        let unknown = revert(Bytes::from_static(&[0xde, 0xad, 0xbe, 0xef]));
+        assert_eq!(describe_revert(&unknown), unknown.to_string());
     }
 
     #[test]
