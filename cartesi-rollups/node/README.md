@@ -382,8 +382,8 @@ Options:
   deployment. Size the host for the runner and the dispute together, at least
   two cores, since an adversary can time input load into a dispute.
 - Alert on every ERROR line, on restart loops, on free space on the data
-  directory's filesystem (the node refuses an open epoch's batch below 1
-  GiB, leaving that space to a sealed epoch and its dispute), and on the
+  directory's filesystem (the node refuses a batch below 1 GiB, except the
+  newest sealed epoch's, leaving that space to it and its dispute), and on the
   signer's balance against the funding floor above, which the node checks
   only when a batch is due.
 - Keep `--data-dir` on XFS with `reflink=1` in production (above). An epoch
