@@ -584,7 +584,9 @@ The current `Time` library uses `block.number` as its instant. Deployment code
 converts configured wall-clock durations to block counts using a registered
 average block time, the interval of whatever `block.number` counts on that
 chain. Therefore a wall-clock statement is only valid when the chain's
-`block.number` semantics and the registered conversion agree. Registration is
+`block.number` semantics and the registered conversion agree. On Ethereum a
+missed slot adds no block, so missed slots stretch every budget in wall-clock
+time and a halt of block production freezes every clock. Registration is
 not support: Ethereum is the supported deployment target, and every other
 registered chain is experimental. Refunds price `gasleft` deltas, so on an L2
 the parent-chain data fee is not refunded. Deployed budgets are block counts

@@ -42,18 +42,22 @@ while a cheaper wall stays open.
 One delay ledger. Every delay of the honest node's observation or inclusion
 past an action's `G` draws on the same non-rechargeable `C`, whatever its
 cause, because the contracts cannot tell causes apart: censorship, a finality
-stall, a halted or lagging chain, a provider or relay outage, a restart, and
-the time an operator takes to answer a page. `C` is a week on Ethereum and
-hours on the testnet deployments. The node reports the delays it can see (a
-stale latest or finalized head, a call still overdue after `G`) and works
-around none of them. Nor does it compare its own latency with `G`: a slow poll
-or preparation draws on `C` like any other delay, and each action logs how
-long its preparation took. The operator duties that keep delays short (a
+stall, a provider or relay outage, a restart, and the time an operator takes
+to answer a page. The ledger counts blocks, the contracts' clock: an Ethereum
+halt freezes every clock, while an OP Stack sequencer outage is charged when
+the chain resumes (a lead). `C` is a week of Ethereum blocks and hours on the
+testnet deployments. The node reports the delays it can see (a stale latest
+or finalized head, a call still overdue after `G`) and works around none of
+them. Nor does it compare its own latency with `G`: a slow poll or
+preparation draws on `C` like any other delay, and each action logs how long
+its preparation took. The operator duties that keep delays short (a
 supervisor that never gives up, redundant providers outside the node, someone
-answering pages) are in the node README. Finality is the clearest case: if it
-stops for a week, the dispute is lost whatever the node does. On the OP Stack
-a sequencer outage is charged when the chain resumes, since block numbers
-advance with time there (a lead).
+answering pages) are in the node README. A finality stall while blocks
+continue holds ingestion, joins, refunds and completion, not a joined match's
+responses, which read latest. Past a join's own budget (`T + G` for a child,
+`G` at the root) it draws on `C`, so one that outlasts what remains of `C`
+loses the join: a child its match seals, or a new epoch's root, which also
+waits for the runner to execute the inputs the stall held back.
 
 One reference price. The cheapest loss the model accepts is the
 aggregate-throughput attack (below): inputs that outrun the honest runner.
@@ -424,9 +428,10 @@ on Ethereum.
 The honest node builds a child commitment from the latest view but joins
 only from finalized state, so a join lands about `max(build, finality) +
 inclusion` after the seal. `T + G` covers that while finality stays within
-`T` (13 to 19 minutes on Ethereum today). A finality stall behaves like
-censorship and draws on `C`, as does the root join's one finality delay. A
-chain with slower finality must not reuse Ethereum's `T` without checking it.
+`T` (13 to 19 minutes on Ethereum today). A finality stall while blocks
+continue holds every join the same way, and what it adds past `T` draws on
+`C`, as does the root join's one finality delay; a joined match's responses
+read latest and do not wait for it. A chain with slower finality must not reuse Ethereum's `T` without checking it.
 
 `G` must also cover the honest node's own latency: one polling interval (30
 s by default), the action's preparation (a leaf proof replays the disputed

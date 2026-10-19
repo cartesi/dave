@@ -358,10 +358,11 @@ impl BlockchainReader {
             if caught_up && watch_head_age {
                 match chain.latest_age().await {
                     Ok(age) if age >= PAGE_AFTER => log::error!(
-                        "the read endpoint's latest block is {} min old: it is not following \
-                         the chain (or this host's clock is ahead), so the node sees no new \
-                         blocks while dispute clocks run; point --blockchain-http-endpoint at a \
-                         synced provider",
+                        "the read endpoint's latest block is {} min old: unless the chain \
+                         itself stopped (on Ethereum its dispute clocks stop with it) or this \
+                         host's clock is ahead, the endpoint is not following the chain, so the \
+                         node sees no new blocks while dispute clocks run; point \
+                         --blockchain-http-endpoint at a synced provider",
                         age.as_secs() / 60
                     ),
                     // Finality is a dependency the node cannot work around:
@@ -373,8 +374,9 @@ impl BlockchainReader {
                         {
                             log::error!(
                                 "the finalized block is {} min old while the chain goes on: \
-                                 ingestion, joins and epoch completion wait for finality, and a \
-                                 late join draws on the dispute's censorship budget; on \
+                                 ingestion, joins and epoch completion wait for finality (a \
+                                 joined match's responses do not), and a late join draws on the \
+                                 dispute's censorship budget; on \
                                  Ethereum that is a finality incident, otherwise check the \
                                  endpoint's finalized tag",
                                 age.as_secs() / 60
