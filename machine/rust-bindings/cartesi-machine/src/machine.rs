@@ -210,8 +210,10 @@ impl Machine {
     /// Clones a stored machine directory without loading it: read-only
     /// files hard-link, writable files reflink on CoW filesystems, and
     /// either falls back to a sparse-aware copy where unsupported - so
-    /// the clone is cheap where the filesystem cooperates and correct
-    /// everywhere. Refuses an existing destination. Fails while the
+    /// the clone is cheap where the filesystem cooperates. A hard link
+    /// past the filesystem's per-file cap (EMLINK: about 65k on ext4 and
+    /// btrfs) is not in the emulator's fallback, so a chain of clones of
+    /// one machine fails there. Refuses an existing destination. Fails while the
     /// source is loaded with [`SharingMode::All`] (the load holds the
     /// lock); drop that machine first.
     pub fn clone_stored(from_dir: &Path, to_dir: &Path) -> Result<()> {
