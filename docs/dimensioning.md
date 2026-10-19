@@ -36,33 +36,35 @@ yield length cannot stop it.
 
 ## One delay ledger, one reference price
 
-Two rules keep the model's precision even, so that no guard hardens a door
+Three rules keep the model's precision even, so that no guard hardens a door
 while a cheaper wall stays open.
 
 One delay ledger. Every delay of the honest node's observation or inclusion
-draws on the same non-rechargeable `C`, whatever its cause, because the
-contracts cannot tell causes apart: censorship, a finality stall, a halted or
-lagging chain, a provider or relay outage, a restart, and the time an
-operator takes to answer a page. `C` is a week on Ethereum and hours on the
-testnet deployments. The node reports the delays it can see (a stale latest
-or finalized head, a call still overdue after `G`) and works around none of
-them. Nor does it compare its own latency with `G`: a slow poll, preparation
-or inclusion draws on `C` like any other delay, and each action logs how long
-its preparation took; the operator duties that keep them short (a supervisor that never gives
-up, redundant providers outside the node, someone answering pages) are in the
-node README. Finality is the clearest case: if it stops for a week, the
-dispute is lost whatever the node does. On the OP Stack a sequencer outage is
-charged when the chain resumes, since block numbers advance with time there
-(a lead).
+past an action's `G` draws on the same non-rechargeable `C`, whatever its
+cause, because the contracts cannot tell causes apart: censorship, a finality
+stall, a halted or lagging chain, a provider or relay outage, a restart, and
+the time an operator takes to answer a page. `C` is a week on Ethereum and
+hours on the testnet deployments. The node reports the delays it can see (a
+stale latest or finalized head, a call still overdue after `G`) and works
+around none of them. Nor does it compare its own latency with `G`: a slow poll
+or preparation draws on `C` like any other delay, and each action logs how
+long its preparation took. The operator duties that keep delays short (a
+supervisor that never gives up, redundant providers outside the node, someone
+answering pages) are in the node README. Finality is the clearest case: if it
+stops for a week, the dispute is lost whatever the node does. On the OP Stack
+a sequencer outage is charged when the chain resumes, since block numbers
+advance with time there (a lead).
 
 One reference price. The cheapest loss the model accepts is the
 aggregate-throughput attack (below): inputs that outrun the honest runner.
 The runner pays a fixed overhead per input, accepted or rejected, whatever the
-application does (node-architecture.md, Storage), so a few million inputs in
-one epoch outrun it at the overhead measured on macOS: about 1.3-2.5e11 gas,
-100-2,500 ETH on Ethereum at 1-10 gwei but only 0.1-2.5 ETH on an L2 at
-0.001-0.01 gwei, where input-priced attacks cost about a thousand times less
-and bonds do not. An attack that fills a resource (disk, links, memory,
+application does (node-architecture.md, Storage). At the 0.14-0.2 s measured
+on macOS, a root window of about a week (`C + T + 2G`, less a finality) holds
+3-4.4 million inputs, so an epoch with more outruns the runner: about
+0.9-1.3e11 gas at 30k gas per input batched through a contract, 90-1,300 ETH
+on Ethereum at 1-10 gwei but only 0.09-1.3 ETH on an L2 at 0.001-0.01 gwei,
+where input-priced attacks cost about a thousand times less and bonds do
+not. An attack that fills a resource (disk, links, memory,
 provider quota) for less than that is a wall to close; a guard against one
 that costs more, or that is out of model, is a door not worth its code. The
 figures rest on one machine's overhead and are re-measured on Linux

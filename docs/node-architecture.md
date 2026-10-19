@@ -40,56 +40,55 @@ seeded, it inspects the `--template-path` image (one private load: its root
 hash; its hash function, which must be Keccak-256; its uarch state's hash,
 which must be that pristine uarch hash; the owner write bit on every file a
 runner batch maps for writing, since seeding clones the image keeping file
-modes; and whether it is paused at a manual accepted yield), and the root
-hash alone decides which epoch the image
-starts. The consensus's initial hash makes it the template, starting epoch 0
-with no further read. Otherwise it must be the state the current sealed epoch
-k starts from, `getLastFinalizedMachineMerkleRoot(app)` beside
-`getCurrentSealedEpoch()`, both read by number at a finalized head sampled
-just before, and it starts epoch k. Only that last settled state is accepted:
-an older one would need a log search, and an image stays current for at least
-a root allowance. Any other image is refused with exit 30, naming
-`snapshots/0x<hash>`, where every node working on epoch k keeps the state to
-take; a state settled after the sampled head is refused until its settlement
-finalizes, since the finalized-only reader could not execute its epoch
-anyway. The root hash comes from the image's stored hash tree, which the
-node cannot check against the contents until an emulator release supports
-hash-tree verification (todo.md tracks it), so until then a seed image is
-trusted like the template: take it from a store you trust. A
-matching image paused elsewhere is still refused: the engine starts every
-epoch from a state awaiting input, so the node could not defend any of its
-epochs (for a settled state this cannot happen, since staging requires the
-same yield). Only then does it take the data-directory lock and open the
-directory, which decides again whether it is seeded. A seeded directory is
-compared with its `sling_config` pins (app, chain, consensus, the
-deployment's initial hash, emulator and table) before anything is written.
-The pin holds the deployment's initial hash whatever image seeded the
-directory, so a restart compares pins and never reads `--template-path` or
+modes; and whether it is paused at a manual accepted yield), and the root hash
+alone decides which epoch the image starts. The consensus's initial hash makes
+it the template, starting epoch 0 with no further read. Otherwise it must be
+the state the current sealed epoch k starts from,
+`getLastFinalizedMachineMerkleRoot(app)` beside `getCurrentSealedEpoch()`,
+both read by number at a finalized head sampled just before, and it starts
+epoch k. Only that last settled state is accepted: an older one would need a
+log search, and an image stays current for at least a root allowance. Any
+other image is refused with exit 30, naming `snapshots/0x<hash>`, where every
+node working on epoch k keeps the state to take; a state settled after the
+sampled head is refused until its settlement finalizes, since the
+finalized-only reader could not execute its epoch anyway. The root hash comes
+from the image's stored hash tree, which the node cannot check against the
+contents until an emulator release supports hash-tree verification (todo.md
+tracks it), so until then a seed image is trusted like the template: take it
+from a store you trust. A matching image paused elsewhere is still refused:
+the engine starts every epoch from a state awaiting input, so the node could
+not defend any of its epochs (for a settled state this cannot happen, since
+staging requires the same yield). Only then does it take the data-directory
+lock and open the directory, which decides again whether it is seeded. A
+seeded directory is compared with its `sling_config` pins (app, chain,
+consensus, the deployment's initial hash, emulator and table) before anything
+is written. The pin holds the deployment's initial hash whatever image seeded
+the directory, so a restart compares pins and never reads `--template-path` or
 the moving last settled state, and a moved image or one an emulator upgrade
 can no longer load does not stop it. A mismatch names the flag to fix
-(`--app-address`, `--blockchain-id`), calls the directory another
-deployment's or an old one (the initial hash), or asks for a rebuild
-(consensus, emulator, table). A new directory is seeded in one transaction:
-the initial watermark, the seed epoch's start boundary, the completion cursor
-at that epoch and the pins. So a deployment or flag these checks reject cannot
-create or alter local state. The runner samples each window at the pinned
-root stride. Other operator mistakes (an unknown chain id, an unreadable or
-invalid key, an endpoint on another chain, an address that is not a Dave
-application) are errors that name their flag too, and add no key material;
-no error quotes an endpoint's URL (RPC client, flag parsing). An unknown chain id and an
-endpoint on another chain are terminal (exit 30). Before any read above,
-startup asks each endpoint its chain, once, and one that does not answer
-fails the start (exit 1, which the supervisor retries): the workers build
-their clients without asking again. The
-initial hash comes from epoch 0's `EpochSealed` in the consensus's deployment
-block, which the consensus records as `block.number`: where that is not the log
-block coordinate (Arbitrum reports the parent chain's), the node cannot locate
-genesis and does not start. Table stability is a trust assumption of the
-parameters provider, so before planning any action the Hero checks the
-descriptor of every tournament on its own path against the pinned row for its
-level, and the root tournament's initial hash against the node's epoch-start
-snapshot. Both are invariant violations and panic. Cleanup of other branches
-takes no local commitment and skips these checks.
+(`--app-address`, `--blockchain-id`), calls the directory another deployment's
+or an old one (the initial hash), or asks for a rebuild (consensus, emulator,
+table). A new directory is seeded in one transaction: the initial watermark,
+the seed epoch's start boundary, the completion cursor at that epoch and the
+pins. So a deployment or flag these checks reject cannot create or alter local
+state. The runner samples each window at the pinned root stride. Other
+operator mistakes (an unknown chain id, an unreadable or invalid key, an
+endpoint on another chain, an address that is not a Dave application) are
+errors that name their flag too, and add no key material; no error quotes an
+endpoint's URL (RPC client, flag parsing). An unknown chain id and an endpoint
+on another chain are terminal (exit 30). Before any read above, startup asks
+each endpoint its chain, once, and one that does not answer fails the start
+(exit 1, which the supervisor retries): the workers build their clients
+without asking again. The initial hash comes from epoch 0's `EpochSealed` in
+the consensus's deployment block, which the consensus records as
+`block.number`: where that is not the log block coordinate (Arbitrum reports
+the parent chain's), the node cannot locate genesis and does not start. Table
+stability is a trust assumption of the parameters provider, so before planning
+any action the Hero checks the descriptor of every tournament on its own path
+against the pinned row for its level, and the root tournament's initial hash
+against the node's epoch-start snapshot. Both are invariant violations and
+panic. Cleanup of other branches takes no local commitment and skips these
+checks.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker
@@ -190,20 +189,19 @@ only on a node bug or corrupt local state.
 
 One input-reachable halt is accepted rather than defended. More than 2^24
 inputs in one epoch: the contracts handle it (they never feed the tail) but
-the node panics, and reaching it takes a flood of about 5e11 gas, which
-costs more than the aggregate-throughput loss that comes first
-(dimensioning.md, the reference price); a defect accepted on cost. No input overruns its window:
+the node panics, and reaching it takes a flood of about 5e11 gas, which costs
+more than the aggregate-throughput loss that comes first (dimensioning.md, the
+reference price); a defect accepted on cost. No input overruns its window:
 delivery sets the step's per-input budget of 2^48 - 1 big cycles, so an input
 that exhausts it leaves the app at an overflow fixed point, which the node
 defends, and the engine's window tripwire (`engine/ruler.rs`) fires only on an
-emulator or engine defect. P1 also holds only inside the trust model, and
-a broken trusted assumption may stop every node at once: finalized and
-complete RPC data, and a stable parameters provider (the Hero panics on a level
-that left the pinned table). One failed
-standing read or finalized fold fails the Hero's whole tick, and a failed
-refund scan holds the epoch's completion; an audit of the node's panics and
-retry loops found no data the contracts can produce that fails any of them
-deterministically.
+emulator or engine defect. P1 also holds only inside the trust model, and a
+broken trusted assumption may stop every node at once: finalized and complete
+RPC data, and a stable parameters provider (the Hero panics on a level that
+left the pinned table). One failed standing read or finalized fold fails the
+Hero's whole tick, and a failed refund scan holds the epoch's completion; an
+audit of the node's panics and retry loops found no data the contracts can
+produce that fails any of them deterministically.
 
 Workers retry a failed tick with a warning that carries the whole error chain:
 a transient provider or storage error costs one polling interval. The node
@@ -322,7 +320,8 @@ boundary, which every later action of that dispute resumes from.
 
 Every input, accepted or rejected, pays a fixed overhead on top of the
 application's work: the close, clone and `SHARING_ALL` reload of the
-rotation, about 140-200 ms per input measured on macOS (measurements.md).
+rotation, about 140-200 ms per input measured on macOS
+(measurements/measurements.md).
 It caps the runner near a handful of inputs per second whatever the
 application does, and a crossing costs it once per crossed input. That is
 why the gap stays a fixed input count. A policy that keeps a bounded number
@@ -334,7 +333,8 @@ in-memory forks. Spacing by accumulated work alone fails the same way. The
 gap bounds both clock-path costs it touches, the first crossing below a
 window root and the open tail a seal leaves for the root join, by gap - 1
 inputs of overhead plus work; disk is bounded by the runner's throughput,
-and on XFS the link limit never binds.
+and on XFS the link limit never binds (at a low gap that bound is the
+cheapest wall: dimensioning.md, per-input contract).
 
 The runner's newest registered boundary - its durable cursor - is strict state,
 not a best-effort cache. If its path has vanished or cannot be inspected as a
@@ -348,7 +348,7 @@ the same way, as corrupt local state to rebuild: skipping it would heal only
 sidecar damage at an accepted input, at the price of full machine stores,
 since the crossing would re-adopt the torn directory by its name. A boundary
 whose directory vanished is different: positioning falls back to an earlier
-one and the crossing republishes it (below).
+one and crosses from there, publishing only the disputed input's boundary.
 
 Publication adopts an existing content-addressed directory without rehashing
 it. Every directory this process published was root-verified and synced
@@ -421,9 +421,10 @@ input restores its pre-input root, a terminal machine is a fixed point, the
 delivery at the budget edge or to a halted machine changes the state once and
 leaves it terminal, and mcycle otherwise grows. So a run from `e` to a swept
 row passes through a kept start. A dispute boundary whose directory vanished
-anyway (only external deletion does that) is skipped by positioning and
-republished by the next crossing, unless it vanishes between that lookup and
-the crossing's checkout, which panics. Revisit this if GC may ever sweep rows
+anyway (only external deletion does that) is skipped by positioning, which
+crosses from an earlier one and republishes it only when it is the disputed
+input's boundary, unless it vanishes between that lookup and the crossing's
+checkout, which panics. Revisit this if GC may ever sweep rows
 of a live epoch, or a second publisher thread appears.
 
 The runner loads the epoch's final boundary, its root verified against the
@@ -483,9 +484,10 @@ The node takes one read endpoint and does not fail over between providers.
 Transport redundancy is generic and belongs in a proxy in front of it (node
 README), which the node sees as it sees any load-balanced provider; what
 only the node can do with an endpoint (split ranges, order logs, pin hashes,
-classify pool verdicts) stays here. alloy's fallback layer does not fit: with
-one active transport it never fails over, and with more it sends every read
-to each of them.
+classify pool verdicts) stays here. alloy's fallback layer does not fit: it
+ranks transports by success rate and latency, never by head freshness, so it
+keeps a lagging upstream that still answers, and with several active
+transports it sends every read to each of them.
 
 ## Chain ingestion stance
 

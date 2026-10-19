@@ -171,16 +171,17 @@ rebuilds every engaged level's commitment on the dispute clock.
 Put `--data-dir` on XFS with reflinks (`reflink=1`, the mkfs.xfs default
 since xfsprogs 5.1; check with `xfs_info <mountpoint> | grep reflink=1`), on
 a volume or bind mount, not a container's writable layer or a network
-filesystem. That is the one production filesystem: every accepted input
-clones the stored machine, XFS shares the unchanged extents, and its per-file
+filesystem. That is the one production filesystem: every input clones the
+stored machine, XFS shares the unchanged extents, and its per-file
 link limit is far above any epoch's snapshot count. The startup line names
 the data directory's filesystem, and on Linux the node warns when it is not
 XFS. Elsewhere:
 
 - ext4 has no reflinks, so every clone is a sparse copy: each input pays a
   copy of the machine, and each kept snapshot costs the machine's allocated
-  size. Development and small applications only (many cloud volumes default
-  to it).
+  size. Like btrfs it caps a file at about 65k links, so about 65k live
+  snapshots. Development and small applications only (many cloud volumes
+  default to it).
 - btrfs is for development only: it caps a file at 65,535 links, every kept
   snapshot links the machine's read-only files, and at that count clones
   fail and the node stops computing.
@@ -274,10 +275,11 @@ Options:
   their Sepolia testnets have experimental deployments: the node runs there
   but is not validated, and refunds leave out the L1 data fee. Inputs there
   cost about a thousand times less while bonds do not, so a flood of inputs
-  that outruns the node costs about 0.1-2.5 ETH instead of 100-2,500
-  ([dimensioning.md](../../docs/dimensioning.md), the reference price). On Arbitrum
-  the node stops at startup: contracts there measure clocks in the parent
-  chain's block numbers, while logs and the node's heads use Arbitrum's own.
+  that outruns the node costs about 0.1-1.3 ETH instead of 90-1,300
+  ([dimensioning.md](../../docs/dimensioning.md), the reference price). On
+  Arbitrum the node stops at startup: contracts there measure clocks in the
+  parent chain's block numbers, while logs and the node's heads use Arbitrum's
+  own.
 - A fresh data directory seeded from the template replays every input since
   the application's deployment. To skip that replay, seed it from the
   application's last settled state instead: read its hash with
@@ -376,20 +378,20 @@ Options:
   cache. Prefer upstreams other validators of the application do not use:
   honest nodes behind one provider stop together. Keep
   `--blockchain-http-submit-endpoint` out of the proxy.
-- Every delay the node suffers, whatever its cause (an outage of this host,
-  its provider or its relay, a restart loop, a page nobody answers), draws on
-  the dispute's censorship budget: a week on Ethereum, hours on a testnet
-  deployment. Size the host for the runner and the dispute together, at least
-  two cores, since an adversary can time input load into a dispute.
+- Size the host for the runner and a dispute together, at least two cores,
+  since an adversary can time input load into a dispute. A host outage, a
+  restart loop or an unanswered page draws on the same censorship budget as a
+  provider outage.
 - Alert on every ERROR line, on restart loops, on free space on the data
   directory's filesystem (the node refuses a batch below 1 GiB, except the
   newest sealed epoch's, leaving that space to it and its dispute), and on the
   signer's balance against the funding floor above, which the node checks
   only when a batch is due.
 - Keep `--data-dir` on XFS with `reflink=1` in production (above). An epoch
-  keeps one snapshot per `--snapshot-gap-inputs` accepted inputs until it
-  completes, and about two epochs are live at once, so size the disk for
-  2 x (1 + accepted inputs per epoch / gap) snapshots: a few MB to tens of
+  keeps one snapshot per `--snapshot-gap-inputs` inputs until it completes (a
+  batch with no accepted input shares its predecessor's), and about two
+  epochs are live at once, so size the disk for 2 x (1 + inputs per epoch /
+  gap) snapshots: a few MB to tens of
   MB each with reflinks (the pages the application dirties across one gap),
   up to the whole machine without. The database also keeps every input
   payload since the deployment, so size it for the application's input

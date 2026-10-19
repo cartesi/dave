@@ -513,7 +513,7 @@ impl NodeConfig {
             .filesystem()
             .unwrap_or_else(|e| format!("filesystem unknown: {e}"));
         // Elsewhere every input copies the machine (ext4, the default of
-        // many cloud volumes) or clones hit a link cap (btrfs).
+        // many cloud volumes), or clones hit a link cap (btrfs, ext4).
         if cfg!(target_os = "linux") && filesystem != "xfs" {
             log::warn!(
                 "the data directory is on {filesystem}; production expects XFS with reflink=1 \
