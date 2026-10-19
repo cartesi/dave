@@ -120,6 +120,12 @@ estimation, submission). So a stop can drop a due action's preparation, which
 the restarted node prepares again after its Hero refolds the live tournaments'
 logs.
 
+A restart cannot change what the node does. Every chain-visible action and
+every durable write is a function of finalized chain state, latest-head views
+and the store; state held only in the process gates logging, paging and read
+cost, or is rebuilt by refolding finalized blocks. The harness restart tests
+check this around acceptance and in mid-dispute (`harness/tests.rs`).
+
 ## Failure policy
 
 The Rust node is the only honest dispute client; the Lua player is an e2e
@@ -138,7 +144,10 @@ safety, not hygiene:
   the clocks depend on there is no safe way to fail, since holding a dispute
   step is the stall. Holding is safe only off the clock path: a won root whose
   final state cannot settle is held with an error log (epoch-lifecycle.md,
-  the terminal application).
+  the terminal application). For the same reason no operator flag chooses
+  the read block, disables a check, or bounds execution below the deployed
+  budget: each would reject what the contracts or the application can
+  produce, so such a need is a code change.
 - P2. Spend distrust where a lie would be silent, not where it would fail
   loudly. Ingestion checks every input's index, and its totals against the
   chain's at the finalized head, because a dropped log would silently shift
@@ -157,7 +166,7 @@ safety, not hygiene:
   a terminal application panicked every node at the roll, which would have
   let a fabricated claim win uncontested.
 
-Apart from the two accepted halts and the trust model below, chain data
+Apart from the accepted halt and the trust model below, chain data
 reaches no panic on the dispute path. Once a wrong epoch has settled, the Hero
 stops the node (exit 30) on a root that starts from a state it did not
 compute, an already-defeated protocol; it reaches that root only after the
@@ -179,13 +188,14 @@ The settle asserts compare the local result with one block's views after the
 node's own win (epoch-lifecycle.md, settlement invariant), so they too fire
 only on a node bug or corrupt local state.
 
-Two input-reachable halts are accepted rather than defended. More than 2^24
+One input-reachable halt is accepted rather than defended. More than 2^24
 inputs in one epoch: the contracts handle it (they never feed the tail) but
 the node panics, and reaching it takes a flood of about 5e11 gas
-(dimensioning.md); a defect accepted on cost. An input whose computation
-overruns its window: the engine panics rather than invent a transition shape
-(`engine/ruler.rs`); the trusted application and the per-input compute
-contract keep it out of model. P1 also holds only inside the trust model, and
+(dimensioning.md); a defect accepted on cost. No input overruns its window:
+delivery sets the step's per-input budget of 2^48 - 1 big cycles, so an input
+that exhausts it leaves the app at an overflow fixed point, which the node
+defends, and the engine's window tripwire (`engine/ruler.rs`) fires only on an
+emulator or engine defect. P1 also holds only inside the trust model, and
 a broken trusted assumption may stop every node at once: finalized and
 complete RPC data, and a stable parameters provider (the Hero panics on a level
 that left the pinned table). One failed
@@ -366,7 +376,9 @@ collection removes rows.
 `sql/discipline.rs` pins where in-place writes and deletes may appear.
 GC releases boundary rows and, in the same transaction, finds the states no
 remaining row names; their directories are removed only AFTER that
-transaction commits: a crash may orphan a directory, never dangle a row.
+transaction commits: a crash may orphan a directory, never dangle a row. An
+orphan that no later identical publication re-adopts stays until the data
+directory is rebuilt.
 
 The manager drops an epoch's Hero before recording completion. The runner
 collects released snapshots and dispute rows while planning its next batch,
@@ -548,8 +560,9 @@ another fork fails whenever `H` itself holds a tournament log. Ancestry below
 `H` is not proven, by decision: walking parent hashes would cost one header
 read per tail block, and a mixed tail is only a stale observation. A reorg or
 mixed tail may reject the working tree, delay one action, or propose a stale
-mutation. Contract mutators revalidate every transition, the lane skips a call
-that reverts at estimation, and the next tick starts again from Solid.
+mutation. Every stale call either reverts, and the lane skips it at
+estimation, or is still this commitment's correct move, except a join (below);
+the next tick starts again from Solid.
 Oversized ranges use the same binary range partitioning as other log
 ingestion.
 
@@ -582,7 +595,13 @@ already contains the local commitment or no longer permits a join, no join is
 sent. When it proposes a join, the node rebuilds that context from Solid and
 submits only if Solid independently proposes the same join. The commitment,
 opening proof, bond read, and target therefore come from finalized inputs and
-state; deadline-sensitive responses continue to use Foam.
+state; deadline-sensitive responses continue to use Foam. The contracts accept
+a join over any commitment with a valid final-leaf proof, never checking which
+computation it encodes, so a join is the one stale call that would lock a bond
+behind a claim the node no longer defends. Finalized joins are what let the
+lane leave an obsolete pending transaction to be mined or outbid rather than
+cancel it; a join from Foam would need a cancel or rejoin path and a second
+bond.
 
 ## Mutation scheduling and transaction submission
 
@@ -657,7 +676,11 @@ one skip is routine with several honest nodes on one commitment, when another
 node's copy of the step mines between this node's read and its estimate. The
 node harness fails on any honest skip. Already-known transactions, underpriced
 replacements, stale nonces and sends the endpoint did not answer are ordinary
-retry states; every later tick rebuilds intent from fresh observation. The
+retry states; every later tick rebuilds intent from fresh observation. A
+re-signed pending slot repeats its bytes only while the fee quote repeats, so
+on a live chain the pool usually answers replacement underpriced rather than
+already known, and a signer with a random ECDSA nonce (KMS) changes only that
+verdict. The
 mempool or a separately configured revert-protecting endpoint arbitrates
 races and duplicates. The lane observes no receipts, so a call that passes
 its estimate and loses a race before inclusion is paid for. Every contested

@@ -525,8 +525,9 @@ pub(super) fn release_boundaries_in(tx: &Transaction, max_epoch: u64) -> Result<
 }
 
 /// Best-effort, strictly after the commit that unreferenced the rows:
-/// a failure leaves an orphan directory (harmless, re-adopted by a
-/// later identical store), never a row pointing at nothing.
+/// a failure leaves an orphan directory, never a row pointing at
+/// nothing. A collected epoch's state never recurs, so the orphan stays
+/// until the data directory is rebuilt; it costs disk only.
 pub(super) fn remove_orphan_dirs(state_dir: &Path, hashes: &[Hash]) {
     for path in hashes.iter().map(|hash| snapshot_path(state_dir, hash)) {
         if let Err(e) = std::fs::remove_dir_all(&path)

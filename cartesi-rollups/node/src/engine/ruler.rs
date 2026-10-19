@@ -27,13 +27,16 @@
 //!   idle span and replays it for the whole region.
 //!
 //! Invariant, with a tripwire: an input's computation never crosses its
-//! window boundary. The spans (a, b, c) are deliberate overestimates -
-//! more inputs than any sane epoch holds (2^24 takes a flood of roughly
-//! 5e11 gas, out of model; see dimensioning.md) and far more big cycles
-//! than gas-bounded input processing can consume - so a machine still
-//! running at a window start means a broken machine or broken
-//! assumptions, and the engine panics rather than inventing a transition
-//! shape for it.
+//! window boundary. Delivery gives each input a budget of 2^48 - 1 big
+//! cycles (send_cmio_response sets imcyclemax, where the emulator, the
+//! uarch and the step all stop), and a window spans 2^48 big cycles, so
+//! the window's last big cycle always starts at a fixed point: the
+//! emulator's invariant for the real machine, the script's for a test
+//! Stf. A machine still running at a window start therefore means an
+//! emulator or engine defect, and the engine panics rather than
+//! inventing a transition shape for it. No input reaches it: one that
+//! exhausts its budget leaves the app at an overflow fixed point, which
+//! the node defends.
 
 use super::dispute::fold_runs;
 use super::stf::Stf;
