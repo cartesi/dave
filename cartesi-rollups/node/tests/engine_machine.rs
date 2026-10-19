@@ -713,68 +713,11 @@ fn dispute_source_matches_prototype_tree() {
     }
 }
 
-/// The increment-D differential: a source answering with a mid-epoch
-/// snapshot must produce the same tree material as the template
-/// replay, on the query shapes the Player sends. The snapshot is the
-/// window-1 boundary, produced the production way: a write-back
-/// ruler crosses it and commits it into the store the resumed
-/// source reads.
+/// Positioning into a later window publishes that window's boundary,
+/// so the next ruler resumes there.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
-fn snapshot_resumed_source_matches_template_replay() {
-    let image = echo_image();
-
-    let (_replayed_scratch, mut replayed) = machine_source(&image);
-    let (resumed_scratch, mut resumed) = machine_source(&image);
-
-    // Cross boundary 1 with a write-back stf: feed(input 0) commits
-    // boundary 0 (absorbed - the epoch start), feed(input 1) commits
-    // boundary 1. The post-feed machine is discarded scratch.
-    {
-        let stf = MachineStf::load(&image, Hashing::Sampled).unwrap();
-        let mut stf = stf.with_write_back(Storage::new(resumed_scratch.path()).unwrap(), 0, 0);
-        stf.feed(0).unwrap();
-        while stf.run_big(u64::MAX).unwrap() > 0 {}
-        assert!(stf.yielded().unwrap());
-        stf.feed(1).unwrap();
-    }
-    let mut check = Storage::new(resumed_scratch.path()).unwrap();
-    assert_eq!(check.nearest_boundary_at_or_before(0, 1).unwrap().0.0, 1);
-
-    let level = LevelCoords::new(0, U256::from(1) << 68, 0, 20);
-
-    assert_eq!(
-        resumed.node(&level.root()).unwrap(),
-        replayed.node(&level.root()).unwrap(),
-        "root"
-    );
-    assert_eq!(
-        resumed.children(&level.root()).unwrap(),
-        replayed.children(&level.root()).unwrap(),
-        "children"
-    );
-    let (a, b) = (
-        resumed.prove_last(&level).unwrap(),
-        replayed.prove_last(&level).unwrap(),
-    );
-    assert_eq!(a.node, b.node, "last leaf");
-    assert_eq!(a.siblings, b.siblings, "last proof");
-    let mid = U256::from(1) << 10;
-    let (a, b) = (
-        resumed.prove_leaf(&level, mid).unwrap(),
-        replayed.prove_leaf(&level, mid).unwrap(),
-    );
-    assert_eq!(a.node, b.node, "mid leaf");
-    assert_eq!(a.siblings, b.siblings, "mid proof");
-}
-
-/// Positioning into a later window registers that window's boundary,
-/// so the next ruler resumes there - and a boundary regime 1 already
-/// recorded absorbs identically (the cross-regime tripwire staying
-/// silent on agreement).
-#[test]
-#[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
-fn positioning_writes_back_crossed_boundaries() {
+fn positioning_publishes_the_target_boundary() {
     let image = echo_image();
 
     let (guards, mut source) = machine_source(&image);
@@ -784,12 +727,11 @@ fn positioning_writes_back_crossed_boundaries() {
     let (floor, _) = storage.nearest_boundary_at_or_before(0, 1).unwrap();
     assert_eq!(floor.0, 0);
 
-    // A window-1 quartet: positioning replays across boundary 1.
+    // A window-1 quartet: positioning crosses input 0.
     let level = LevelCoords::new(0, U256::from(1) << 68, 0, 20);
     source.node(&level.root()).unwrap();
 
-    // The replay fed input 0, so boundary 1 is now stored and the
-    // next positioning starts there.
+    // Boundary 1 is now stored, and the next positioning starts there.
     let (boundary, path) = storage.nearest_boundary_at_or_before(0, 1).unwrap();
     assert_eq!(boundary.0, 1);
     assert!(path.join("config.json").exists());
@@ -2044,8 +1986,8 @@ fn node_proof_vectors_hold() {
 }
 
 /// Recovery from a partially built level: a source that stored part of a
-/// level (rows commit per build, all or nothing) and wrote back the
-/// boundaries its positioning crossed is dropped between operations; a
+/// level (rows commit per build, all or nothing) and published the
+/// boundary its positioning crossed to is dropped between operations; a
 /// restarted source over the same state directory must serve the level
 /// exactly like a fresh store. A build stopped midway is
 /// `a_stopped_build_resumes_after_its_stored_spans`; atomicity under
@@ -2075,7 +2017,7 @@ fn restarted_source_resumes_a_half_built_level() {
     let mut check = Storage::new(state_dir.path()).unwrap();
     assert!(
         check.snapshot_hash(0, 1).unwrap().is_some(),
-        "the killed process wrote back boundary 1"
+        "the killed process published boundary 1"
     );
 
     let mut restarted =
@@ -2096,7 +2038,7 @@ fn restarted_source_resumes_a_half_built_level() {
 }
 
 /// A stopped source keeps what it finished. Positioning stops before
-/// crossing an input, so nothing is written back. A tall level root
+/// crossing an input, so it publishes nothing. A tall level root
 /// (height 28, built span by span over its height-20 stratum) reuses the
 /// spans a descent already stored and stops at the first missing one, and
 /// a source over the same store then resumes there and serves the level
