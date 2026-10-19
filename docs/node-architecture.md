@@ -190,8 +190,9 @@ only on a node bug or corrupt local state.
 
 One input-reachable halt is accepted rather than defended. More than 2^24
 inputs in one epoch: the contracts handle it (they never feed the tail) but
-the node panics, and reaching it takes a flood of about 5e11 gas
-(dimensioning.md); a defect accepted on cost. No input overruns its window:
+the node panics, and reaching it takes a flood of about 5e11 gas, which
+costs more than the aggregate-throughput loss that comes first
+(dimensioning.md, the reference price); a defect accepted on cost. No input overruns its window:
 delivery sets the step's per-input budget of 2^48 - 1 big cycles, so an input
 that exhausts it leaves the app at an overflow fixed point, which the node
 defends, and the engine's window tripwire (`engine/ruler.rs`) fires only on an
@@ -222,7 +223,10 @@ stops following the chain fails nothing (it answers consistently with its old
 head), so the reader also logs ERROR on
 every tick whose latest block is older than G (not on anvil's chain, which
 mines only with a transaction); a stalled provider is outside the trust
-model, so it is reported, not worked around. An ingestion check
+model, so it is reported, not worked around. While latest is fresh, it also
+logs ERROR when the finalized block is more than an hour old: ingestion,
+joins and completion wait for finality, which the node cannot work around
+either (dimensioning.md, one delay ledger). An ingestion check
 that keeps failing means the provider keeps
 omitting logs (point the node at a complete one), or a stored chunk lacks
 one: its page names both remedies. That is the one stall a retry never heals:

@@ -34,6 +34,48 @@ deployed step's pristine uarch (docs/computation-hash.md). The node reads a
 yield as the step does, from the HTIF header alone, so a guest's malformed
 yield length cannot stop it.
 
+## One delay ledger, one reference price
+
+Two rules keep the model's precision even, so that no guard hardens a door
+while a cheaper wall stays open.
+
+One delay ledger. Every delay of the honest node's observation or inclusion
+draws on the same non-rechargeable `C`, whatever its cause, because the
+contracts cannot tell causes apart: censorship, a finality stall, a halted or
+lagging chain, a provider or relay outage, a restart, and the time an
+operator takes to answer a page. `C` is a week on Ethereum and hours on the
+testnet deployments. The node reports the delays it can see (a stale latest
+or finalized head, a call still overdue after `G`) and works around none of
+them. Nor does it compare its own latency with `G`: a slow poll, preparation
+or inclusion draws on `C` like any other delay, and each action logs how long
+its preparation took; the operator duties that keep them short (a supervisor that never gives
+up, redundant providers outside the node, someone answering pages) are in the
+node README. Finality is the clearest case: if it stops for a week, the
+dispute is lost whatever the node does. On the OP Stack a sequencer outage is
+charged when the chain resumes, since block numbers advance with time there
+(a lead).
+
+One reference price. The cheapest loss the model accepts is the
+aggregate-throughput attack (below): inputs that outrun the honest runner.
+The runner pays a fixed overhead per input, accepted or rejected, whatever the
+application does (node-architecture.md, Storage), so a few million inputs in
+one epoch outrun it at the overhead measured on macOS: about 1.3-2.5e11 gas,
+100-2,500 ETH on Ethereum at 1-10 gwei but only 0.1-2.5 ETH on an L2 at
+0.001-0.01 gwei, where input-priced attacks cost about a thousand times less
+and bonds do not. An attack that fills a resource (disk, links, memory,
+provider quota) for less than that is a wall to close; a guard against one
+that costs more, or that is out of model, is a door not worth its code. The
+figures rest on one machine's overhead and are re-measured on Linux
+(todo.md).
+
+Evenly distributed effort. The trusted application's work arrives spread over
+the epoch enough for the runner to keep up: one input that runs for days at
+the end of a quiet week breaks the root build, and the per-input contract
+(below) excludes it. Inside a leaf the average-density clause of the rule
+plays the same role. The adversary also chooses when, so it can concentrate
+contract-respecting load into a leaf build or a response: hardware is sized
+for the runner and the Hero together, not for an idle host.
+
 ## The rule
 
 Coordinates are dimensioned to the worst case. Clocks are dimensioned
@@ -54,7 +96,9 @@ to the average case.
   The input span differs in kind: no single legitimate event exceeds
   it, only a flood of roughly 5e11 gas of inputs in one epoch. Past
   it the contracts never feed the tail, and the Rust node panics
-  instead. It is an economic bound, kept out of model.
+  instead. It is an economic bound only on Ethereum (500-5,000 ETH at
+  1-10 gwei; 0.5-5 ETH on a cheap L2), and the reference price binds
+  first: the runner falls behind long before the span.
 - Clocks (the commitment budget `T`, responseBudget, the root
   slowdown budget, and the strides derived from them): these price
   aggregates - sums of per-step costs over whole gaps. Rare heavy
@@ -104,7 +148,7 @@ adversary will find it.
 |---|---|---|---|
 | uarch span (2^20 usteps)  | single event | any - honest code hits it | worst case |
 | barch span per input (2^48) | single event | app + input | worst case |
-| input span per epoch (2^24) | input flood | anyone, at roughly 5e11 gas per epoch | out of model (economic) |
+| input span per epoch (2^24) | input flood | anyone, at roughly 5e11 gas per epoch | beyond the reference price: the throughput loss comes first |
 | leaf-level dense build within the commitment budget | aggregate | trusted app | average density |
 | root slowdown (level-0 sampling overhead) | aggregate | trusted app | average |
 | positioning through an input's prefix | aggregate | trusted app (the per-input compute contract, below) | app profile |
@@ -155,9 +199,12 @@ docs/measurements/node-vs-emulator.md. With `G` halved by the slack to 150 s,
 the contract is near 2^35.3 big cycles per input at a gap of 1
 (150 s / 3.5 ns), and near 2^30.9 at the default gap of 64 (63 replayed
 inputs and one sampled: 150 s / (63 x 1.1 + 3.5) ns), where the prefix
-replay dominates. These are estimates on one workload; a re-measurement on
-validator-grade hardware confirms or replaces them. Heavy applications lower
-the gap.
+replay dominates. Each replayed input also pays the node's fixed overhead
+(about 0.14-0.2 s on macOS), about 9-13 s of the 150 s at the default gap,
+and that overhead alone caps any gap near `G / (2 x overhead)`. The gap also
+bounds the open tail a seal leaves unexecuted, which the root join waits for.
+These are estimates on one workload; a re-measurement on validator-grade
+hardware confirms or replaces them. Heavy applications lower the gap.
 
 An overrun is charged to the honest clock beyond `G` and draws on `C`: it
 spends censorship tolerance before it loses a dispute. Past the contract, as
@@ -181,10 +228,14 @@ window, any input stream the chain can deliver in one epoch, with margin for
 the node's catch-up after a burst. An app meets it the way it meets the
 per-input contract, by design: it meters effort per input and prices it,
 with prices that rise as the epoch's effort is consumed, so that underpriced
-inputs are dismissed cheaply. In practice inputs execute nearly instantly and
-the contract is slack; it binds only for an app whose inputs can each reach
-the per-input bound. The trigger, sealing with no input cap or minimum
-notice, belongs to DaveConsensus and is priced in that campaign.
+inputs are dismissed cheaply. Inputs that execute nearly instantly do not make
+it slack: the node pays its fixed per-input overhead on every input, accepted
+or rejected, so the runner tops out near a handful of inputs per second
+whatever the application does, and an app's pricing can dismiss an input but
+not that overhead. The contract therefore binds for every application, at the
+reference price above. The trigger, sealing with no input cap or minimum
+notice, belongs to DaveConsensus and is priced in that campaign; a smaller
+per-input overhead is the node's lever.
 
 ## Base-layer censorship model
 
