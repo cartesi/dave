@@ -272,7 +272,10 @@ Options:
   endpoint: without them it stops at startup with an error saying so.
 - Supported chains are Ethereum mainnet and Sepolia. OP Mainnet, Base and
   their Sepolia testnets have experimental deployments: the node runs there
-  but is not validated, and refunds leave out the L1 data fee. On Arbitrum
+  but is not validated, and refunds leave out the L1 data fee. Inputs there
+  cost about a thousand times less while bonds do not, so a flood of inputs
+  that outruns the node costs about 0.1-2.5 ETH instead of 100-2,500
+  ([dimensioning.md](../../docs/dimensioning.md), the reference price). On Arbitrum
   the node stops at startup: contracts there measure clocks in the parent
   chain's block numbers, while logs and the node's heads use Arbitrum's own.
 - A fresh data directory seeded from the template replays every input since
@@ -373,6 +376,11 @@ Options:
   cache. Prefer upstreams other validators of the application do not use:
   honest nodes behind one provider stop together. Keep
   `--blockchain-http-submit-endpoint` out of the proxy.
+- Every delay the node suffers, whatever its cause (an outage of this host,
+  its provider or its relay, a restart loop, a page nobody answers), draws on
+  the dispute's censorship budget: a week on Ethereum, hours on a testnet
+  deployment. Size the host for the runner and the dispute together, at least
+  two cores, since an adversary can time input load into a dispute.
 - Alert on every ERROR line, on restart loops, on free space on the data
   directory's filesystem (the node refuses an open epoch's batch below 1
   GiB, leaving that space to a sealed epoch and its dispute), and on the

@@ -152,8 +152,5 @@ carry no backlog (reviews/README.md).
   staging and sentries, and the branch is kept for its `ITask` genericity.
 - Open: the external audit's scope, firm and date, and whether R19 gates it
   (plans/audit-readiness.md).
-- Open: whether the node compares its own latency with `G`: it drops
-  `responseBudget` at startup, so a poll, preparation or inclusion that
-  outgrows `G` draws on `C` silently. (dimensioning.md)
 - Open: a `--version` flag; the startup line, which names the release tag,
   stands in for it. (node README, operator notes)
