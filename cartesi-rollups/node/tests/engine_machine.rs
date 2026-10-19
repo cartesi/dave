@@ -1614,15 +1614,14 @@ fn positioning_crosses_windows_on_clones() {
     assert_eq!(staging_leftovers(state_dir.path()), Vec::<String>::new());
 }
 
-/// A torn snapshot the fallback skips must not come back as a revert
-/// checkpoint: the feed that crosses it adopts its content-addressed
-/// directory, so the rejection's reload checks the root and fails
-/// loudly instead of serving a wrong post-state. Echo at gap 2 keeps
-/// boundaries 0, 2 and 4, and rejects input 2.
+/// A torn dispute boundary is corrupt local state and stops the node,
+/// as a torn runner cursor does, instead of serving a wrong post-state.
+/// Echo at gap 2 keeps boundaries 0, 2 and 4; the target sits in window 3,
+/// so positioning loads boundary 2.
 #[test]
 #[ignore = "requires verified echo and yield machine images; run `just test-engine-machine`"]
-#[should_panic(expected = "does not hash to the input's revert root")]
-fn a_torn_revert_checkpoint_fails_loudly() {
+#[should_panic(expected = "does not hash to its row: corrupt local state")]
+fn a_torn_dispute_boundary_stops_the_node() {
     let image = echo_image();
     let inputs = encode_inputs(&[&b"zero"[..], b"one", b"two", b"three"]);
     let state_dir = run_sealed_epoch(&image, inputs, &three_level(), 2);

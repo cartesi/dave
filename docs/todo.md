@@ -149,10 +149,6 @@ carry no backlog (reviews/README.md).
   staging and sentries, and the branch is kept for its `ITask` genericity.
 - Open: the external audit's scope, firm and date, and whether R19 gates it
   (plans/audit-readiness.md).
-- Open: a torn snapshot's fallback crosses the windows above it through the
-  store's write-back, up to snapshot gap - 1 full machine stores: stop on a
-  torn boundary as corrupt local state instead, or keep the fallback and
-  document its disk bound. (node-architecture.md, Storage)
 - Open: whether the node compares its own latency with `G`: it drops
   `responseBudget` at startup, so a poll, preparation or inclusion that
   outgrows `G` draws on `C` silently. (dimensioning.md)
