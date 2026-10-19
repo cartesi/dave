@@ -346,9 +346,10 @@ Options:
   directory's filesystem filled while a machine was mapped for writing; 134
   and 139 are crashes below the panic path, to report with stderr's last
   lines. Size memory for the application's machine plus a dispute's, plus
-  about three times the input bytes of the densest 10,000 blocks since the
-  deployment, which a catch-up holds at once: an out-of-memory kill there
-  repeats on every restart.
+  about 250 bytes per input of the epoch, which the root composition holds
+  at the roll and in a root dispute, plus about three times the input bytes
+  of the densest 10,000 blocks since the deployment, which a catch-up holds
+  at once: an out-of-memory kill there repeats on every restart.
 - Behind a relay, an error that a call has been planned for some minutes
   without landing, naming a last verdict rather than a revert at latest,
   means the relay holds, drops or refuses its sends; the nonce it names is
