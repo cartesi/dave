@@ -17,11 +17,16 @@ carry no backlog (reviews/README.md).
   no priority), and count one re-preparation of a leaf proof still pending
   at the next tick in the fallback latency. Measure on Linux XFS on a cloud
   volume, since every figure so far is APFS and a Linux clone writes back
-  the source's dirty pages first: the per-input overhead (close, clone,
-  `SHARING_ALL` reload; about 140-200 ms on macOS, where the reload alone is
-  20 times a template load, unexplained), the runner's sustained inputs per
-  second, and the disk per snapshot at the default gap. The default gap and
-  the aggregate-throughput price follow from them.
+  the source's dirty pages first: the per-input overhead (about 150 ms on
+  macOS, nearly all the cold hash-tree cache read; time it on local NVMe and
+  on the cloud volume at baseline provisioning, with and without a
+  sequential read of the clone's `hash_tree.phtc` before the reload, a
+  15-line node workaround that measured about 25 ms per input on macOS), the
+  clone's latency and bytes written per input with a dirty source, the
+  runner's sustained inputs per second for accepted, rejected and alternating
+  inputs (a fixture that rejects by payload), and the disk per snapshot at
+  the default gap. The default gap, the aggregate-throughput price, and
+  whether the node takes the workaround follow from them.
   (measurements/constants.md, dimensioning.md)
 - Price input volume against the root window in the DaveConsensus campaign:
   sealing takes every input before the acceptance block with no cap or
@@ -62,6 +67,10 @@ carry no backlog (reviews/README.md).
   assert for a non-pristine uarch; and a CLI that delivers to a halted
   template with an input yield pending, as the step does (a lead).
   (computation-hash.md)
+- Ask for a load whose cost does not depend on the page-cache state of the
+  hash-tree cache file: on a fresh clone it walks the 50 MB file one
+  dependent page at a time, about 130 ms on APFS against 2 ms warm, and that
+  is most of the node's per-input overhead. (node-architecture.md, Storage)
 - Ask for EMLINK in `os::clone_file`'s copy fallback, low priority: a clone
   hard-links every read-only file (each snapshot's PMA file), so on btrfs and
   ext4 live snapshots stop at about 65k links per inode, and the runner and

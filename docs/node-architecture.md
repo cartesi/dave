@@ -321,7 +321,11 @@ boundary, which every later action of that dispute resumes from.
 Every input, accepted or rejected, pays a fixed overhead on top of the
 application's work: the close, clone and `SHARING_ALL` reload of the
 rotation, about 140-200 ms per input measured on macOS
-(measurements/measurements.md).
+(measurements/measurements.md). Nearly all of it is the reload reading the
+clone's 50 MB page hash-tree cache (`hash_tree.phtc`): the emulator walks it
+one dependent page at a time, and a fresh clone is a new inode with nothing
+in the page cache, so a warm reload of the same directory takes about 2 ms
+whatever the sharing mode (an upstream ask, todo.md).
 It caps the runner near a handful of inputs per second whatever the
 application does, and a crossing costs it once per crossed input. That is
 why the gap stays a fixed input count. A policy that keeps a bounded number
