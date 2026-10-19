@@ -55,14 +55,11 @@ use crate::sync::{ShutdownSignal, StopSignals};
 /// shutdown was requested has stopped unexpectedly: silence is a
 /// failure, not a success.
 pub async fn run(config: NodeConfig) -> Result<()> {
-    // Listening first, so a stop during the sweep or the spawns is caught
-    // rather than taking the signal's default action.
+    // Listening first, so a stop during the spawns is caught rather than
+    // taking the signal's default action. Storage::initialize already
+    // swept the staging leftovers a crash left behind.
     let mut stop_signals = StopSignals::listen().context("failed to listen for stop signals")?;
     let shutdown = ShutdownSignal::default();
-
-    // Startup hygiene, before any worker spawns: sweep the snapshot
-    // store's staging leftovers a crash left behind.
-    config.storage()?.sweep_stale_staging()?;
 
     // The machine runner is the blocking lane (machine execution +
     // SQLite): plain sync code on a blocking thread. The chain-facing

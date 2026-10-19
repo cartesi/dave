@@ -242,9 +242,9 @@ impl Storage {
     }
 
     /// Startup ritual: removes staging leftovers a crash orphaned -
-    /// partial stores (.part-*) and working clones (.work-*). Runs
-    /// before any worker holds a clone; never touches committed
-    /// directories.
+    /// partial stores (.part-*) and working clones (.work-*). Runs at
+    /// open, under the directory lock and before seeding, so no clone is
+    /// held yet; never touches committed directories.
     pub fn sweep_stale_staging(&self) -> Result<()> {
         let snapshots = snapshots_path(self.state_dir());
         let entries = match std::fs::read_dir(&snapshots) {
