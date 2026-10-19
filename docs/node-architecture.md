@@ -221,10 +221,13 @@ stops following the chain fails nothing (it answers consistently with its old
 head), so the reader also logs ERROR on
 every tick whose latest block is older than G (not on anvil's chain, which
 mines only with a transaction); a stalled provider is outside the trust
-model, so it is reported, not worked around. While latest is fresh, it also
-logs ERROR when the finalized block is more than an hour old: ingestion,
-joins and completion wait for finality, which the node cannot work around
-either (dimensioning.md, one delay ledger). An ingestion check
+model, so it is reported, not worked around. A chain that stops producing
+blocks pages the same way but costs no clock on Ethereum, where
+`block.number` stops with it. While latest is fresh, it also logs ERROR when
+the finalized block is more than an hour old: ingestion, joins, refunds and
+completion wait for finality, which the node cannot work around either,
+while a joined match's responses and its settlement read latest and go on
+(dimensioning.md, one delay ledger). An ingestion check
 that keeps failing means the provider keeps
 omitting logs (point the node at a complete one), or a stored chunk lacks
 one: its page names both remedies. That is the one stall a retry never heals:

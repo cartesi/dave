@@ -60,7 +60,12 @@ range and response size, latency), and the action latency that results.
   every size costs about log2(range) + 1 sequential 20 s attempts, about
   4m40s for 10,000 blocks, and after a restart the recovery walk spans the
   epoch's whole history. Time a prepared dispute action through a degraded
-  scan and a large live tree before changing anything.
+  scan and a large live tree before changing anything. A finality stall
+  widens the unfinalized tail every tick refetches whole for each tournament:
+  a week on Ethereum is about 50,400 blocks, 15 sequential calls per
+  tournament behind a fast-failing 10,000-block cap and 63 behind 2,000, or
+  seven 20 s timeouts behind a provider that times out above 10,000 blocks (a
+  lead to measure).
 - How each supported client and hosted provider answers `eth_getLogs` over
   a range that ends past its own head: with an error, or with a clamped,
   short result. The tournament fold trusts log completeness, and a
