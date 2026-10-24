@@ -17,6 +17,9 @@ uncapped deployments are incompatible.
 
 ### Node
 
+- Continue dispute defense and bond recovery after foreclosure, suppress
+  settlement once the dispute has a result, and exit 30 only after recovery
+  completes and foreclosure is finalized. A restart resumes the same work.
 - Split full pending epochs at the input span, check every later seal against
   those boundaries, and reject uncapped deployments that disagree.
 - Exercise halted and nonstandard-yield guests through the real contracts.

@@ -107,6 +107,7 @@ pub async fn run(config: NodeConfig) -> Result<()> {
             let epoch_manager = EpochManager::new(
                 transaction_lane,
                 params.address_book.consensus,
+                params.address_book.app,
                 params.signer_address,
                 storage,
                 params.sleep_duration,

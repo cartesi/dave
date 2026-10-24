@@ -249,6 +249,8 @@ another node's snapshot of a sealed epoch's start settles that epoch and
 never takes an earlier one, an unsettled state seeds nothing, and a restart
 reads no image.
 
+The foreclosure tests pin continued defense and paid bond recovery before
+terminal exit, including a foreclosure during a live match and a restart.
 A halted guest's true commitment defeats a malicious claimant through a real
 leaf proof across restarts, then remains unstaged.
 A guest with an unknown automatic notification and an oversized accepted-yield
