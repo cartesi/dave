@@ -383,6 +383,30 @@ mod tests {
         assert_eq!(chain.latest_age().await.unwrap(), std::time::Duration::ZERO);
     }
 
+    #[tokio::test]
+    async fn provider_range_codes_split_even_when_the_code_names_a_bad_request() {
+        for code in [35, -32047, -32700, -32600, -32601, -32602] {
+            let (provider, rpc, requests) = recording_provider();
+            let chain = Chain::new(provider);
+            rpc.push_failure(alloy::rpc::json_rpc::ErrorPayload {
+                code,
+                message: "Under the Free tier plan, you can make eth_getLogs requests with up to a 10 block range".into(),
+                data: None,
+            });
+            rpc.push_success(&Vec::<Log>::new());
+            rpc.push_success(&Vec::<Log>::new());
+            assert!(
+                chain
+                    .decoded_logs::<InputAdded>(Address::ZERO, None, 0, 15)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(log_ranges(&requests), [(0, 15), (0, 7), (8, 15)]);
+            assert!(rpc.read_q().is_empty());
+        }
+    }
+
     /// The `[fromBlock, toBlock]` of every get_logs request, in order.
     fn log_ranges(requests: &super::recording::Requests) -> Vec<(u64, u64)> {
         log_requests(requests)

@@ -829,7 +829,8 @@ mod tests {
 
         let template = dir.path().join("template");
         store_template(&template, |_| {});
-        initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
+        let mut storage = initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
+        assert!(storage.snapshot_dir(0, 0).unwrap().unwrap().is_dir());
         assert!(Storage::is_seeded(&state_dir).unwrap());
         for leftover in &leftovers {
             assert!(!leftover.exists(), "`{}` survived", leftover.display());

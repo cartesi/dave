@@ -157,11 +157,6 @@ carry no backlog (reviews/README.md).
 - Two honest nodes on different keys defending one epoch against one
   adversary, in the harness: no test has run two sling nodes at once.
   (test-harness.md)
-- Release-candidate hardening: a harness test in which a terminal
-  application's epoch is defended, won and held through the real contracts.
-  It needs a guest that turns terminal on an input, a new test image, since
-  startup refuses a template that is terminal at genesis; today the epoch
-  manager's tests pin the hold against mocked views. (test-harness.md)
 
 ## Tooling
 

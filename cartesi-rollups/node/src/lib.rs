@@ -242,3 +242,6 @@ mod tests {
         assert!(merged_failure(None, drained_failure("epoch manager", Ok(Ok(())))).is_none());
     }
 }
+
+#[cfg(test)]
+mod test_machine;

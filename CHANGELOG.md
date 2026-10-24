@@ -19,6 +19,7 @@ uncapped deployments are incompatible.
 
 - Split full pending epochs at the input span, check every later seal against
   those boundaries, and reject uncapped deployments that disagree.
+- Exercise halted and nonstandard-yield guests through the real contracts.
 
 ## v3.0.0-alpha.6
 
