@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-A new deployment generation: the consensus bytecode changes, moving
-deterministic deployment addresses. This node requires a
+A new deployment generation: the consensus and application-factory bytecode
+changes, moving deterministic deployment addresses. This node requires a
 DaveConsensus that caps each epoch at the Machine's input span; earlier
 uncapped deployments are incompatible.
 
@@ -11,6 +11,9 @@ uncapped deployments are incompatible.
 
 - DaveConsensus seals at most 2^24 pending inputs, retaining excess inputs
   for later epochs. Only processed, accepted inputs become finalized.
+- DaveAppFactory deploys through an owner-only private namespace and binds
+  application addresses to the full consensus settings. `ApplicationCreated`
+  is emitted by the private child factory, rather than the shared factory.
 
 ### Node
 

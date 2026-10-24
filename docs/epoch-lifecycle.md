@@ -40,6 +40,10 @@ a disagreement fails ingestion and names the capped-consensus requirement.
 The runner waits for a seal before rolling to the next epoch. The Lua client
 selects inputs directly from each sealed epoch's lower and upper bounds.
 
+DaveAppFactory's application address is a function of the template, withdrawal
+configuration and full consensus settings, inside a namespace only that
+factory can deploy into. Use its calculator to predict addresses.
+
 ## Epoch states, from the node's perspective
 
 1. Open: inputs are accumulating in the InputBox; the current epoch has no
