@@ -83,6 +83,14 @@ pub enum ObserverError {
         event_status: &'static str,
         observed_phase: MatchPhase,
     },
+    #[error(
+        "event-derived candidate {expected} in tournament {tournament} disagrees with pinned candidate {observed:?}"
+    )]
+    EventCandidateMismatch {
+        tournament: Address,
+        expected: Digest,
+        observed: Option<Digest>,
+    },
     #[error("cannot observe resolved match {match_id_hash}")]
     ResolvedMatchSelected { match_id_hash: Digest },
     #[error("tournament standing is not legal for this root/inner position")]
@@ -133,11 +141,10 @@ pub async fn read_bond(chain: &Chain, tournament: Address, head: ChainHead) -> A
 /// All calls are pinned to `head.hash` and provider pressure is bounded. The
 /// event-derived tree supplies root/inner position and the exact parent match
 /// used to interpret an inner winner. It is not reconciled with redundant
-/// match-count, final-state, or topology projections. Fields the decoded
-/// standing does not carry (a nonterminal candidate, the finish and
-/// winner-expiry instants, a non-active standing's join flag) go unchecked:
-/// events own commitment placement, Hero acts only on current state, and a
-/// value that disagrees with the standing must not stall a tick.
+/// match-count, final-state, or topology projections. Finish and winner-expiry
+/// instants and a non-active standing's join flag remain event-derived. The
+/// active standing retains its candidate so Hero can detect a missed pairing
+/// without another point read.
 pub async fn read_standings(
     chain: &Chain,
     dispute: &Dispute,
@@ -171,6 +178,24 @@ pub async fn read_standings(
     .try_collect::<HashMap<_, _>>()
     .await?;
     Ok(decoded)
+}
+
+/// Check the candidate only while waiting could lose an active match.
+pub fn check_candidate(
+    tournament: Address,
+    expected: Digest,
+    standing: TournamentStanding,
+) -> ObserverResult<()> {
+    if let TournamentStanding::MatchesActive { candidate, .. } = standing
+        && candidate != Some(expected)
+    {
+        return Err(ObserverError::EventCandidateMismatch {
+            tournament,
+            expected,
+            observed: candidate,
+        });
+    }
+    Ok(())
 }
 
 /// Observe the one event-selected live match needed for a Hero decision.
@@ -332,6 +357,7 @@ fn decode_standing(
     let standing = match wire.standing {
         0 => TournamentStanding::MatchesActive {
             accepts_joins: wire.acceptsJoins,
+            candidate: wire.hasCandidate.then(|| wire.candidate.into()),
         },
         1 => TournamentStanding::AwaitingClosure,
         2 => {
@@ -641,6 +667,25 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_candidate_is_checked_only_while_matches_are_active() {
+        for observed in [Some(digest(10)), Some(digest(20)), None] {
+            let result = check_candidate(
+                address(1),
+                digest(10),
+                TournamentStanding::MatchesActive {
+                    accepts_joins: true,
+                    candidate: observed,
+                },
+            );
+            assert_eq!(result.is_ok(), observed == Some(digest(10)));
+        }
+        assert!(
+            check_candidate(address(1), digest(10), TournamentStanding::AwaitingClosure).is_ok()
+        );
+        assert!(check_candidate(address(1), digest(10), TournamentStanding::RootFailed).is_ok());
+    }
+
     fn bisecting_wire() -> AbiBisectingMatchView {
         AbiBisectingMatchView {
             revealingParent: hash(3),
@@ -825,6 +870,7 @@ mod tests {
             decode_standing(root, None, standing_wire(0, false, Some(digest(66))),).unwrap(),
             TournamentStanding::MatchesActive {
                 accepts_joins: false,
+                candidate: Some(digest(66)),
             }
         );
     }

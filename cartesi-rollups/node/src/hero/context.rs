@@ -22,7 +22,7 @@ use crate::{
             Engagement, LocalCommitmentStanding, ParentLink, SemanticSnapshot,
             TournamentDescriptor, TournamentStanding,
         },
-        observer::read_match,
+        observer::{check_candidate, read_match},
     },
 };
 
@@ -96,7 +96,13 @@ impl HeroContext {
 
             let (local_standing, next) = match tournament.position(&local_commitment) {
                 CommitmentPosition::NotJoined => (LocalCommitmentStanding::NotJoined, None),
-                CommitmentPosition::Candidate { .. } => (LocalCommitmentStanding::Candidate, None),
+                CommitmentPosition::Candidate { .. } => {
+                    // Trusted logs can omit a pairing; this call-site has no
+                    // direct regression, while the pure check and refold do.
+                    check_candidate(address, local_commitment, standing)
+                        .map_err(ContextError::CandidateMismatch)?;
+                    (LocalCommitmentStanding::Candidate, None)
+                }
                 CommitmentPosition::Eliminated { reason, .. } => {
                     (LocalCommitmentStanding::Eliminated { reason }, None)
                 }
@@ -178,6 +184,8 @@ impl HeroContext {
 
 #[derive(Debug, Error)]
 pub enum ContextError {
+    #[error("{0}")]
+    CandidateMismatch(#[source] crate::tournament::observer::ObserverError),
     #[error("accepted standings are missing tournament {tournament}")]
     MissingStanding { tournament: Address },
     #[error("tournament {tournament} base cycle {base_cycle} is not aligned to level span {span}")]
@@ -375,6 +383,7 @@ mod tests {
             descriptor: root_descriptor,
             standing: TournamentStanding::MatchesActive {
                 accepts_joins: false,
+                candidate: None,
             },
             local_commitment: digest(3),
             local_standing: LocalCommitmentStanding::Engaged(engagement),

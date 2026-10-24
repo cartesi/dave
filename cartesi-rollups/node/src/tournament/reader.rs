@@ -73,7 +73,10 @@ impl StateReader {
         let contradicted = error.chain().any(|cause| {
             matches!(
                 cause.downcast_ref::<observer::ObserverError>(),
-                Some(observer::ObserverError::EventPhaseMismatch { .. })
+                Some(
+                    observer::ObserverError::EventPhaseMismatch { .. }
+                        | observer::ObserverError::EventCandidateMismatch { .. }
+                )
             )
         });
         if contradicted {
@@ -1310,6 +1313,68 @@ mod tests {
                 range("0x28", "0x2b"),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_missing_pairing_is_refolded_when_the_candidate_disagrees() {
+        let root = address(1);
+        let finalized = head(41, 0x41);
+        let id = MatchID {
+            commitment_one: digest(10),
+            commitment_two: digest(20),
+        };
+        let ours = join_log(root, finalized, 0, id.commitment_one);
+        let complete = vec![
+            ours.clone(),
+            join_log(root, finalized, 1, id.commitment_two),
+            match_created_log(root, finalized, 2, id, 60),
+        ];
+        let (chain, rpc, _) = recording_chain();
+        let mut reader = StateReader::new(chain.clone(), 40);
+        let fold = |logs: &[Log]| {
+            rpc.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
+            push_call_response::<bindings::Tournament::tournamentDescriptorCall>(
+                &rpc,
+                &descriptor_response(0, TournamentKind::Leaf),
+            );
+            rpc.push_success(&logs);
+            rpc.push_success(&Some(block(finalized, B256::repeat_byte(0x40))));
+        };
+        fold(&[ours]);
+        reader.fetch_from_root(root).await.unwrap();
+        assert!(matches!(
+            reader
+                .solid()
+                .unwrap()
+                .1
+                .root()
+                .position(&id.commitment_one),
+            crate::tournament::dispute::CommitmentPosition::Candidate { .. }
+        ));
+        let error = observer::check_candidate(
+            root,
+            id.commitment_one,
+            crate::tournament::domain::TournamentStanding::MatchesActive {
+                accepts_joins: true,
+                candidate: None,
+            },
+        )
+        .unwrap_err()
+        .into();
+        reader.forget_contradicted_solid(&error);
+        assert!(reader.solid().is_none());
+        fold(&complete);
+        reader.fetch_from_root(root).await.unwrap();
+        assert!(matches!(
+            reader
+                .solid()
+                .unwrap()
+                .1
+                .root()
+                .position(&id.commitment_one),
+            crate::tournament::dispute::CommitmentPosition::Engaged { .. }
+        ));
+        assert!(rpc.read_q().is_empty());
     }
 
     /// A missed finalized seal still folds, so only the Hero's pinned phase

@@ -585,12 +585,12 @@ Hero's tick, which then drops Solid the same way; a lagging or mixed Foam
 tail costs one such refold. Both drops repeat while their cause persists (a
 provider that keeps omitting the log, or a node bug): every tick then refolds
 and fails with the same warning, adding reads to a stall that exists anyway.
-Any other omission that still folds, such as a missed advance, a missed join
-until a match pairs it, or a missed deletion of a delegated match (the Hero
-reads nothing there), stays silent, and one may surface too late: a
-missed creation of the Hero's own match, when the Hero moves first, fails to
-fold only at the opponent's timeout deletion. Log completeness is a trusted
-RPC property.
+Before waiting as a candidate under active matches, Hero checks the candidate
+root against the standing already read at the event head, with no extra RPC.
+A missing pairing that leaves it falsely idle therefore drops Solid and
+refetches. Other omissions that still fold, such as a
+missed advance or deletion outside Hero's path, can remain silent. These checks
+help detect contradictions; log completeness remains a trusted RPC property.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest

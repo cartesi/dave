@@ -369,12 +369,17 @@ pub enum InnerEliminationReason {
 /// Current-only tournament result and closure disposition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TournamentStanding {
-    MatchesActive { accepts_joins: bool },
+    MatchesActive {
+        accepts_joins: bool,
+        candidate: Option<Digest>,
+    },
     AwaitingClosure,
     RootWinner(RootWinner),
     RootFailed,
     InnerWinner(InnerWinner),
-    InnerEliminable { reason: InnerEliminationReason },
+    InnerEliminable {
+        reason: InnerEliminationReason,
+    },
 }
 
 impl TournamentStanding {
@@ -382,7 +387,8 @@ impl TournamentStanding {
         matches!(
             self,
             Self::MatchesActive {
-                accepts_joins: true
+                accepts_joins: true,
+                ..
             } | Self::AwaitingClosure
         )
     }

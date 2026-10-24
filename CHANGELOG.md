@@ -24,6 +24,8 @@ uncapped deployments are incompatible.
   while continuing to defend the true state.
 - Split full pending epochs at the input span, check every later seal against
   those boundaries, and reject uncapped deployments that disagree.
+- Check a candidate against the already-read standing before waiting under
+  active matches; a contradiction discards and refolds the event cache.
 - Exercise halted and nonstandard-yield guests through the real contracts.
 
 ## v3.0.0-alpha.6
