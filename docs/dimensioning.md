@@ -63,21 +63,30 @@ One reference price. The cheapest loss the model accepts is the
 aggregate-throughput attack (below): inputs that outrun the honest runner.
 The runner pays a fixed overhead per input, accepted or rejected, whatever the
 application does (node-architecture.md, Storage). At the 0.14-0.2 s measured
-on macOS, a root window of about a week (`C + T + 2G`, less a finality) holds
-3-4.4 million inputs, so an epoch with more outruns the runner: about
-0.9-1.3e11 gas at 30k gas per input batched through a contract, 90-1,300 ETH
-on Ethereum at 1-10 gwei but only 0.09-1.3 ETH on an L2 at 0.001-0.01 gwei,
-where input-priced attacks cost about a thousand times less and bonds do
-not. An attack that fills a resource (disk, links, memory,
-provider quota) for less than that is a wall to close; a guard against one
-that costs more, or that is out of model, is a door not worth its code. The
-figures rest on one machine's overhead on emulator v0.22.0 and stay
-provisional until the Linux measurement, with the runner and a dispute
-sharing the host and the disk under pressure (todo.md). A faster runner
-raises the price by about four times at most: below about 36 ms per input (a
-week over 2^24) the input span binds first, at about 5e11 gas, provided the
-snapshot disk keeps up. The next emulator release's cold-load fix (about
-2.5 ms per input, preliminary) would put the node there.
+on macOS, the root join's own `C + G` (a week plus five minutes) holds
+3-4.3 million inputs. More inputs outrun the runner: about 0.9-1.3e11 gas
+at roughly 30k gas per input batched through a contract, 90-1,300 ETH on
+Ethereum at 1-10 gwei or 0.09-1.3 ETH on a cheap L2 at 0.001-0.01 gwei.
+Input-priced attacks cost about a thousand times less there; bonds do not.
+An attack filling disk, links, memory or provider quota for less is a wall to
+close. A guard against one that costs more, or is out of model, is a door.
+These provisional figures use emulator v0.22.0 on one macOS machine. Measure
+Linux with the runner and a dispute sharing cores and with disk pressure
+before relying on them (todo.md).
+
+The input cap changes the throughput limit. Below `(C + G) / 2^24`, about
+36 ms per input on mainnets and 1.7 ms on testnets, the runner can digest a
+full epoch inside its root-join window, provided snapshots keep up. The cap
+then closes this throughput door rather than merely raising its price by a
+factor of four. The cold-load fix's preliminary 2.5 ms per input would meet
+the mainnet threshold but not the testnet threshold; qualify it on Linux.
+
+The cap leaves a delay door: about 5.06e11 gas of fillers occupies one full
+epoch and delays every later input by at least a root allowance. That costs
+about 506-5,060 ETH on L1 or 0.506-5.06 ETH on a cheap L2, at the prices above,
+about 3.9-5.6 times the reference price. Document that delay rather than add
+a guard for an attack dearer than the accepted loss. A sustained backlog can
+add arbitrarily many epoch allowances to later inputs.
 
 Evenly distributed effort. The trusted application's work arrives spread over
 the epoch enough for the runner to keep up: one input that runs for days at
@@ -104,12 +113,11 @@ to the average case.
   slot; the heaviest instruction measured on v0.21, `sfence.vma`, takes
   17,595 usteps, about 60 times below it (one workload on one machine;
   re-measure with the validator-grade run, todo.md).
-  The input span differs in kind: no single legitimate event exceeds
-  it, only a flood of roughly 5e11 gas of inputs in one epoch. Past
-  it the contracts never feed the tail, and the Rust node panics
-  instead. It is an economic bound only on Ethereum (500-5,000 ETH at
-  1-10 gwei; 0.5-5 ETH on a cheap L2), and the reference price binds
-  first: the runner falls behind long before the span.
+  DaveConsensus enforces the input span structurally: sealing takes at most
+  2^24 pending inputs, leaving any excess for later epochs. This protects
+  representation and prevents finalizing inputs the step cannot feed. Input
+  floods below the cap remain priced against the reference price; keeping up
+  with them is the separate throughput assumption.
 - Clocks (the commitment budget `T`, responseBudget, the root
   slowdown budget, and the strides derived from them): these price
   aggregates - sums of per-step costs over whole gaps. Rare heavy
@@ -159,7 +167,7 @@ adversary will find it.
 |---|---|---|---|
 | uarch span (2^20 usteps)  | single event | any - honest code hits it | worst case |
 | barch span per input (2^48) | single event | app + input | worst case |
-| input span per epoch (2^24) | input flood | anyone, at roughly 5e11 gas per epoch | beyond the reference price: the throughput loss comes first |
+| input span per epoch (2^24) | input flood | anyone, about 5.06e11 gas for a full epoch | enforced at sealing; excess delays later inputs |
 | leaf-level dense build within the commitment budget | aggregate | trusted app | average density |
 | root slowdown (level-0 sampling overhead) | aggregate | trusted app | average |
 | positioning through an input's prefix | aggregate | trusted app (the per-input compute contract, below) | app profile |
@@ -232,11 +240,11 @@ sum. The root allowance `C + 2G + (L - 1)(T + 2G)` holds no term for building
 the level-0 commitment, because the node computes it while the inputs
 arrive, so the honest root join assumes the node has kept up with the
 epoch's inputs when the epoch seals. The input author is untrusted, and
-sealing takes every input posted before the acceptance block, so an epoch's
+sealing takes up to 2^24 pending inputs at the acceptance block, so an epoch's
 total compute is adversarial even when every input respects the per-input
 contract. A backlog larger than the root window at the seal makes the honest
 root join miss closure, and a Sybil's claim then wins the root unopposed; the
-cost is the inputs' gas and one bond, far below the 2^24 flood
+cost is the inputs' gas and one bond, without needing to fill the input span
 (reviews/2026-10-13-prt-cyber-verification, L-01). The assumption is
 therefore the app's second contract: the app digests, within the root
 window, any input stream the chain can deliver in one epoch, with margin for
@@ -248,10 +256,11 @@ it slack: the node pays its fixed per-input overhead on every input, accepted
 or rejected, so on emulator v0.22.0 the runner tops out near a handful of
 inputs per second whatever the application does, and an app's pricing can dismiss an input but
 not that overhead. The contract therefore binds for every application, at the
-reference price above. The trigger, sealing with no input cap or minimum
-notice, belongs to DaveConsensus and is priced in that campaign; a smaller
-per-input overhead is the node's lever, worth at most a factor of about
-four (One reference price, above).
+reference price above while per-input overhead exceeds the full-epoch
+threshold. Sealing gives no minimum notice, and the allowed delay a single
+flood can draw from C remains an explicit dimensioning decision. Below the
+threshold the cap bounds each epoch's work, while backlog delay is still
+unbounded and costs more than the current reference price.
 
 ## Base-layer censorship model
 

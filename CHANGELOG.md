@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+A new deployment generation: the consensus bytecode changes, moving
+deterministic deployment addresses. This node requires a
+DaveConsensus that caps each epoch at the Machine's input span; earlier
+uncapped deployments are incompatible.
+
+### Contracts
+
+- DaveConsensus seals at most 2^24 pending inputs, retaining excess inputs
+  for later epochs. Only processed, accepted inputs become finalized.
+
+### Node
+
+- Split full pending epochs at the input span, check every later seal against
+  those boundaries, and reject uncapped deployments that disagree.
+
 ## v3.0.0-alpha.6
 
 A new deployment generation (cartesi/dave#287). Nodes from earlier releases

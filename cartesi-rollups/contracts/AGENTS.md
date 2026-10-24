@@ -76,7 +76,8 @@ truth.
   staged value is echoed back to or from a claim.
 - One live tournament at a time - the current sealed epoch's. Acceptance
   settles, samples the next epoch's input bounds from the InputBox at
-  that moment, records the outputs root in a write-once mapping, and
+  that moment, capped at the Machine's 2^24-input span with excess left
+  pending, records the outputs root in a write-once mapping, and
   instantiates the next tournament from the settled state.
 - A sentry slot claims at most once per epoch (bitmap by slot ID).
   Rotation moves a slot to a new address but preserves an already-placed
@@ -140,3 +141,5 @@ expected.
   delay. The staging period is a reaction window, not a fraud proof.
 - Epochs have no inherent duration: sealing bounds are sampled at
   acceptance time, so epoch length is a function of settlement cadence.
+
+The cap's mocked fixture covers backlog rollover and boundary counts.

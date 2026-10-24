@@ -212,6 +212,7 @@ function Machine:rollup_commitment(log2_stride, inputs)
         > (log2_stride - cartesi.ROLLUP_LOG2_MAX_UARCH_CYCLES_PER_MCYCLE))
 
     local max_input_count = 1 << cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
+    assert(#inputs <= max_input_count, "epoch exceeds the input span")
 
     local builder = MerkleBuilder:new()
     local initial_hash = self:state().root_hash
