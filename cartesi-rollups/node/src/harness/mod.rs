@@ -32,14 +32,14 @@ use anyhow::{Context, Result, ensure};
 use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 use cartesi_prt_contracts::tournament::Tournament;
 use cartesi_rollups_contracts::i_input_box::IInputBox;
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 use tempfile::TempDir;
 
 use crate::{
     args::discover_deployed_tournament,
     blockchain_reader::{
         AddressBook, BlockchainReader,
-        test_utils::{Deploy, deploy_app, program_path, spawn_anvil, wallet_provider},
+        test_utils::{Deploy, deploy_app_from, program_path, spawn_anvil, wallet_provider},
     },
     chain::Chain,
     engine::{EngineConfig, Tail, TournamentGeometry},
@@ -72,6 +72,7 @@ pub(crate) struct World {
     pub chain: Chain,
     pub book: AddressBook,
     geometry: TournamentGeometry,
+    template: PathBuf,
     /// Receipts are checked through this block.
     checked: u64,
     pub mined: Vec<Mined>,
@@ -81,6 +82,19 @@ impl World {
     /// Anvil over the devnet bundle with one Dave app on the echo
     /// template; `sentries` are anvil key indices.
     pub async fn spawn(sentries: &[usize], claim_staging_period: u64) -> Result<Self> {
+        Self::spawn_on_template(
+            sentries,
+            claim_staging_period,
+            program_path().join("machine-image"),
+        )
+        .await
+    }
+
+    async fn spawn_on_template(
+        sentries: &[usize],
+        claim_staging_period: u64,
+        template: PathBuf,
+    ) -> Result<Self> {
         let anvil = spawn_anvil();
         let provider = ProviderBuilder::new()
             .connect_client(
@@ -105,8 +119,9 @@ impl World {
         let deploy = Deploy {
             sentries: sentries.iter().map(|&key| anvil.addresses()[key]).collect(),
             claim_staging_period,
+            guardian: anvil.addresses()[OPERATOR],
         };
-        let book = deploy_app(&operator, &deploy)
+        let book = deploy_app_from(&operator, &deploy, *Template::inspect(&template)?.hash())
             .await
             .map_err(|error| anyhow::anyhow!("deploying the app: {error}"))?;
         provider.anvil_set_auto_mine(false).await?;
@@ -121,6 +136,7 @@ impl World {
             chain,
             book,
             geometry,
+            template,
             checked,
             mined: vec![],
         };
@@ -453,7 +469,7 @@ impl World {
     pub async fn node(&self, key: usize) -> Result<Node> {
         let state_dir = tempfile::tempdir()?;
         let seed = Seed {
-            image: Template::inspect(&program_path().join("machine-image"))?,
+            image: Template::inspect(&self.template)?,
             epoch: 0,
             // Anvil does not reorg, so a sample after discovery is as good.
             watermark: self
@@ -568,6 +584,7 @@ impl Node {
         let manager = EpochManager::new(
             world.lane(key),
             world.book.consensus,
+            world.book.app,
             world.address(key),
             Storage::new(state_dir.path())?,
             Duration::ZERO,

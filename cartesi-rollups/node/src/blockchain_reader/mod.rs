@@ -493,7 +493,11 @@ impl BlockchainReader {
             self.collect_input_events(chain, prev_block, current_block)
                 .await?
         };
-        let inputs = self.number_inputs(&input_events, &merged_sealed_epochs)?;
+        let inputs = self.number_inputs(
+            &input_events,
+            &merged_sealed_epochs,
+            crate::engine::Structure::PRODUCTION.max_inputs(),
+        )?;
 
         Ok((inputs, sealed_epochs))
     }
@@ -566,6 +570,7 @@ impl BlockchainReader {
         &mut self,
         input_events: &[InputAdded],
         sealed_epochs: &[Epoch],
+        max_inputs: u64,
     ) -> Result<Vec<Input>> {
         let last_input = self.storage.last_input()?;
         // Inputs are numbered here, so a log the provider leaves out of a
@@ -586,12 +591,24 @@ impl BlockchainReader {
         let mut input_events_peekable = input_events.iter().peekable();
         for epoch in sealed_epochs {
             if last_input_epoch_number > epoch.epoch_number {
+                // Every eagerly split window before the last stored input is
+                // full. Count backwards from that input to check the seal.
+                let expected = next_index
+                    - next_input_index_in_epoch
+                    - (last_input_epoch_number - epoch.epoch_number - 1) * max_inputs;
+                anyhow::ensure!(
+                    expected == epoch.input_index_boundary,
+                    "epoch {} seal ends at {}, stored inputs end at {expected}; this node needs a DaveConsensus that caps each epoch at {max_inputs} inputs",
+                    epoch.epoch_number,
+                    epoch.input_index_boundary
+                );
                 continue;
             }
             // iterate through newly sealed epochs, fill in the inputs accordingly
             let inputs_of_epoch = construct_input_ids(
                 epoch.epoch_number,
                 epoch.input_index_boundary,
+                max_inputs,
                 &mut next_input_index_in_epoch,
                 &mut next_index,
                 &mut input_events_peekable,
@@ -601,10 +618,12 @@ impl BlockchainReader {
             last_input_epoch_number = epoch.epoch_number + 1;
         }
 
-        // all remaining inputs belong to an epoch that's not sealed yet
+        // Full pending epochs have fixed boundaries even before their seals.
+        // Split them now so eager execution never overruns the input span.
         let inputs_of_epoch = construct_input_ids(
             last_input_epoch_number,
             u64::MAX,
+            max_inputs,
             &mut next_input_index_in_epoch,
             &mut next_index,
             &mut input_events_peekable,
@@ -736,12 +755,14 @@ fn ensure_complete(head: u64, ingested: Totals, onchain: Totals) -> Result<()> {
 /// dropped before the chunk's last one fails the tick before anything is
 /// stored. One dropped at the chunk's tail is [`ensure_complete`]'s.
 fn construct_input_ids<'a>(
-    epoch_number: u64,
+    mut epoch_number: u64,
     input_index_boundary: u64,
+    max_inputs: u64,
     next_input_index_in_epoch: &mut u64,
     next_index: &mut u64,
     input_events_peekable: &mut Peekable<impl Iterator<Item = &'a InputAdded>>,
 ) -> Result<Vec<Input>> {
+    assert!(max_inputs > 0, "input span must be positive");
     let mut inputs = vec![];
 
     while let Some(input_added) = input_events_peekable.peek() {
@@ -757,6 +778,14 @@ fn construct_input_ids<'a>(
                     input_added.index, next_index
                 ),
             }
+        );
+        if input_index_boundary == u64::MAX && *next_input_index_in_epoch == max_inputs {
+            epoch_number += 1;
+            *next_input_index_in_epoch = 0;
+        }
+        anyhow::ensure!(
+            *next_input_index_in_epoch < max_inputs,
+            "epoch {epoch_number} exceeds its input span {max_inputs}"
         );
         let input = Input {
             id: InputId {
@@ -787,9 +816,8 @@ fn construct_input_ids<'a>(
                 ),
             }
         );
+        *next_input_index_in_epoch = 0;
     }
-    // input index in epoch should be reset when a new epoch starts
-    *next_input_index_in_epoch = 0;
 
     Ok(inputs)
 }
@@ -924,6 +952,123 @@ mod address_book_tests {
 mod input_numbering_tests {
     use super::*;
 
+    fn sealed(epoch_number: u64, input_index_boundary: u64) -> Epoch {
+        Epoch {
+            epoch_number,
+            input_index_boundary,
+            root_tournament: Address::ZERO,
+            block_created_number: 1,
+        }
+    }
+
+    fn reader() -> (tempfile::TempDir, BlockchainReader) {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = rusqlite::Connection::open(dir.path().join("db.sqlite3")).unwrap();
+        crate::storage::sql::schema::initialize(&conn).unwrap();
+        drop(conn);
+        let book = AddressBook {
+            app: Address::ZERO,
+            consensus: Address::ZERO,
+            tournament_factory: Address::ZERO,
+            input_box: Address::ZERO,
+            initial_hash: [0; 32],
+            genesis_block_number: 0,
+        };
+        let reader = BlockchainReader::new(Storage::new(dir.path()).unwrap(), book, Duration::ZERO);
+        (dir, reader)
+    }
+
+    fn ids(inputs: &[Input]) -> Vec<(u64, u64)> {
+        inputs
+            .iter()
+            .map(|input| (input.id.epoch_number, input.id.input_index_in_epoch))
+            .collect()
+    }
+
+    #[test]
+    fn an_uncapped_late_seal_is_refused_after_eager_splitting() {
+        let (_dir, mut reader) = reader();
+        let inputs = reader
+            .number_inputs(&events(&[0, 1, 2]), &[sealed(0, 0)], 2)
+            .unwrap();
+        reader
+            .storage
+            .insert_consensus_data(1, inputs.iter(), [&sealed(0, 0)].into_iter())
+            .unwrap();
+        let error = reader
+            .number_inputs(&[], &[sealed(0, 0), sealed(1, 3)], 2)
+            .unwrap_err();
+        assert!(error.to_string().contains("caps each epoch at 2 inputs"));
+    }
+
+    #[test]
+    fn capped_pending_epochs_survive_chunking_late_seals_and_an_empty_epoch() {
+        let (_dir, mut reader) = reader();
+        let inputs = reader
+            .number_inputs(&events(&[0, 1, 2, 3, 4, 5]), &[sealed(0, 0)], 2)
+            .unwrap();
+        assert_eq!(
+            ids(&inputs),
+            [(1, 0), (1, 1), (2, 0), (2, 1), (3, 0), (3, 1)]
+        );
+        reader
+            .storage
+            .insert_consensus_data(1, inputs.iter(), [&sealed(0, 0)].into_iter())
+            .unwrap();
+
+        let seals = [sealed(1, 2), sealed(2, 4)];
+        let inputs = reader.number_inputs(&events(&[6, 7]), &seals, 2).unwrap();
+        assert_eq!(ids(&inputs), [(4, 0), (4, 1)]);
+        reader
+            .storage
+            .insert_consensus_data(2, inputs.iter(), seals.iter())
+            .unwrap();
+
+        let seals = [sealed(3, 6), sealed(4, 8), sealed(5, 8)];
+        let inputs = reader.number_inputs(&events(&[8]), &seals, 2).unwrap();
+        assert_eq!(ids(&inputs), [(6, 0)]);
+        reader
+            .storage
+            .insert_consensus_data(3, inputs.iter(), seals.iter())
+            .unwrap();
+        assert_eq!(reader.storage.total_input_count().unwrap(), 9);
+        for epoch in 0..=6 {
+            assert!(reader.storage.input_count(epoch).unwrap() <= 2);
+        }
+    }
+
+    #[test]
+    fn several_seals_in_one_chunk_preserve_an_empty_epoch() {
+        let (_dir, mut reader) = reader();
+        let seals = [sealed(0, 0), sealed(1, 2), sealed(2, 2), sealed(3, 4)];
+        let inputs = reader
+            .number_inputs(&events(&[0, 1, 2, 3, 4]), &seals, 2)
+            .unwrap();
+        assert_eq!(ids(&inputs), [(1, 0), (1, 1), (3, 0), (3, 1), (4, 0)]);
+        reader
+            .storage
+            .insert_consensus_data(1, inputs.iter(), seals.iter())
+            .unwrap();
+        assert_eq!(reader.storage.input_count(2).unwrap(), 0);
+    }
+
+    #[test]
+    fn production_input_span_splits_before_the_first_unrepresentable_index() {
+        let max_inputs = crate::engine::Structure::PRODUCTION.max_inputs();
+        let (mut within, mut next) = (max_inputs - 1, max_inputs - 1);
+        let events = events(&[max_inputs - 1, max_inputs]);
+        let inputs = construct_input_ids(
+            1,
+            u64::MAX,
+            max_inputs,
+            &mut within,
+            &mut next,
+            &mut events.iter().peekable(),
+        )
+        .unwrap();
+        assert_eq!(ids(&inputs), [(1, max_inputs - 1), (2, 0)]);
+    }
+
     fn events(indices: &[u64]) -> Vec<InputAdded> {
         indices
             .iter()
@@ -943,6 +1088,7 @@ mod input_numbering_tests {
         construct_input_ids(
             3,
             bound.unwrap_or(u64::MAX),
+            crate::engine::Structure::PRODUCTION.max_inputs(),
             &mut in_epoch,
             &mut next,
             &mut events.iter().peekable(),

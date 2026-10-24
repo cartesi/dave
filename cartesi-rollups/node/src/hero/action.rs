@@ -607,6 +607,7 @@ mod tests {
             commitment,
             TournamentStanding::MatchesActive {
                 accepts_joins: false,
+                candidate: None,
             },
             LocalCommitmentStanding::Engaged(engagement),
         );
@@ -812,6 +813,7 @@ mod tests {
             parent_descriptor,
             TournamentStanding::MatchesActive {
                 accepts_joins: false,
+                candidate: None,
             },
             parent_commitment,
             LocalCommitmentStanding::Engaged(parent_engagement),

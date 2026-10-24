@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+A new deployment generation: the consensus and application-factory bytecode
+changes, moving deterministic deployment addresses. This node requires a
+DaveConsensus that caps each epoch at the Machine's input span; earlier
+uncapped deployments are incompatible.
+
+### Contracts
+
+- DaveConsensus seals at most 2^24 pending inputs, retaining excess inputs
+  for later epochs. Only processed, accepted inputs become finalized.
+- DaveAppFactory deploys through an owner-only private namespace and binds
+  application addresses to the full consensus settings. `ApplicationCreated`
+  is emitted by the private child factory, rather than the shared factory.
+
+### Node
+
+- Continue dispute defense and bond recovery after foreclosure, suppress
+  settlement once the dispute has a result, and exit 30 only after recovery
+  completes and foreclosure is finalized. A restart resumes the same work.
+- Page when an input makes the application terminal, after its batch commits,
+  while continuing to defend the true state.
+- Split full pending epochs at the input span, check every later seal against
+  those boundaries, and reject uncapped deployments that disagree.
+- Check a candidate against the already-read standing before waiting under
+  active matches; a contradiction discards and refolds the event cache.
+- Exercise halted and nonstandard-yield guests through the real contracts.
+
+### CI
+
+- Fetch pinned just assets directly and verify their checksums instead of
+  relying on release-list discovery.
+
 ## v3.0.0-alpha.6
 
 A new deployment generation (cartesi/dave#287). Nodes from earlier releases

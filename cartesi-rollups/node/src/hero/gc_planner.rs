@@ -179,6 +179,7 @@ mod tests {
     fn active() -> TournamentStanding {
         TournamentStanding::MatchesActive {
             accepts_joins: true,
+            candidate: None,
         }
     }
 

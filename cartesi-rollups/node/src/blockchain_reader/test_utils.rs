@@ -116,6 +116,7 @@ pub fn wallet_provider(anvil: &AnvilInstance, index: usize) -> DynProvider {
 pub struct Deploy {
     pub sentries: Vec<Address>,
     pub claim_staging_period: u64,
+    pub guardian: Address,
 }
 
 /// Deploys the app through the bundle's DaveAppFactory, sending from
@@ -152,7 +153,7 @@ pub async fn deploy_app_from(
     let claim_staging_period = U256::from(deploy.claim_staging_period);
     let sentry_manager = Address::ZERO;
     let withdrawal_config = WithdrawalConfig {
-        guardian: Default::default(),
+        guardian: deploy.guardian,
         log2LeavesPerAccount: Default::default(),
         log2MaxNumOfAccounts: Default::default(),
         accountsDriveStartIndex: Default::default(),
@@ -210,6 +211,7 @@ pub async fn spawn_anvil_and_provider() -> Result<(AnvilInstance, DynProvider, A
         &Deploy {
             sentries: vec![signer_address],
             claim_staging_period: 1000,
+            guardian: Address::ZERO,
         },
     )
     .await?;

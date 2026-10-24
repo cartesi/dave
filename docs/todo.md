@@ -26,10 +26,10 @@ carry no backlog (reviews/README.md).
   the disk per snapshot at the default gap. The default gap and the
   aggregate-throughput price follow from them.
   (measurements/constants.md, dimensioning.md)
-- Price input volume against the root window in the DaveConsensus campaign:
-  sealing takes every input before the acceptance block with no cap or
-  minimum notice, and the app's aggregate-throughput contract is what makes
-  the honest root join land. (dimensioning.md)
+- Decide how much of C one input flood may drain, then price input volume
+  against that root-join window. The input cap protects coordinates and a
+  fast enough runner; it does not give notice before a seal or bound backlog
+  delay. (dimensioning.md)
 - On the release candidate's staging, the first on two levels, stop and
   restart the node mid leaf build: three-level releases never took the
   span-by-span, resumable tall build, which only the spec and engine-machine
@@ -116,6 +116,11 @@ carry no backlog (reviews/README.md).
 
 ## Contracts and assurance
 
+- Coordinate reference-node validity and capped epoch rollover: accepted-yield
+  lengths, unknown automatic notifications, declared outputs roots, pending
+  accepted yields at the cycle boundary, and input selection by sealed index
+  bounds. (epoch-lifecycle.md)
+
 - Review the honest-survival argument (dimensioning.md, "Honest survival
   under the budgets") by someone other than its author, and decide whether
   the two-level search gates the external audit or is handed over as
@@ -147,20 +152,11 @@ carry no backlog (reviews/README.md).
   string, which cannot tell the release from its pre-releases or from an
   unreleased upstream build.
   (test-harness.md)
-- A reader unit test for one log chunk carrying several seals around an
-  empty epoch: only the ignored anvil test crosses epochs, one block per
-  chunk, and a regression would misnumber inputs on every catch-up.
-  (node-architecture.md, Chain ingestion stance)
 - Optional: a steered divergence point for the harness's tail adversary, to
   dispute active spans in-process. (test-harness.md)
 - Two honest nodes on different keys defending one epoch against one
   adversary, in the harness: no test has run two sling nodes at once.
   (test-harness.md)
-- Release-candidate hardening: a harness test in which a terminal
-  application's epoch is defended, won and held through the real contracts.
-  It needs a guest that turns terminal on an input, a new test image, since
-  startup refuses a template that is terminal at genesis; today the epoch
-  manager's tests pin the hold against mocked views. (test-harness.md)
 
 ## Tooling
 

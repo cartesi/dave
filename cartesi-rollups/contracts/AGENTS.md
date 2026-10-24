@@ -66,6 +66,10 @@ truth.
   All steps run inside one `newDaveApp` call, so there is no
   partial-completion window; `calculateDaveAppAddress` predicts both
   addresses for pre-funding and configuration.
+- `src/PrivateApplicationFactory.sol` - the owner-only CREATE2 namespace.
+  It delegates to the upstream ApplicationFactory, which must remain stateless
+  apart from immutable configuration. Recheck that assumption on every
+  rollups-contracts dependency bump.
 - `src/ISentryErrors.sol` - sentry error selectors.
 
 ## Invariants to protect
@@ -76,7 +80,8 @@ truth.
   staged value is echoed back to or from a claim.
 - One live tournament at a time - the current sealed epoch's. Acceptance
   settles, samples the next epoch's input bounds from the InputBox at
-  that moment, records the outputs root in a write-once mapping, and
+  that moment, capped at the Machine's 2^24-input span with excess left
+  pending, records the outputs root in a write-once mapping, and
   instantiates the next tournament from the settled state.
 - A sentry slot claims at most once per epoch (bitmap by slot ID).
   Rotation moves a slot to a new address but preserves an already-placed
@@ -140,3 +145,7 @@ expected.
   delay. The staging period is a reaction window, not a fraud proof.
 - Epochs have no inherent duration: sealing bounds are sampled at
   acceptance time, so epoch length is a function of settlement cadence.
+
+The cap's mocked fixture covers backlog rollover and boundary counts. The
+factory tests replay shared-factory squatting and alternate consensus settings;
+these tests do not establish live mempool ordering or provider behavior.

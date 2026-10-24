@@ -26,6 +26,24 @@ transaction that seals an epoch, the tournament factory's
 before `EpochSealed` (pinned by `DaveAppFactory.t.sol`), so a log reader
 holds it until the `EpochSealed` that names the tournament.
 
+Sealing includes at most 2^24 pending inputs, derived from the Machine's
+input-coordinate width, both at construction and at acceptance. Excess
+inputs remain pending for later epochs. Only the inputs in accepted epochs
+become finalized; a backlog does not mark its unprocessed tail finalized.
+The cap bounds input count; execution time still depends on the app and runner.
+This node requires a capped consensus; earlier uncapped deployments are
+incompatible.
+The reader also splits full pending epochs at this boundary before their
+seals arrive, so eager execution cannot assign an unrepresentable input
+index to the open epoch. Every later seal is compared with the stored split;
+a disagreement fails ingestion and names the capped-consensus requirement.
+The runner waits for a seal before rolling to the next epoch. The Lua client
+selects inputs directly from each sealed epoch's lower and upper bounds.
+
+DaveAppFactory's application address is a function of the template, withdrawal
+configuration and full consensus settings, inside a namespace only that
+factory can deploy into. Use its calculator to predict addresses.
+
 ## Epoch states, from the node's perspective
 
 1. Open: inputs are accumulating in the InputBox; the current epoch has no
@@ -57,6 +75,20 @@ application freezes epoch progress entirely. Check foreclosure status
 before debugging an unexpected revert on any settlement call. Deeper
 contract context: `cartesi-rollups/contracts/AGENTS.md`.
 
+Foreclosure never gates the node's dispute moves, cleanup or bond recovery.
+Once the dispute has a result, the node reads foreclosure at the Hero's head
+and suppresses sentry claims, staging and acceptance while it is set. A reorg
+can restore settlement. When recovery is complete and foreclosure is also
+finalized, the node exits 30. A restart resumes defense and recovery, or exits
+on its first tick once nothing remains owed. Foreclosure is not settlement,
+so the epoch completion cursor does not advance. A foreclosure racing read
+and inclusion can still cost one transaction's gas.
+
+Between epochs the node may join the next root and wait out its allowance
+before it exits: an open commitment can still be paired by a late joiner.
+A fresh data directory replays history first. An eliminated commitment in an
+abandoned root can remain waiting indefinitely, as before.
+
 The staging period is not only a sentry window: it is the reaction
 interval in which the application-layer foreclosure switch can stop a
 decided-but-wrong result from ever finalizing. Foreclosure freezes the
@@ -72,10 +104,25 @@ input) ends its epoch in a state no machine validity proof accepts, so that
 epoch can never be staged. The node still defends that true state in the
 root tournament: an undefended root would let a fabricated, stageable claim
 win by timeout. Having won, the node holds the epoch with an error log, like
-a no-winner result, and foreclosure is how the application moves on. A
+a no-winner result, and foreclosure is how the application moves on. The
+runner pages after committing the halting input's batch, so the guardian
+need not wait for the root allowance before hearing about the halt. An open
+batch waits for the snapshot gap or the seal before it can commit. A
 template already terminal is refused at startup instead: the engine starts
 every epoch from a state awaiting input, so the node cannot defend such an
 application at all, and its epochs are the guardian's alone.
+
+Settlement validity follows LibMachineValidityProof: a manual RX_ACCEPTED
+yield and its committed TX-buffer root. The HTIF data field is ignored.
+Execution reads the manual yield's reason directly from HTIF, without loading
+its guest-sized payload. Unknown automatic-yield reasons do not invalidate
+machine state. A mismatch between the committed TX word and a root
+reconstructed from emitted outputs does not invalidate the commitment either;
+reconstructed
+output proofs need not validate against that committed word. Cross-client
+agreement on these rules requires coordination with the reference-node team.
+Capped epoch rollover also requires clients to select inputs by the sealed
+index bounds, including inputs carried from earlier blocks.
 
 Settlement never touches the tournament's bond path: staging and
 acceptance move no value, and nothing on the consensus path calls

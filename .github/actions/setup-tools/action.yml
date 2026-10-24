@@ -33,13 +33,32 @@ runs:
         cache-bin: false
 
     - name: Install just
-      uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-      with:
-        # Pinned like the other toolchain components: a floating "latest"
-        # upgrades CI's toolchain silently mid-week (1.56 -> 1.57
-        # landed between two runs of this workflow and muddied a
-        # two-day CI hunt). Bump deliberately.
-        just-version: "1.57.0"
+      shell: bash
+      run: |
+        # Pin deliberately: floating latest silently changes CI's toolchain.
+        # Fetch the pinned asset directly: release-list lookup has reported
+        # this published version missing during CI setup.
+        version=1.57.0
+        case "$(uname -m)" in
+          x86_64)
+            target=x86_64-unknown-linux-musl
+            checksum=45b548094283cb9739af8f13273b8cddeee869f5b4ef2bb631b1f311cb566155
+            ;;
+          aarch64)
+            target=aarch64-unknown-linux-musl
+            checksum=f225044a81adea6e0b3a8b9370aaf374e6af76c8735ae263ac993df55fd137ec
+            ;;
+          *) echo "Unsupported just host architecture: $(uname -m)" >&2; exit 1 ;;
+        esac
+        install_dir=$(mktemp -d "${RUNNER_TEMP}/just.XXXXXX")
+        archive="${install_dir}/just.tar.gz"
+        curl --fail --location --retry 3 \
+          "https://github.com/casey/just/releases/download/${version}/just-${version}-${target}.tar.gz" \
+          --output "$archive"
+        printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check
+        tar -xzf "$archive" -C "$install_dir" just
+        "$install_dir/just" --version
+        echo "$install_dir" >> "$GITHUB_PATH"
 
     - name: Set Foundry version
       id: set-foundry-version

@@ -1269,7 +1269,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
                 } else {
                     revert UnexpectedLogTopic0(log);
                 }
-            } else if (log.emitter == address(_contracts.core.applicationFactory)) {
+            } else if (log.emitter == vm.computeCreateAddress(address(_daveAppFactory), 1)) {
                 if (log.topics[0] == IApplicationFactory.ApplicationCreated.selector) {
                     ++numOfApplicationCreatedEvents;
                     assertEq(log.topics[1], bytes32(0)); // outputsMerkleRootValidator

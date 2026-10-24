@@ -825,7 +825,7 @@ mod tests {
     use crate::engine::constants::UARCH_MASK_TO_BARCH;
     use crate::engine::ruler::Run;
     use crate::merkle::MerkleBuilder;
-    use cartesi_machine::constants::ar::{RAM_START, TX_LOG2_SIZE};
+    use cartesi_machine::constants::ar::TX_LOG2_SIZE;
     use cartesi_machine::constants::cmio::tohost::manual::TX_EXCEPTION;
     use cartesi_machine::constants::rollup::{
         LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
@@ -927,48 +927,14 @@ mod tests {
         Ok(())
     }
 
-    /// Clears fromhost, yields x19, then yields x20 each time it resumes.
-    /// With imcyclemax = 3 the x19 yield executes on the input budget's
-    /// last cycle.
-    const BUDGET_SEAM_PROGRAM: [u32; 5] = [
-        0x4000_82b7, // lui t0, 0x40008 (HTIF base)
-        0x0002_b423, // sd zero, 8(t0) (fromhost)
-        0x0132_b023, // sd x19, 0(t0) (tohost)
-        0x0142_b023, // sd x20, 0(t0) (tohost)
-        0xffdf_f06f, // j -4
-    ];
-
-    fn manual_yield(reason: u16) -> u64 {
-        // HTIF_BUILD(yield device, manual command, reason, no data).
-        (2u64 << 56) | (1u64 << 48) | (u64::from(reason) << 32)
-    }
-
-    /// Runs the guest until its budget or its x19 yield stops it; x19 and
-    /// x20 hold the whole tohost words it yields.
-    fn yield_guest(imcyclemax: u64, x19: u64, x20: u64) -> Result<Machine> {
-        let mut config = Machine::default_config()?;
-        config.ram.length = 4096;
-        config.processor.registers.pc = RAM_START;
-        config.processor.registers.imcyclemax = imcyclemax;
-        config.processor.registers.x19 = x19;
-        config.processor.registers.x20 = x20;
-        let mut machine = Machine::create(&config, &RuntimeConfig::quiet_console())?;
-        let program: Vec<u8> = BUDGET_SEAM_PROGRAM
-            .iter()
-            .flat_map(|instruction| instruction.to_le_bytes())
-            .collect();
-        machine.write_memory(RAM_START, &program)?;
-        machine.run(u64::MAX)?;
-        Ok(machine)
-    }
+    use crate::test_machine::{manual_yield, yield_guest};
 
     /// With imcyclemax = 3 the x19 yield executes on the budget's last
     /// cycle; with imcyclemax = 2 the budget runs out before the yield.
     fn seam_guest(imcyclemax: u64, x19_reason: u16) -> Result<Machine> {
         let mut machine = yield_guest(
             imcyclemax,
-            manual_yield(x19_reason),
-            manual_yield(RX_ACCEPTED),
+            &[manual_yield(x19_reason, 0), manual_yield(RX_ACCEPTED, 0)],
         )?;
         assert_eq!(machine.mcycle()?, imcyclemax);
         Ok(machine)
@@ -991,7 +957,7 @@ mod tests {
         config.ram.length = 4096;
         config.processor.registers.iflags.h = 1;
         config.processor.registers.iflags.y = 1;
-        config.processor.registers.htif.tohost = manual_yield(RX_ACCEPTED);
+        config.processor.registers.htif.tohost = manual_yield(RX_ACCEPTED, 0);
         Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
     }
 
@@ -1013,26 +979,25 @@ mod tests {
         Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
     }
 
-    /// `tohost` with a data field declaring one byte past the TX buffer, as
+    /// A manual yield declaring one byte past the TX buffer, as
     /// a guest that bypasses libcmt can yield it: cm_receive_cmio_request
     /// refuses that length, while the step reads only the header.
-    fn oversized(tohost: u64) -> u64 {
-        tohost | ((1u64 << TX_LOG2_SIZE) + 1)
+    fn oversized(reason: u16) -> u64 {
+        manual_yield(reason, (1u32 << TX_LOG2_SIZE) + 1)
     }
 
     /// Awaits input under an oversized RX_ACCEPTED yield, and accepts the
     /// input under another.
     fn oversized_accepted_machine() -> Result<Machine> {
-        let accepted = oversized(manual_yield(RX_ACCEPTED));
-        yield_guest(u64::MAX, accepted, accepted)
+        let accepted = oversized(RX_ACCEPTED);
+        yield_guest(u64::MAX, &[accepted, accepted])
     }
 
     /// Awaits input, and rejects it under an oversized RX_REJECTED yield.
     fn oversized_rejected_machine() -> Result<Machine> {
         yield_guest(
             u64::MAX,
-            manual_yield(RX_ACCEPTED),
-            oversized(manual_yield(RX_REJECTED)),
+            &[manual_yield(RX_ACCEPTED, 0), oversized(RX_REJECTED)],
         )
     }
 
@@ -1229,7 +1194,7 @@ mod tests {
 
         let work = tempfile::tempdir()?;
         let mut machine = seam_guest(3, RX_ACCEPTED)?;
-        machine.write_reg(CM_REG_X20, manual_yield(RX_REJECTED))?;
+        machine.write_reg(CM_REG_X20, manual_yield(RX_REJECTED, 0))?;
         let revert_root = machine.root_hash()?;
         let checkpoint = work.path().join("checkpoint-0");
         machine.store(&checkpoint)?;
@@ -1330,7 +1295,7 @@ mod tests {
         // Delivered, with the x20 rejection due on the budget's last cycle.
         let delivered = |work: &Path| -> Result<(Machine, Hash, PathBuf, Vec<Hash>)> {
             let mut machine = seam_guest(3, RX_ACCEPTED)?;
-            machine.write_reg(CM_REG_X20, manual_yield(RX_REJECTED))?;
+            machine.write_reg(CM_REG_X20, manual_yield(RX_REJECTED, 0))?;
             let revert_root = machine.root_hash()?;
             let checkpoint = work.join("checkpoint-0");
             machine.store(&checkpoint)?;

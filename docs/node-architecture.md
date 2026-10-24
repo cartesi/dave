@@ -165,7 +165,7 @@ safety, not hygiene:
   a terminal application panicked every node at the roll, which would have
   let a fabricated claim win uncontested.
 
-Apart from the accepted halt and the trust model below, chain data
+Inside the trust model below, chain data
 reaches no panic on the dispute path. Once a wrong epoch has settled, the Hero
 stops the node (exit 30) on a root that starts from a state it did not
 compute, an already-defeated protocol; it reaches that root only after the
@@ -187,11 +187,9 @@ The settle asserts compare the local result with one block's views after the
 node's own win (epoch-lifecycle.md, settlement invariant), so they too fire
 only on a node bug or corrupt local state.
 
-One input-reachable halt is accepted rather than defended. More than 2^24
-inputs in one epoch: the contracts handle it (they never feed the tail) but
-the node panics, and reaching it takes a flood of about 5e11 gas, which costs
-more than the aggregate-throughput loss that comes first (dimensioning.md, the
-reference price); a defect accepted on cost. No input overruns its window:
+DaveConsensus seals at most 2^24 inputs per epoch, leaving excess inputs
+pending for later epochs. This protects the node's coordinate limit without
+depending on the cost of an input flood. No input overruns its window:
 delivery sets the step's per-input budget of 2^48 - 1 big cycles, so an input
 that exhausts it leaves the app at an overflow fixed point, which the node
 defends, and the engine's window tripwire (`engine/ruler.rs`) fires only on an
@@ -587,12 +585,12 @@ Hero's tick, which then drops Solid the same way; a lagging or mixed Foam
 tail costs one such refold. Both drops repeat while their cause persists (a
 provider that keeps omitting the log, or a node bug): every tick then refolds
 and fails with the same warning, adding reads to a stall that exists anyway.
-Any other omission that still folds, such as a missed advance, a missed join
-until a match pairs it, or a missed deletion of a delegated match (the Hero
-reads nothing there), stays silent, and one may surface too late: a
-missed creation of the Hero's own match, when the Hero moves first, fails to
-fold only at the opponent's timeout deletion. Log completeness is a trusted
-RPC property.
+Before waiting as a candidate under active matches, Hero checks the candidate
+root against the standing already read at the event head, with no extra RPC.
+A missing pairing that leaves it falsely idle therefore drops Solid and
+refetches. Other omissions that still fold, such as a
+missed advance or deletion outside Hero's path, can remain silent. These checks
+help detect contradictions; log completeness remains a trusted RPC property.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
 recursively extends the clone over the numeric range `F + 1..H`. This latest

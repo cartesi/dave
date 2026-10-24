@@ -68,7 +68,9 @@ dispute-game.md:
 - The leaf-proof refund is not a universal proof-class gas ceiling.
 - Sentry agreement does not prove a result correct; there is no on-chain
   recovery for a lost sentry-manager key.
-- More than 2^24 inputs in one epoch is out of model (dimensioning.md).
+- Nothing bounds the delay a backlog past the input span adds to later
+  inputs; the aggregate-throughput assumption remains separate
+  (dimensioning.md).
 
 ## Pre-audit items
 

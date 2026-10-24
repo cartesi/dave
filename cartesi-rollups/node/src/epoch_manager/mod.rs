@@ -31,6 +31,7 @@ use cartesi_dave_contracts::dave_consensus::DaveConsensus;
 pub struct EpochManager {
     transaction_lane: TransactionLane,
     consensus: Address,
+    application: Address,
     signer_address: Address,
     sleep_duration: Duration,
     storage: Storage,
@@ -76,6 +77,7 @@ impl EpochManager {
     pub fn new(
         transaction_lane: TransactionLane,
         consensus_address: Address,
+        application: Address,
         signer_address: Address,
         storage: Storage,
         sleep_duration: Duration,
@@ -84,6 +86,7 @@ impl EpochManager {
         Self {
             transaction_lane,
             consensus: consensus_address,
+            application,
             signer_address,
             sleep_duration,
             storage,
@@ -192,6 +195,11 @@ impl EpochManager {
             last.epoch_number > epoch.epoch_number && last.block_created_number <= finalized.number
         });
         let mut wave = Vec::new();
+        let mut foreclosed = false;
+        let application = cartesi_rollups_contracts::i_application::IApplication::new(
+            self.application,
+            chain.provider().clone(),
+        );
         if !settled {
             if let Some(settlement) = self.storage.settlement_info(epoch.epoch_number)? {
                 match self.react_dispute(chain, &epoch, &settlement).await {
@@ -199,14 +207,23 @@ impl EpochManager {
                         let result = tick.result();
                         let head = tick.head();
                         wave.extend(tick.into_request());
+                        if result.is_some() {
+                            foreclosed = application
+                                .isForeclosed()
+                                .block(head.block_id())
+                                .call()
+                                .await?;
+                        }
                         // A sentry votes the state it computed once the root
                         // has a winner, its own or not: after a loss its claim
                         // is the dissent a guardian reads. Staging and
                         // acceptance follow only its own win.
-                        if matches!(
-                            result,
-                            Some(HeroTerminal::Won | HeroTerminal::Lost(Loss::Root { .. }))
-                        ) {
+                        if !foreclosed
+                            && matches!(
+                                result,
+                                Some(HeroTerminal::Won | HeroTerminal::Lost(Loss::Root { .. }))
+                            )
+                        {
                             let consensus =
                                 DaveConsensus::new(self.consensus, chain.provider().clone());
                             let step = if result == Some(HeroTerminal::Won) {
@@ -293,6 +310,19 @@ impl EpochManager {
                 false
             }
         };
+        if foreclosed
+            && refunds_complete
+            && application
+                .isForeclosed()
+                .block(finalized.block_id())
+                .call()
+                .await?
+        {
+            return Err(Fatal::terminal(
+                "application is foreclosed; dispute defense and bond recovery are complete",
+            )
+            .into());
+        }
         Ok(Some(EpochTick {
             epoch: epoch.epoch_number,
             wave,
@@ -836,6 +866,7 @@ mod tests {
         let manager = EpochManager::new(
             lane,
             Address::repeat_byte(0xCC),
+            Address::repeat_byte(0xAA),
             address,
             Storage::new(path).unwrap(),
             Duration::ZERO,

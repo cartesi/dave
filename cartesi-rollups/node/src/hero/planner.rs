@@ -337,6 +337,7 @@ mod tests {
             root_descriptor(kind),
             TournamentStanding::MatchesActive {
                 accepts_joins: false,
+                candidate: None,
             },
             local,
             LocalCommitmentStanding::Engaged(engagement),
@@ -408,7 +409,10 @@ mod tests {
             (false, HeroDecision::Wait(WaitReason::JoinsClosed)),
         ] {
             let snapshot = root_snapshot(
-                TournamentStanding::MatchesActive { accepts_joins },
+                TournamentStanding::MatchesActive {
+                    accepts_joins,
+                    candidate: None,
+                },
                 local,
                 LocalCommitmentStanding::NotJoined,
             );
@@ -432,6 +436,7 @@ mod tests {
         let blocked = root_snapshot(
             TournamentStanding::MatchesActive {
                 accepts_joins: true,
+                candidate: None,
             },
             local,
             LocalCommitmentStanding::Candidate,
@@ -457,6 +462,7 @@ mod tests {
         let snapshot = root_snapshot(
             TournamentStanding::MatchesActive {
                 accepts_joins: false,
+                candidate: None,
             },
             digest(1),
             LocalCommitmentStanding::Eliminated {
@@ -658,6 +664,7 @@ mod tests {
             child_descriptor,
             TournamentStanding::MatchesActive {
                 accepts_joins: true,
+                candidate: None,
             },
             digest(40),
             LocalCommitmentStanding::NotJoined,
@@ -677,6 +684,7 @@ mod tests {
             parent_descriptor,
             TournamentStanding::MatchesActive {
                 accepts_joins: false,
+                candidate: None,
             },
             parent_commitment,
             LocalCommitmentStanding::Engaged(engagement),

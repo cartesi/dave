@@ -107,6 +107,7 @@ pub async fn run(config: NodeConfig) -> Result<()> {
             let epoch_manager = EpochManager::new(
                 transaction_lane,
                 params.address_book.consensus,
+                params.address_book.app,
                 params.signer_address,
                 storage,
                 params.sleep_duration,
@@ -242,3 +243,6 @@ mod tests {
         assert!(merged_failure(None, drained_failure("epoch manager", Ok(Ok(())))).is_none());
     }
 }
+
+#[cfg(test)]
+mod test_machine;

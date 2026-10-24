@@ -81,6 +81,193 @@ async fn settle(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
         .await
 }
 
+async fn foreclose(world: &mut World) -> Result<()> {
+    use cartesi_rollups_contracts::i_application::IApplication;
+    let application = IApplication::new(world.book.app, world.operator.clone());
+    let pending = application.foreclose().send().await?;
+    let hash = *pending.tx_hash();
+    world.mine(1).await?;
+    assert!(
+        world
+            .operator
+            .get_transaction_receipt(hash)
+            .await?
+            .unwrap()
+            .status()
+    );
+    Ok(())
+}
+
+async fn finish_foreclosed(
+    node: &mut Node,
+    world: &mut World,
+    mut adversary: Option<&mut Adversary>,
+) -> Result<()> {
+    let before = [CLAIM, STAGE, ACCEPT].map(|call| world.honest_calls(call).len());
+    let mut stopped = false;
+    for _ in 0..DISPUTE_ROUNDS {
+        match node.turn(world).await {
+            Ok(()) => {}
+            Err(error) => {
+                assert_eq!(crate::fatal::exit_code(&error), 30, "{error:#}");
+                stopped = true;
+                break;
+            }
+        }
+        if let Some(actor) = adversary.as_deref_mut() {
+            actor.turn(world).await?;
+        }
+        if world.honest_calls(WIN_INNER).len() == world.levels() - 1 {
+            let close = world.root_closes_at().await?;
+            world.mine_to(close).await?;
+        }
+    }
+    assert!(
+        stopped,
+        "foreclosed node did not finish defense and recovery"
+    );
+    assert_eq!(
+        [CLAIM, STAGE, ACCEPT].map(|call| world.honest_calls(call).len()),
+        before
+    );
+    let root = world.sealed_epochs().await?[0].tournament;
+    let recoveries = world.bonds_recovered(root).await?;
+    let ours: Vec<_> = recoveries
+        .iter()
+        .filter(|(event, _)| event.claimer == world.address(HONEST))
+        .collect();
+    assert_eq!(ours.len(), 1);
+    assert!(ours[0].0.payment > U256::ZERO);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn foreclosure_after_staging_recovers_bonds_then_stops_across_restart() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    join_and_close(&mut node, &mut world).await?;
+    node.run_until(&mut world, ROUNDS, |world, _| {
+        Ok(!world.honest_calls(STAGE).is_empty())
+    })
+    .await?;
+    foreclose(&mut world).await?;
+    finish_foreclosed(&mut node, &mut world, None).await?;
+    let mut restarted = node.restart(&world)?;
+    let error = restarted.tick(&world).await.unwrap_err();
+    assert_eq!(crate::fatal::exit_code(&error), 30);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn foreclosure_during_a_dispute_keeps_defending_and_recovers_bonds() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+    node.run_with(&mut world, &mut [&mut adversary], ROUNDS, |world, _| {
+        Ok(!world.calls(1, JOIN).is_empty() && !world.honest_calls(JOIN).is_empty())
+    })
+    .await?;
+    let root = world.sealed_epochs().await?[0].tournament;
+    assert!(!world.matches_created(root).await?.is_empty());
+    foreclose(&mut world).await?;
+    let mut restarted = node.restart(&world)?;
+    finish_foreclosed(&mut restarted, &mut world, Some(&mut adversary)).await?;
+    assert_eq!(world.honest_calls(WIN_LEAF).len(), 1);
+    let mut restarted = restarted.restart(&world)?;
+    assert_eq!(
+        crate::fatal::exit_code(&restarted.tick(&world).await.unwrap_err()),
+        30
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn a_guest_halted_by_an_input_is_defended_across_restart_and_never_staged() -> Result<()> {
+    let template_dir = tempfile::tempdir()?;
+    let template = template_dir.path().join("machine");
+    let mut machine =
+        crate::test_machine::yield_guest(u64::MAX, &[crate::test_machine::manual_yield(1, 0), 1])?;
+    machine.store(&template)?;
+    drop(machine);
+
+    let mut world = World::spawn_on_template(&[], 0, template).await?;
+    let mut node = world.honest_node().await?;
+    world.add_input(vec![1]).await?;
+    settle(&mut node, &mut world, 0).await?;
+    node.roll(&mut world, 1).await?;
+    let settlement = Storage::new(node.state_dir.path())?
+        .settlement_info(1)?
+        .unwrap();
+    assert!(!settlement.machine_validity_proof.settles());
+
+    let mut restarted = node.restart(&world)?;
+    let mut adversary = world.adversary(&restarted, 1, idle_tail(), Policy::Rational)?;
+    restarted
+        .run_with(
+            &mut world,
+            &mut [&mut adversary],
+            DISPUTE_ROUNDS,
+            |world, _| Ok(world.honest_calls(WIN_INNER).len() == world.levels() - 1),
+        )
+        .await?;
+    assert_eq!(world.honest_calls(WIN_LEAF).len(), 1);
+    let close = world.root_closes_at().await?;
+    world.mine_to(close).await?;
+    restarted.turn(&mut world).await?;
+
+    let won = world.consensus().canStageTournamentResult().call().await?;
+    assert!(won.isFinished);
+    assert!(!won.isTournamentFailed);
+    assert_eq!(
+        won.winnerCommitment,
+        alloy::primitives::B256::from(settlement.computation_hash.data())
+    );
+    for _ in 0..3 {
+        restarted.turn(&mut world).await?;
+    }
+    let mut restarted = restarted.restart(&world)?;
+    restarted.turn(&mut world).await?;
+    assert_eq!(world.honest_calls(STAGE).len(), 1);
+    assert_eq!(world.honest_calls(ACCEPT).len(), 1);
+    assert_eq!(
+        Storage::new(restarted.state_dir.path())?
+            .unfinished_epoch()?
+            .unwrap()
+            .epoch_number,
+        1
+    );
+    Ok(())
+}
+
+/// A nonstandard yield still stages the committed state through the contracts.
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn nonstandard_yields_still_settle_the_committed_state() -> Result<()> {
+    let template_dir = tempfile::tempdir()?;
+    let template = template_dir.path().join("machine");
+    let mut machine = crate::test_machine::yield_guest(
+        u64::MAX,
+        &[
+            crate::test_machine::manual_yield(1, 32),
+            crate::test_machine::automatic_yield(0x7f, 0),
+            crate::test_machine::manual_yield(1, u32::MAX),
+        ],
+    )?;
+    machine.store(&template)?;
+    drop(machine);
+    let mut world = World::spawn_on_template(&[], 0, template).await?;
+    let mut node = world.honest_node().await?;
+    world.add_input(vec![1]).await?;
+    settle(&mut node, &mut world, 0).await?;
+    settle(&mut node, &mut world, 1).await?;
+    assert_eq!(world.honest_calls(ACCEPT).len(), 2);
+    Ok(())
+}
+
 /// Two consecutive epochs settle: epoch 0, sealed empty at deployment, and
 /// epoch 1 with a maximum-size input, which the reader ingests and the
 /// runner executes before the node joins with its root.
