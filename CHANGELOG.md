@@ -28,6 +28,11 @@ uncapped deployments are incompatible.
   active matches; a contradiction discards and refolds the event cache.
 - Exercise halted and nonstandard-yield guests through the real contracts.
 
+### CI
+
+- Fetch pinned just assets directly and verify their checksums instead of
+  relying on release-list discovery.
+
 ## v3.0.0-alpha.6
 
 A new deployment generation (cartesi/dave#287). Nodes from earlier releases
