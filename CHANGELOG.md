@@ -35,6 +35,8 @@ past the span.
 
 - Rebuild the devnet bundle with `just rollups-contracts::build-devnet` after
   the contract changes.
+- Fetch pinned just assets directly and verify their checksums instead of
+  relying on release-list discovery.
 
 ## v3.0.0-alpha.6
 
