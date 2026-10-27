@@ -16,6 +16,7 @@ use alloy::{
 use cartesi_dave_contracts::dave_consensus::DaveConsensus::{
     acceptStagedTournamentResultCall, stageTournamentResultCall, submitSentryClaimCall,
 };
+use cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED;
 use cartesi_prt_contracts::tournament::Tournament::{
     MatchCreated, advanceMatchCall, eliminateInnerTournamentCall, eliminateMatchByTimeoutCall,
     joinTournamentCall, sealInnerMatchAndCreateInnerTournamentCall, tryRecoveringBondCall,
@@ -79,6 +80,96 @@ async fn settle(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
     join_and_close(node, world).await?;
     node.run_until(world, ROUNDS, |_, storage| completed(storage, epoch))
         .await
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn a_guest_halted_by_an_input_is_defended_across_restart_and_never_staged() -> Result<()> {
+    let template_dir = tempfile::tempdir()?;
+    let template = template_dir.path().join("machine");
+    let mut machine = crate::test_machine::yield_guest(
+        u64::MAX,
+        &[
+            crate::test_machine::manual_yield(RX_ACCEPTED, 0),
+            crate::test_machine::halt(),
+        ],
+    )?;
+    machine.store(&template)?;
+    drop(machine);
+
+    let mut world = World::spawn_on_template(&[], 0, template).await?;
+    let mut node = world.honest_node().await?;
+    world.add_input(vec![1]).await?;
+    settle(&mut node, &mut world, 0).await?;
+    node.roll(&mut world, 1).await?;
+    let settlement = Storage::new(node.state_dir.path())?
+        .settlement_info(1)?
+        .unwrap();
+    assert!(!settlement.machine_validity_proof.settles());
+
+    let mut restarted = node.restart(&world)?;
+    let mut adversary = world.adversary(&restarted, 1, idle_tail(), Policy::Rational)?;
+    restarted
+        .run_with(
+            &mut world,
+            &mut [&mut adversary],
+            DISPUTE_ROUNDS,
+            |world, _| Ok(world.honest_calls(WIN_INNER).len() == world.levels() - 1),
+        )
+        .await?;
+    assert_eq!(world.honest_calls(WIN_LEAF).len(), 1);
+    let close = world.root_closes_at().await?;
+    world.mine_to(close).await?;
+    restarted.turn(&mut world).await?;
+
+    let won = world.consensus().canStageTournamentResult().call().await?;
+    assert!(won.isFinished);
+    assert!(!won.isTournamentFailed);
+    assert_eq!(
+        won.winnerCommitment,
+        alloy::primitives::B256::from(settlement.computation_hash.data())
+    );
+    for _ in 0..3 {
+        restarted.turn(&mut world).await?;
+    }
+    let mut restarted = restarted.restart(&world)?;
+    restarted.turn(&mut world).await?;
+    assert_eq!(world.honest_calls(STAGE).len(), 1);
+    assert_eq!(world.honest_calls(ACCEPT).len(), 1);
+    assert_eq!(
+        Storage::new(restarted.state_dir.path())?
+            .unfinished_epoch()?
+            .unwrap()
+            .epoch_number,
+        1
+    );
+    Ok(())
+}
+
+/// A nonstandard yield still stages the committed state through the contracts.
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn nonstandard_yields_still_settle_the_committed_state() -> Result<()> {
+    let template_dir = tempfile::tempdir()?;
+    let template = template_dir.path().join("machine");
+    // Accepted template, unknown automatic notification, then oversized accepted yield.
+    let mut machine = crate::test_machine::yield_guest(
+        u64::MAX,
+        &[
+            crate::test_machine::manual_yield(RX_ACCEPTED, 32),
+            crate::test_machine::automatic_yield(0x7f, 0),
+            crate::test_machine::manual_yield(RX_ACCEPTED, u32::MAX),
+        ],
+    )?;
+    machine.store(&template)?;
+    drop(machine);
+    let mut world = World::spawn_on_template(&[], 0, template).await?;
+    let mut node = world.honest_node().await?;
+    world.add_input(vec![1]).await?;
+    settle(&mut node, &mut world, 0).await?;
+    settle(&mut node, &mut world, 1).await?;
+    assert_eq!(world.honest_calls(ACCEPT).len(), 2);
+    Ok(())
 }
 
 /// Two consecutive epochs settle: epoch 0, sealed empty at deployment, and
