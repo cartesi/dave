@@ -30,6 +30,8 @@ mod tournament;
 
 #[cfg(test)]
 mod harness;
+#[cfg(test)]
+mod test_machine;
 
 use args::NodeConfig;
 

@@ -97,7 +97,15 @@ template already terminal is refused at startup instead: the engine starts
 every epoch from a state awaiting input, so the node cannot defend such an
 application at all, and its epochs are the guardian's alone.
 
-Capped epoch rollover also requires clients to select
+Settlement validity follows LibMachineValidityProof: a manual RX_ACCEPTED
+yield and its committed TX-buffer root. The HTIF data field is ignored.
+Execution reads the manual yield's reason directly from HTIF, without loading
+its guest-sized payload. Unknown automatic-yield reasons do not invalidate
+machine state. A mismatch between the committed TX word and a root
+reconstructed from emitted outputs does not invalidate the commitment either;
+reconstructed output proofs need not validate against that committed word.
+Cross-client agreement on these rules requires coordination with the
+reference-node team. Capped epoch rollover also requires clients to select
 inputs by the sealed index bounds, including inputs carried from earlier
 blocks.
 

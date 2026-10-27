@@ -117,6 +117,10 @@ carry no backlog (reviews/README.md).
   (runbooks/submit-relay.md)
 
 ## Contracts and assurance
+
+- Coordinate reference-node validity: accepted-yield lengths, unknown automatic
+  notifications, declared outputs roots and pending accepted yields at the
+  cycle boundary. (epoch-lifecycle.md)
 - Coordinate reference-node capped epoch rollover: select inputs by sealed
   index bounds, including inputs carried from earlier blocks.
   (epoch-lifecycle.md)
@@ -156,11 +160,6 @@ carry no backlog (reviews/README.md).
 - Two honest nodes on different keys defending one epoch against one
   adversary, in the harness: no test has run two sling nodes at once.
   (test-harness.md)
-- Release-candidate hardening: a harness test in which a terminal
-  application's epoch is defended, won and held through the real contracts.
-  It needs a guest that turns terminal on an input, a new test image, since
-  startup refuses a template that is terminal at genesis; today the epoch
-  manager's tests pin the hold against mocked views. (test-harness.md)
 
 ## Tooling
 
