@@ -26,10 +26,6 @@ carry no backlog (reviews/README.md).
   the disk per snapshot at the default gap. The default gap and the
   aggregate-throughput price follow from them.
   (measurements/constants.md, dimensioning.md)
-- Price input volume against the root window in the DaveConsensus campaign:
-  sealing takes every input before the acceptance block with no cap or
-  minimum notice, and the app's aggregate-throughput contract is what makes
-  the honest root join land. (dimensioning.md)
 - On the release candidate's staging, the first on two levels, stop and
   restart the node mid leaf build: three-level releases never took the
   span-by-span, resumable tall build, which only the spec and engine-machine
@@ -50,7 +46,6 @@ carry no backlog (reviews/README.md).
   spots. (computation-hash.md)
 
 ## Before mainnet funds
-
 - Rehearse the backstop for an undetected node bug: on a throwaway Sepolia
   application, hold the node out past join closure, let a fabricated claim
   win, and have the guardian foreclose inside the claim staging period. Then
@@ -68,9 +63,10 @@ carry no backlog (reviews/README.md).
 - On the emulator release that fixes the cold load of the hash-tree cache
   file (in progress upstream, not a blocker: about 2.5 ms per input in a
   preliminary implementation, with validation on an untrusted load), bump
-  the emulator and re-measure the per-input overhead and the reference
-  price. Check whether that validation is the supported `cm_verify_hash_tree`
-  the item below waits on (a lead). (node-architecture.md, Storage)
+  the emulator, re-measure the per-input overhead and re-derive the reference
+  price, which stops binding below about 36 ms per input. Check whether that
+  validation is the supported `cm_verify_hash_tree` the item below waits on
+  (a lead). (node-architecture.md, Storage)
 - Ask for EMLINK in `os::clone_file`'s copy fallback, low priority: a clone
   hard-links every read-only file (each snapshot's PMA file), so on btrfs and
   ext4 live snapshots stop at about 65k links per inode, and the runner and
@@ -115,7 +111,9 @@ carry no backlog (reviews/README.md).
   (runbooks/submit-relay.md)
 
 ## Contracts and assurance
-
+- Coordinate reference-node capped epoch rollover: select inputs by sealed
+  index bounds, including inputs carried from earlier blocks.
+  (epoch-lifecycle.md)
 - Review the honest-survival argument (dimensioning.md, "Honest survival
   under the budgets") by someone other than its author, and decide whether
   the two-level search gates the external audit or is handed over as
@@ -147,10 +145,6 @@ carry no backlog (reviews/README.md).
   string, which cannot tell the release from its pre-releases or from an
   unreleased upstream build.
   (test-harness.md)
-- A reader unit test for one log chunk carrying several seals around an
-  empty epoch: only the ignored anvil test crosses epochs, one block per
-  chunk, and a regression would misnumber inputs on every catch-up.
-  (node-architecture.md, Chain ingestion stance)
 - Optional: a steered divergence point for the harness's tail adversary, to
   dispute active spans in-process. (test-harness.md)
 - Two honest nodes on different keys defending one epoch against one

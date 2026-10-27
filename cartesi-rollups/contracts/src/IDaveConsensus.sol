@@ -22,7 +22,7 @@ import {ISentryErrors} from "./ISentryErrors.sol";
 /// @notice Consensus contract with Dave tournaments.
 ///
 /// @notice This contract validates only one application,
-/// which read inputs from the InputBox contract.
+/// which reads inputs from the InputBox contract.
 ///
 /// @notice This contract also manages epoch boundaries, which
 /// are defined in terms of input indices. We represent them
@@ -41,9 +41,10 @@ import {ISentryErrors} from "./ISentryErrors.sol";
 ///
 /// @notice At any given time, there is always one sealed epoch.
 /// Prior to it, every epoch has been settled.
-/// After it, the next epoch is accumulating inputs. Once this epoch is settled,
-/// the accumulating epoch will be sealed, and a new
-/// accumulating epoch will be created.
+/// After it, inputs accumulate in the InputBox. Once the sealed epoch settles,
+/// the next epoch seals at most 2^24 pending inputs. Any excess remains pending
+/// for later epochs; the seal's index bounds define its inputs, not block ranges.
+/// The first epoch is sealed the same way at construction.
 /// Every sealed epoch has an associated tournament.
 /// Once a tournament is finished, and a winner commitment is declared,
 /// it can then be staged by anyone. After the claim staging period is elapsed,

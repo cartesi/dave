@@ -26,6 +26,20 @@ transaction that seals an epoch, the tournament factory's
 before `EpochSealed` (pinned by `DaveAppFactory.t.sol`), so a log reader
 holds it until the `EpochSealed` that names the tournament.
 
+Sealing includes at most 2^24 pending inputs, derived from the Machine's
+input-coordinate width, both at construction and at acceptance. Excess
+inputs remain pending for later epochs. Only the inputs in accepted epochs
+become finalized; a backlog does not mark its unprocessed tail finalized.
+The cap bounds input count; execution time still depends on the app and runner.
+This node requires a capped consensus. Earlier uncapped deployments are
+unsupported: the node stalls at the first seal past the span.
+The reader also splits full pending epochs at this boundary before their
+seals arrive, so eager execution cannot assign an unrepresentable input
+index to the open epoch. Every later seal is compared with the stored split;
+a disagreement fails ingestion and names the capped-consensus requirement.
+The runner waits for a seal before rolling to the next epoch. The Lua client
+selects inputs directly from each sealed epoch's lower and upper bounds.
+
 ## Epoch states, from the node's perspective
 
 1. Open: inputs are accumulating in the InputBox; the current epoch has no
@@ -76,6 +90,10 @@ a no-winner result, and foreclosure is how the application moves on. A
 template already terminal is refused at startup instead: the engine starts
 every epoch from a state awaiting input, so the node cannot defend such an
 application at all, and its epochs are the guardian's alone.
+
+Capped epoch rollover also requires clients to select
+inputs by the sealed index bounds, including inputs carried from earlier
+blocks.
 
 Settlement never touches the tournament's bond path: staging and
 acceptance move no value, and nothing on the consensus path calls

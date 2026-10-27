@@ -76,7 +76,8 @@ truth.
   staged value is echoed back to or from a claim.
 - One live tournament at a time - the current sealed epoch's. Acceptance
   settles, samples the next epoch's input bounds from the InputBox at
-  that moment, records the outputs root in a write-once mapping, and
+  that moment, capped at the Machine's 2^24-input span with excess left
+  pending, records the outputs root in a write-once mapping, and
   instantiates the next tournament from the settled state.
 - A sentry slot claims at most once per epoch (bitmap by slot ID).
   Rotation moves a slot to a new address but preserves an already-placed
@@ -89,9 +90,11 @@ truth.
   padding rule the off-chain commitment builders mirror
   (docs/computation-hash.md). Changing it desynchronizes every
   commitment producer.
-
 ## Change guardrails
 
+- `MAX_INPUTS_PER_EPOCH` must equal the node's `Structure::max_inputs`.
+  If it moves, update the reader's eager split and docs/epoch-lifecycle.md
+  with it, and validate the cross-implementation boundary.
 - Preserve the deployed ABI, events, error selectors, and the ERC-165
   surface (`IDataProvider`, `IOutputsMerkleRootValidator`) unless the
   task explicitly authorizes a compatibility break.
@@ -119,17 +122,16 @@ just test-prt-gas          # includes the leaf-proof subsidy through this provid
 just bind                  # after any interface change
 ```
 
-Honest coverage statement: `DaveConsensus` has no dedicated Foundry unit
-suite today. Its behavior is exercised through `test/DaveAppFactory.t.sol`
-(construction, stage and accept, `wasInputFinalized`, staging reverts on bad
-proofs, root failure, sentry rotation, a winner exhausting the payment
-callback), the leaf-proof gas FFI fixture (`test/gas/`), the node's
-integration tests, and the e2e smoke. `test/NodeProofs.t.sol` and
-`test/NodeWitnesses.t.sol` check that the contracts' verifiers and the step
-accept the node's proofs and witnesses, without running `DaveConsensus`. Do
-not mistake any of these for a unit suite when changing staging,
-sentry, or settlement logic; adding focused tests with such a change is
-expected.
+Honest coverage statement: `test/DaveConsensusCapacity.t.sol` uses a mocked
+fixture to cover capped epoch storage and events, backlog rollover and boundary
+counts. `test/DaveAppFactory.t.sol` exercises construction, stage and accept,
+`wasInputFinalized`, staging reverts on bad proofs, root failure, sentry
+rotation and a winner exhausting the payment callback. The leaf-proof gas FFI fixture
+(`test/gas/`), node integration tests and e2e smoke add coverage.
+`test/NodeProofs.t.sol` and `test/NodeWitnesses.t.sol` check that the contracts'
+verifiers and the step accept the node's proofs and witnesses, without running
+`DaveConsensus`. When changing staging, sentry or settlement logic, add focused
+tests rather than assuming the capacity fixture covers it.
 
 ## Explicit non-claims
 
