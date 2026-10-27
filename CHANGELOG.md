@@ -20,6 +20,10 @@ past the span.
 
 ### Node
 
+- Once the dispute has a result, skip sentry claims, staging and acceptance
+  while foreclosure is visible. Dispute moves and bond recovery continue;
+  exit 30 only after recovery completes and foreclosure is finalized.
+  A restart resumes the same work.
 - Split full pending epochs at the input span, check every later seal against
   those boundaries, and stall at the first seal past the span.
 

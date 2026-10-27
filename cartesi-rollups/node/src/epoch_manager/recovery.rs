@@ -163,8 +163,7 @@ pub async fn plan_recovery(
         wave: Vec::new(),
         complete: open.is_empty(),
     };
-    // Once per process and epoch. A foreclosed epoch never settles, so this
-    // is the line that marks when its operator may stop the node.
+    // Once per process and epoch: the first tick that finds nothing open.
     if tick.complete && !tree.tournaments.is_empty() {
         info!(
             "epoch {}: every bond owed to {claimant} is recovered",

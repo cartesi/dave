@@ -352,23 +352,24 @@ Options:
   restart rules filter it), so alert on a last exit of 30 or 40.
 - The exit status says why the node stopped: 0 a requested stop; 1 any other
   error (restart); 2 a usage error; 30 terminal, when a flag, the seed image,
-  the deployment or the settled chain disagrees with the node (do not
-  restart: an operator must act); 40 the data directory was built under
-  another store format, commitment semantics, emulator, consensus or
-  tournament geometry (start a fresh one beside it, as above); 101 a panic
-  (restart with backoff and page, since a loop means a bug or corrupt local
-  state). A 101 loop at a snapshot-root assert means corrupt local state:
-  rebuild the data directory beside it as for 40, never delete a row or a
-  snapshot directory alone, which a replay would adopt again. A death by
-  signal logs nothing of its own: 137 (SIGKILL) is usually the kernel's
+  the deployment or the settled chain disagrees with the node, or the
+  application is foreclosed in finalized state and defense and bond recovery
+  are complete (do not restart: an operator must act); 40 the data directory
+  was built under another store format, commitment semantics, emulator,
+  consensus or tournament geometry (start a fresh one beside it, as above);
+  101 a panic (restart with backoff and page, since a loop means a bug or
+  corrupt local state). A 101 loop at a snapshot-root assert means corrupt
+  local state: rebuild the data directory beside it as for 40, never delete a
+  row or a snapshot directory alone, which a replay would adopt again. A death
+  by signal logs nothing of its own: 137 (SIGKILL) is usually the kernel's
   out-of-memory killer; 135 (SIGBUS, systemd `status=7/BUS`) means the data
   directory's filesystem filled while a machine was mapped for writing; 134
   and 139 are crashes below the panic path, to report with stderr's last
   lines. Size memory for the application's machine plus a dispute's, plus
-  about 250 bytes per input of the epoch, which the root composition holds
-  at the roll and in a root dispute, plus about three times the input bytes
-  of the densest 10,000 blocks since the deployment, which a catch-up holds
-  at once: an out-of-memory kill there repeats on every restart.
+  about 250 bytes per input of the epoch, which the root composition holds at
+  the roll and in a root dispute, plus about three times the input bytes of
+  the densest 10,000 blocks since the deployment, which a catch-up holds at
+  once: an out-of-memory kill there repeats on every restart.
 - Behind a relay, an error that a call has been planned for some minutes
   without landing, naming a last verdict rather than a revert at latest,
   means the relay holds, drops or refuses its sends; the nonce it names is
@@ -397,10 +398,10 @@ Options:
   restart loop or an unanswered page draws on the same censorship budget as a
   provider outage.
 - Alert on every ERROR line, on restart loops, on free space on the data
-  directory's filesystem (the node refuses a batch below 1 GiB, except the
-  newest sealed epoch's, leaving that space to it and its dispute), and on the
-  signer's balance against the funding floor above, which the node checks
-  only when a batch is due.
+  directory's filesystem (the node
+  refuses a batch below 1 GiB, except the newest sealed epoch's, leaving that
+  space to it and its dispute), and on the signer's balance against the
+  funding floor above, which the node checks only when a batch is due.
 - Keep `--data-dir` on XFS with `reflink=1` in production (above). An epoch
   keeps one snapshot per `--snapshot-gap-inputs` inputs until it completes (a
   batch with no accepted input shares its predecessor's), and about two
@@ -442,5 +443,12 @@ Options:
   A lost root's error says whether the winner ends in this node's final state
   or diverges from it; a sentry node claims its own state either way. After a
   divergent state settles, the node stops with exit 30 at the next epoch.
-  A foreclosed application settles nothing more: let the node finish
-  recovering its winning bonds, then stop it.
+  Foreclosure never stops dispute moves or bond recovery. Once the dispute has
+  a result, the node skips settlement while foreclosure is visible at that
+  head. It exits 30 only when recovery is complete and foreclosure is finalized.
+  Restarting resumes that work, so do not stop a node with an active dispute.
+  Between epochs it may join the next root and wait out its allowance before
+  exiting; a fresh directory replays history first. A foreclosure racing
+  inclusion can cost one transaction's gas. An eliminated commitment in an
+  abandoned root may keep waiting indefinitely. Foreclosure does not advance
+  the node's epoch completion cursor.

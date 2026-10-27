@@ -19,7 +19,8 @@ use std::fmt::Display;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FatalKind {
     /// A flag, the seed image, the deployment or the settled chain
-    /// disagrees with this node.
+    /// disagrees with this node, or finalized foreclosure has left no
+    /// dispute defense or bond recovery to do.
     Terminal,
     /// The data directory belongs to another store format, commitment semantics,
     /// emulator, consensus or tournament geometry.

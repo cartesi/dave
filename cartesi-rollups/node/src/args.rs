@@ -862,6 +862,7 @@ mod tests {
             &Deploy {
                 sentries: vec![anvil.addresses()[0]],
                 claim_staging_period: 1000,
+                guardian: Address::ZERO,
             },
             *Template::inspect(&terminal)?.hash(),
         )

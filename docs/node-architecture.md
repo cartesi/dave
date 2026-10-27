@@ -241,8 +241,9 @@ is the alarm. A panic stops every worker, refunds included (`lib.rs`,
 The exit status tells a supervisor which of these happened (`fatal.rs`), with
 the numbers of the sequencer's contract: 0 a requested stop, 1 any other
 error (restart with backoff), 2 a usage error, 30 terminal (a flag, the
-seed image, the deployment or the settled chain disagrees with the node: do not
-restart, an operator must act), 40 rebuild the data directory (its store
+seed image, the deployment or the settled chain disagrees with the node, or
+finalized foreclosure leaves no defense or recovery to do: do not restart,
+an operator must act), 40 rebuild the data directory (its store
 format, commitment semantics, emulator, consensus or geometry is another). A panic
 exits 101: restart with backoff and page, since a restart cannot make an
 invariant violation worse and may clear a nondeterministic one while a clock

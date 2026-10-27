@@ -119,6 +119,7 @@ impl World {
         let deploy = Deploy {
             sentries: sentries.iter().map(|&key| anvil.addresses()[key]).collect(),
             claim_staging_period,
+            guardian: anvil.addresses()[OPERATOR],
         };
         let book = deploy_app_from(&operator, &deploy, *Template::inspect(&template)?.hash())
             .await
@@ -583,6 +584,7 @@ impl Node {
         let manager = EpochManager::new(
             world.lane(key),
             world.book.consensus,
+            world.book.app,
             world.address(key),
             Storage::new(state_dir.path())?,
             Duration::ZERO,
