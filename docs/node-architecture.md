@@ -257,7 +257,8 @@ winnerless dispute (a loss names its case: elimination, another class's child
 win, a root won with this node's final state, or a divergence), an obligation
 the local commitment already missed (joins closed before it joined, its clock
 expired, its match or its match's child is eliminable), a won epoch that
-cannot settle, a submission the endpoint rejected (one it did not answer is
+cannot settle, an input that makes the application terminal (paged after its
+batch commits), a submission the endpoint rejected (one it did not answer is
 WARN until its call pages), a batch the signer cannot cover, a failure or a
 planned call that persists past G (the paging rule above), a
 worker exit, or a contract answer the node does not know (an unknown bond
