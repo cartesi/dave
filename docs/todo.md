@@ -46,6 +46,12 @@ carry no backlog (reviews/README.md).
   spots. (computation-hash.md)
 
 ## Before mainnet funds
+
+- Adopt `newReservedApplication` and its reserved address calculator once a
+  rollups-contracts release ships cartesi/rollups-contracts#561, retaining the
+  consensus-bound salt. If none ships before the first mainnet app or audit
+  scope freeze, choose between waiting and creating Application directly.
+  (cartesi-rollups/contracts/AGENTS.md)
 - Rehearse the backstop for an undetected node bug: on a throwaway Sepolia
   application, hold the node out past join closure, let a fabricated claim
   win, and have the guardian foreclose inside the claim staging period. Then

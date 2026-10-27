@@ -65,7 +65,7 @@ truth.
   consensus, migrates the app's validator to it, renounces ownership.
   All steps run inside one `newDaveApp` call, so there is no
   partial-completion window; `calculateDaveAppAddress` predicts both
-  addresses for pre-funding and configuration.
+  addresses for configuration (see the squatting non-claim before funding).
 - `src/ISentryErrors.sol` - sentry error selectors.
 
 ## Invariants to protect
@@ -90,6 +90,10 @@ truth.
   padding rule the off-chain commitment builders mirror
   (docs/computation-hash.md). Changing it desynchronizes every
   commitment producer.
+- The application address binds the template, withdrawal configuration and
+  every consensus setting, so `newDaveApp` from any caller can land a
+  predicted address only with the pair that address was predicted for.
+
 ## Change guardrails
 
 - `MAX_INPUTS_PER_EPOCH` must equal the node's `Structure::max_inputs`.
@@ -126,7 +130,8 @@ Honest coverage statement: `test/DaveConsensusCapacity.t.sol` uses a mocked
 fixture to cover capped epoch storage and events, backlog rollover and boundary
 counts. `test/DaveAppFactory.t.sol` exercises construction, stage and accept,
 `wasInputFinalized`, staging reverts on bad proofs, root failure, sentry
-rotation and a winner exhausting the payment callback. The leaf-proof gas FFI fixture
+rotation and a winner exhausting the payment callback. The factory tests pin
+the consensus-settings address binding. The leaf-proof gas FFI fixture
 (`test/gas/`), node integration tests and e2e smoke add coverage.
 `test/NodeProofs.t.sol` and `test/NodeWitnesses.t.sol` check that the contracts'
 verifiers and the step accept the node's proofs and witnesses, without running
@@ -142,3 +147,8 @@ tests rather than assuming the capacity fixture covers it.
   delay. The staging period is a reaction window, not a fraud proof.
 - Epochs have no inherent duration: sealing bounds are sampled at
   acceptance time, so epoch length is a function of settlement cadence.
+- The shared ApplicationFactory's salt does not bind its caller, so anyone
+  can occupy a predicted application address with an application that has
+  no validator. `newDaveApp` then reverts for those settings and salt, and
+  value sent there first is stranded. Do not send value to a predicted
+  address before `DaveAppCreated` (docs/todo.md).

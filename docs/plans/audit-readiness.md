@@ -71,6 +71,9 @@ dispute-game.md:
 - Nothing bounds the delay a backlog past the input span adds to later
   inputs; the aggregate-throughput assumption remains separate
   (dimensioning.md).
+- Anyone can occupy a predicted application address through the shared
+  ApplicationFactory, which blocks that `newDaveApp` (cartesi/rollups-contracts#561;
+  docs/todo.md, Before mainnet funds).
 
 ## Pre-audit items
 

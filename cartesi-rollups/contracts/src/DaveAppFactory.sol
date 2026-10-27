@@ -39,7 +39,9 @@ contract DaveAppFactory is IDaveAppFactory {
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) external override returns (IApplication appContract, IDaveConsensus daveConsensus) {
-        appContract = _newApplication(templateHash, withdrawalConfig, salt);
+        appContract = _newApplication(
+            templateHash, withdrawalConfig, _applicationSalt(claimStagingPeriod, sentryManager, sentries, salt)
+        );
         daveConsensus =
             _newDaveConsensus(address(appContract), templateHash, claimStagingPeriod, sentryManager, sentries, salt);
         appContract.migrateToOutputsMerkleRootValidator(daveConsensus);
@@ -55,7 +57,9 @@ contract DaveAppFactory is IDaveAppFactory {
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) external view override returns (address appContractAddress, address daveConsensusAddress) {
-        appContractAddress = _calculateApplicationAddress(templateHash, withdrawalConfig, salt);
+        appContractAddress = _calculateApplicationAddress(
+                templateHash, withdrawalConfig, _applicationSalt(claimStagingPeriod, sentryManager, sentries, salt)
+            );
         daveConsensusAddress = _calculateDaveConsensusAddress(
             appContractAddress, templateHash, claimStagingPeriod, sentryManager, sentries, salt
         );
@@ -101,6 +105,16 @@ contract DaveAppFactory is IDaveAppFactory {
         return APP_FACTORY.calculateApplicationAddress(
             NO_VALIDATOR, address(this), templateHash, INPUT_BOX, withdrawalConfig, salt
         );
+    }
+
+    function _applicationSalt(
+        uint256 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        bytes32 salt
+    ) internal pure returns (bytes32) {
+        // Different consensus settings must never occupy the same application address.
+        return keccak256(abi.encode(claimStagingPeriod, sentryManager, sentries, salt));
     }
 
     /// @notice Calculates the address of a `DaveConsensus` contract.

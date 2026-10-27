@@ -54,6 +54,9 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     /// @param salt A 32-byte value used to add entropy to the addresses
     /// @return appContractAddress The application contract address
     /// @return daveConsensusAddress The Dave consensus contract address
+    /// @dev Do not send value to a predicted address before `DaveAppCreated`:
+    /// anyone can occupy the application address through the shared
+    /// application factory, with no validator, making `newDaveApp` revert.
     function calculateDaveAppAddress(
         bytes32 templateHash,
         uint256 claimStagingPeriod,
