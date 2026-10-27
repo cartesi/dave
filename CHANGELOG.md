@@ -24,6 +24,8 @@ past the span.
   while foreclosure is visible. Dispute moves and bond recovery continue;
   exit 30 only after recovery completes and foreclosure is finalized.
   A restart resumes the same work.
+- Page when an input makes the application terminal, after its batch commits,
+  while continuing to defend the true state.
 - Split full pending epochs at the input span, check every later seal against
   those boundaries, and stall at the first seal past the span.
 

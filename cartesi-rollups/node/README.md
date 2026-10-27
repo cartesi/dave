@@ -397,8 +397,9 @@ Options:
   since an adversary can time input load into a dispute. A host outage, a
   restart loop or an unanswered page draws on the same censorship budget as a
   provider outage.
-- Alert on every ERROR line, on restart loops, on free space on the data
-  directory's filesystem (the node
+- Alert on every ERROR line, including an input that makes the application
+  terminal (paged after its batch commits; ask the guardian to foreclose), on
+  restart loops, on free space on the data directory's filesystem (the node
   refuses a batch below 1 GiB, except the newest sealed epoch's, leaving that
   space to it and its dispute), and on the signer's balance against the
   funding floor above, which the node checks only when a batch is due.

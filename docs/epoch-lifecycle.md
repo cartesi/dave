@@ -101,12 +101,15 @@ application layer's deposit-refund path keys on, while withdrawals fall
 back to the last finalized state. The freeze is an intended terminal
 state, not a stranded-value bug.
 
-A terminal application (halted, or yielded with an exception, on any
-input) ends its epoch in a state no machine validity proof accepts, so that
-epoch can never be staged. The node still defends that true state in the
-root tournament: an undefended root would let a fabricated, stageable claim
-win by timeout. Having won, the node holds the epoch with an error log, like
-a no-winner result, and foreclosure is how the application moves on. A
+A terminal application (halted, out of cycle budget, or yielded with an
+exception, on any input) ends its epoch in a state no machine validity proof
+accepts, so that epoch can never be staged. The node still defends that true
+state in the root tournament: an undefended root would let a fabricated,
+stageable claim win by timeout. Having won, the node holds the epoch with an
+error log, like a no-winner result, and foreclosure is how the application
+moves on. The runner pages after committing the halting input's batch, so the
+guardian need not wait for the root allowance before hearing about the halt.
+An open batch waits for the snapshot gap or the seal before it can commit. A
 template already terminal is refused at startup instead: the engine starts
 every epoch from a state awaiting input, so the node cannot defend such an
 application at all, and its epochs are the guardian's alone.

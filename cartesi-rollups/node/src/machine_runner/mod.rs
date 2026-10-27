@@ -192,6 +192,7 @@ impl MachineRunner {
         );
         let (mut machine, mut batch) = self.storage.begin_planned_advances(&plan)?;
 
+        let mut terminal_input = None;
         for input in plan.inputs {
             if self.shutdown.is_requested() {
                 log::info!(
@@ -226,6 +227,7 @@ impl MachineRunner {
                 stf.yielded()? || stf.terminal()?,
                 "the working clone must await input or be terminal"
             );
+            let awaited_input = stf.yielded()?;
             let mut ruler = Ruler::new_at(
                 stf,
                 self.structure,
@@ -236,7 +238,12 @@ impl MachineRunner {
                 self.structure.window_start(window + 1),
                 self.log2_run_stride,
             )?;
-            let stf = ruler.into_stf();
+            let mut stf = ruler.into_stf();
+            // Terminal is absorbing. Page after commit so a retried batch
+            // does not page twice for the same input.
+            if awaited_input && stf.terminal()? {
+                terminal_input = Some(input.id);
+            }
             let reverted = stf.took_revert();
             machine.put_machine(stf.into_machine());
             machine.increment_input();
@@ -253,6 +260,14 @@ impl MachineRunner {
         assert_eq!(batch.len(), expected);
         drop(machine);
         self.storage.commit_advances(batch)?;
+        if let Some(input) = terminal_input {
+            log::error!(
+                "application became terminal at input {}:{}: this epoch can never settle; \
+                 the node keeps defending the true state; the guardian should foreclose",
+                input.epoch_number,
+                input.input_index_in_epoch
+            );
+        }
         // The runner's throughput, which bounds the inputs it can keep up
         // with (dimensioning.md, the reference price) and sizes the disk.
         let elapsed = started.elapsed();
@@ -298,6 +313,62 @@ mod tests {
             inputs,
             boundary_hash: [0; 32],
         }
+    }
+
+    #[test]
+    fn only_the_first_halting_input_transitions_from_awaiting_to_terminal() {
+        use crate::{
+            engine::{Hashing, TournamentGeometry},
+            storage::sql::test_helper::seed_storage,
+        };
+        use cartesi_machine::constants::cmio::tohost::manual::RX_ACCEPTED;
+        let dir = tempfile::tempdir().unwrap();
+        let image = dir.path().join("image");
+        let mut guest = crate::test_machine::yield_guest(
+            u64::MAX,
+            &[
+                crate::test_machine::manual_yield(RX_ACCEPTED, 0),
+                crate::test_machine::halt(),
+            ],
+        )
+        .unwrap();
+        guest.store(&image).unwrap();
+        drop(guest);
+        let state = dir.path().join("state");
+        let mut storage = seed_storage(&state, &image, 0, &TournamentGeometry::two_level());
+        let inputs: Vec<_> = (0..2)
+            .map(|index| Input {
+                id: InputId {
+                    epoch_number: 0,
+                    input_index_in_epoch: index,
+                },
+                data: vec![],
+            })
+            .collect();
+        let epoch = Epoch {
+            epoch_number: 0,
+            input_index_boundary: 2,
+            root_tournament: Address::ZERO,
+            block_created_number: 1,
+        };
+        storage
+            .insert_consensus_data(1, inputs.iter(), [&epoch].into_iter())
+            .unwrap();
+        let mut runner =
+            MachineRunner::new(storage, 1, Duration::ZERO, ShutdownSignal::default()).unwrap();
+        let mut before = MachineStf::load(&image, Hashing::Sampled).unwrap();
+        assert!(before.yielded().unwrap());
+        let plan = runner.storage.advance_plan(1).unwrap();
+        runner.advance(plan).unwrap();
+        let path = runner.storage.snapshot_dir(0, 1).unwrap().unwrap();
+        let mut after = MachineStf::resume(&path, Hashing::Sampled).unwrap();
+        assert!(before.yielded().unwrap() && after.terminal().unwrap());
+        let plan = runner.storage.advance_plan(1).unwrap();
+        runner.advance(plan).unwrap();
+        let path = runner.storage.snapshot_dir(0, 2).unwrap().unwrap();
+        let mut later = MachineStf::resume(&path, Hashing::Sampled).unwrap();
+        assert!(!after.yielded().unwrap());
+        assert!(later.terminal().unwrap());
     }
 
     #[test]
