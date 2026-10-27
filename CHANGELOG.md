@@ -28,6 +28,8 @@ past the span.
   while continuing to defend the true state.
 - Split full pending epochs at the input span, check every later seal against
   those boundaries, and stall at the first seal past the span.
+- Check a candidate against the already-read standing before waiting under
+  active matches; a contradiction discards and refolds the event cache.
 
 ### For developers
 
