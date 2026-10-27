@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+A new deployment generation: the consensus bytecode
+changes, moving deterministic deployment addresses. This node requires a
+DaveConsensus that caps each epoch at the Machine's input span; earlier
+uncapped deployments are unsupported: the node stalls at the first seal
+past the span.
+
+### Contracts
+
+- DaveConsensus seals at most 2^24 pending inputs, retaining excess inputs
+  for later epochs. Only processed, accepted inputs become finalized.
+
+### Node
+
+- Split full pending epochs at the input span, check every later seal against
+  those boundaries, and stall at the first seal past the span.
+
+### For developers
+
+- Rebuild the devnet bundle with `just rollups-contracts::build-devnet` after
+  the contract changes.
+
 ## v3.0.0-alpha.6
 
 A new deployment generation (cartesi/dave#287). Nodes from earlier releases

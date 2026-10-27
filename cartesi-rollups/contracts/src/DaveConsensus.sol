@@ -23,6 +23,7 @@ import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
+import {EmulatorConstants} from "step/src/EmulatorConstants.sol";
 import {Memory} from "step/src/Memory.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
@@ -32,6 +33,10 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
     using BitMaps for BitMaps.BitMap;
     using LibBinaryMerkleTree for bytes;
     using LibMachineValidityProof for MachineValidityProof;
+
+    /// @notice The state transition and node coordinates cannot represent
+    /// input counters beyond this span; excess inputs stay pending.
+    uint256 constant MAX_INPUTS_PER_EPOCH = 1 << EmulatorConstants.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH;
 
     /// @notice The input box contract
     IInputBox immutable _INPUT_BOX;
@@ -133,7 +138,7 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         emit ConsensusCreation(inputBox, appContract, tournamentFactory);
 
         // Initialize first sealed epoch
-        uint256 inputIndexUpperBound = inputBox.getNumberOfInputs(appContract);
+        uint256 inputIndexUpperBound = _nextInputIndexUpperBound(0);
         _inputIndexUpperBound = inputIndexUpperBound;
         ITournament tournament = tournamentFactory.instantiate(initialMachineStateHash, this);
         _tournament = tournament;
@@ -259,10 +264,11 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         Machine.Hash finalMachineStateHash = _stagedPostEpochMachineStateHash;
         bytes32 outputsMerkleRoot = _stagedPostEpochOutputsMerkleRoot;
 
-        // Seal current accumulating epoch, save settled output tree and machine state hash
+        // Settle the staged result, then seal at most one input span;
+        // the backlog waits for later epochs.
         _epochNumber++;
         _inputIndexLowerBound = _inputIndexUpperBound;
-        _inputIndexUpperBound = _INPUT_BOX.getNumberOfInputs(_APP_CONTRACT);
+        _inputIndexUpperBound = _nextInputIndexUpperBound(_inputIndexLowerBound);
         _outputsMerkleRoots[outputsMerkleRoot] = true;
         _lastFinalizedMachineStateHash = finalMachineStateHash;
         _isTournamentResultStaged = false;
@@ -459,6 +465,11 @@ contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
         returns (bytes32 outputsMerkleRoot)
     {
         return proof.validate(Machine.Hash.unwrap(finalMachineStateHash));
+    }
+
+    function _nextInputIndexUpperBound(uint256 lowerBound) internal view returns (uint256) {
+        uint256 pendingInputs = _INPUT_BOX.getNumberOfInputs(_APP_CONTRACT) - lowerBound;
+        return lowerBound + pendingInputs.min(MAX_INPUTS_PER_EPOCH);
     }
 
     function _doAllSentriesAgreeWithStagedTournamentResult() internal view returns (bool) {

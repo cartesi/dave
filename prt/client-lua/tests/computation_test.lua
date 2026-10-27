@@ -337,6 +337,29 @@ return {
         assert(ok, failure)
     end),
 
+    Test.case("epochs above the input span fail instead of truncating", function()
+        local original = cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
+        cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH = 3
+        local ok, failure = xpcall(function()
+            for _, count in ipairs { 8, 9, 13 } do
+                local inputs = {}
+                for i = 1, count do
+                    inputs[i] = "0x01"
+                end
+                local machine = wrapped_machine { halted = true }
+                if count == 8 then
+                    machine:rollup_commitment(44, inputs)
+                else
+                    Test.error_like("epoch exceeds the input span", function()
+                        machine:rollup_commitment(44, inputs)
+                    end)
+                end
+            end
+        end, debug.traceback)
+        cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH = original
+        assert(ok, failure)
+    end),
+
     Test.case("a terminal epoch is one fixed point", function()
         local machine = wrapped_machine { halted = true }
 

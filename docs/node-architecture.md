@@ -165,33 +165,29 @@ safety, not hygiene:
   a terminal application panicked every node at the roll, which would have
   let a fabricated claim win uncontested.
 
-Apart from the accepted halt and the trust model below, chain data
-reaches no panic on the dispute path. Once a wrong epoch has settled, the Hero
-stops the node (exit 30) on a root that starts from a state it did not
-compute, an already-defeated protocol; it reaches that root only after the
-settled epoch's refunds and sentry vote. Chain-reported coordinates reach the engine only
-through validators that accept everything the contracts produce. The observer
-checks each match against its tournament's descriptor (height, position,
-alignment, cycle); a bisecting match must stand above height 1, since
-advancing opens the children of the node below the contested one; a level's
-base cycle must be aligned to its span, and a delegated child must sit one
-level below its parent, on one of the parent's leaves; and every level's
-stride and height must match the pinned table, which tiles the machine
-coordinate.
-Nothing checks that the root's base cycle is 0; the trusted factory sets it.
-The observer's standing decoder likewise fronts its own `expect` on
-parent-match data. The engine's asserts behind them
-(`LevelCoords`, `Quartet`, the ruler) are tripwires for node bugs, so a prune
-must keep these validators or first turn the asserts they front into errors.
-The settle asserts compare the local result with one block's views after the
-node's own win (epoch-lifecycle.md, settlement invariant), so they too fire
-only on a node bug or corrupt local state.
+Inside the trust model below, chain data reaches no panic on the dispute path.
+Once a wrong epoch has settled, the Hero stops the node (exit 30) on a root
+that starts from a state it did not compute, an already-defeated protocol; it
+reaches that root only after the settled epoch's refunds and sentry vote.
+Chain-reported coordinates reach the engine only through validators that
+accept everything the contracts produce. The observer checks each match
+against its tournament's descriptor (height, position, alignment, cycle); a
+bisecting match must stand above height 1, since advancing opens the children
+of the node below the contested one; a level's base cycle must be aligned to
+its span, and a delegated child must sit one level below its parent, on one of
+the parent's leaves; and every level's stride and height must match the pinned
+table, which tiles the machine coordinate. Nothing checks that the root's base
+cycle is 0; the trusted factory sets it. The observer's standing decoder
+likewise fronts its own `expect` on parent-match data. The engine's asserts
+behind them (`LevelCoords`, `Quartet`, the ruler) are tripwires for node bugs,
+so a prune must keep these validators or first turn the asserts they front
+into errors. The settle asserts compare the local result with one block's
+views after the node's own win (epoch-lifecycle.md, settlement invariant), so
+they too fire only on a node bug or corrupt local state.
 
-One input-reachable halt is accepted rather than defended. More than 2^24
-inputs in one epoch: the contracts handle it (they never feed the tail) but
-the node panics, and reaching it takes a flood of about 5e11 gas, which costs
-more than the aggregate-throughput loss that comes first (dimensioning.md, the
-reference price); a defect accepted on cost. No input overruns its window:
+DaveConsensus seals at most 2^24 inputs per epoch, leaving excess inputs
+pending for later epochs. This protects the node's coordinate limit without
+depending on the cost of an input flood. No input overruns its window:
 delivery sets the step's per-input budget of 2^48 - 1 big cycles, so an input
 that exhausts it leaves the app at an overflow fixed point, which the node
 defends, and the engine's window tripwire (`engine/ruler.rs`) fires only on an
