@@ -82,6 +82,123 @@ async fn settle(node: &mut Node, world: &mut World, epoch: u64) -> Result<()> {
         .await
 }
 
+async fn foreclose(world: &mut World) -> Result<()> {
+    use cartesi_rollups_contracts::i_application::IApplication;
+    let application = IApplication::new(world.book.app, world.operator.clone());
+    let pending = application.foreclose().send().await?;
+    let hash = *pending.tx_hash();
+    world.mine(1).await?;
+    assert!(
+        world
+            .operator
+            .get_transaction_receipt(hash)
+            .await?
+            .unwrap()
+            .status()
+    );
+    Ok(())
+}
+
+async fn finish_foreclosed(
+    node: &mut Node,
+    world: &mut World,
+    mut adversary: Option<&mut Adversary>,
+) -> Result<()> {
+    let before = [CLAIM, STAGE, ACCEPT].map(|call| world.honest_calls(call).len());
+    let mut stopped = false;
+    for _ in 0..DISPUTE_ROUNDS {
+        match node.turn(world).await {
+            Ok(()) => {}
+            Err(error) => {
+                assert_eq!(crate::fatal::exit_code(&error), 30, "{error:#}");
+                stopped = true;
+                break;
+            }
+        }
+        if let Some(actor) = adversary.as_deref_mut() {
+            actor.turn(world).await?;
+        }
+        if world.honest_calls(WIN_INNER).len() == world.levels() - 1 {
+            let close = world.root_closes_at().await?;
+            world.mine_to(close).await?;
+        }
+    }
+    assert!(
+        stopped,
+        "foreclosed node did not finish defense and recovery"
+    );
+    assert_eq!(
+        [CLAIM, STAGE, ACCEPT].map(|call| world.honest_calls(call).len()),
+        before
+    );
+    let root = world.sealed_epochs().await?[0].tournament;
+    let recoveries = world.bonds_recovered(root).await?;
+    let ours: Vec<_> = recoveries
+        .iter()
+        .filter(|(event, _)| event.claimer == world.address(HONEST))
+        .collect();
+    assert_eq!(ours.len(), 1);
+    assert!(ours[0].0.payment > U256::ZERO);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn foreclosure_after_recovery_stops_only_once_finalized_and_across_restart() -> Result<()> {
+    let mut world = World::spawn(&[], 1000).await?;
+    let mut node = world.honest_node().await?;
+    join_and_close(&mut node, &mut world).await?;
+    node.run_until(&mut world, ROUNDS, |world, _| {
+        Ok(!world.honest_calls(STAGE).is_empty())
+    })
+    .await?;
+    let root = world.sealed_epochs().await?[0].tournament;
+    node.run_until(&mut world, ROUNDS, |world, _| {
+        Ok(!world
+            .honest_calls(FixedBytes(tryRecoveringBondCall::SELECTOR))
+            .is_empty())
+    })
+    .await?;
+    let recovery_block = world.bonds_recovered(root).await?[0].1;
+    world.mine_to(recovery_block + 2).await?;
+    assert!(world.chain.finalized_head().await?.number >= recovery_block);
+    node.tick(&world).await?;
+    foreclose(&mut world).await?;
+    // Recovery is already final; latest foreclosure alone must not stop us.
+    node.tick(&world).await?;
+    world.mine(2).await?;
+    finish_foreclosed(&mut node, &mut world, None).await?;
+    let mut restarted = node.restart(&world)?;
+    let error = restarted.tick(&world).await.unwrap_err();
+    assert_eq!(crate::fatal::exit_code(&error), 30);
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle; run `just test-node-harness`"]
+async fn foreclosure_during_a_dispute_keeps_defending_and_recovers_bonds() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+    node.run_with(&mut world, &mut [&mut adversary], ROUNDS, |world, _| {
+        Ok(!world.calls(1, JOIN).is_empty() && !world.honest_calls(JOIN).is_empty())
+    })
+    .await?;
+    let root = world.sealed_epochs().await?[0].tournament;
+    assert!(!world.matches_created(root).await?.is_empty());
+    foreclose(&mut world).await?;
+    let mut restarted = node.restart(&world)?;
+    finish_foreclosed(&mut restarted, &mut world, Some(&mut adversary)).await?;
+    assert_eq!(world.honest_calls(WIN_LEAF).len(), 1);
+    let mut restarted = restarted.restart(&world)?;
+    assert_eq!(
+        crate::fatal::exit_code(&restarted.tick(&world).await.unwrap_err()),
+        30
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore = "needs the devnet bundle; run `just test-node-harness`"]
 async fn a_guest_halted_by_an_input_is_defended_across_restart_and_never_staged() -> Result<()> {

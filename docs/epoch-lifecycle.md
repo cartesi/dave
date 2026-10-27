@@ -77,6 +77,20 @@ application freezes epoch progress entirely. Check foreclosure status
 before debugging an unexpected revert on any settlement call. Deeper
 contract context: `cartesi-rollups/contracts/AGENTS.md`.
 
+Foreclosure never gates the node's dispute moves, cleanup or bond recovery.
+Once the dispute has a result, the node reads foreclosure at the Hero's head
+and suppresses sentry claims, staging and acceptance while it is set. A reorg
+can restore settlement. When recovery is complete and foreclosure is also
+finalized, the node exits 30. A restart resumes defense and recovery, or exits
+on its first tick once nothing remains owed. Foreclosure is not settlement,
+so the epoch completion cursor does not advance. A foreclosure racing read
+and inclusion can still cost one transaction's gas.
+
+Between epochs the node may join the next root and wait out its allowance
+before it exits: an open commitment can still be paired by a late joiner.
+A fresh data directory replays history first. An eliminated commitment in an
+abandoned root can remain waiting indefinitely, as before.
+
 The staging period is not only a sentry window: it is the reaction
 interval in which the application-layer foreclosure switch can stop a
 decided-but-wrong result from ever finalizing. Foreclosure freezes the
