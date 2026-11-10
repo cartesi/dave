@@ -89,7 +89,11 @@ truth.
   hash and returns the zero hash for out-of-range indices - the fixpoint
   padding rule the off-chain commitment builders mirror
   (docs/computation-hash.md). Changing it desynchronizes every
-  commitment producer.
+  commitment producer. An index whose position (the epoch's lower bound
+  plus the index) overflows uint256 reverts with an arithmetic panic
+  instead of padding; the state transition's 24-bit input index cannot
+  reach it, and the sum must stay checked, since a wrapped position would
+  bind a settled input.
 - The application address binds the template, withdrawal configuration and
   every consensus setting, so `newDaveApp` from any caller can land a
   predicted address only with the pair that address was predicted for.
@@ -135,8 +139,31 @@ the consensus-settings address binding. The leaf-proof gas FFI fixture
 (`test/gas/`), node integration tests and e2e smoke add coverage.
 `test/NodeProofs.t.sol` and `test/NodeWitnesses.t.sol` check that the contracts'
 verifiers and the step accept the node's proofs and witnesses, without running
-`DaveConsensus`. When changing staging, sentry or settlement logic, add focused
-tests rather than assuming the capacity fixture covers it.
+`DaveConsensus`.
+
+`test/DaveConsensusLifecycle.t.sol` is the stateful model of settlement. Its
+handler (`test/DaveConsensusLifecycleHandler.sol`) composes the production
+InputBox, Application, factory, consensus and a real one-level root
+tournament, and keeps its own ghost of epochs, inputs, sentry slots and
+claims, the staged snapshot, settled values and each root's clocks. A call
+the model allows must succeed, a call it forbids must revert with the exact
+error, and every consensus view is compared with the model after each step:
+under forge's invariant engine, in seeded walks at three sentry
+configurations that must reach every settlement operation, every root
+outcome and every refusal the model names outside the dispute moves, and in
+directed schedules.
+`test/DaveConsensusErrorPaths.t.sol` pins `TournamentResultNotStaged` and
+`InputHashMismatch`. The handler states its limits: a root is driven only as
+far as a root result needs, machine validity proofs come from the upstream
+emulator model rather than a machine, and a backlog's inputs have no bytes.
+The second contracts audit recorded 55 single-statement mutants of
+`DaveConsensus.sol`, 52 failing these suites and the other three (ERC-165,
+constructor sentry validation, the application-address check) failing the
+older ones.
+
+When changing staging, sentry or settlement logic, change the model with it
+and add a directed schedule: a model that still passes unchanged is a sign
+the change is not exercised.
 
 ## Explicit non-claims
 
