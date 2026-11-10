@@ -128,9 +128,12 @@ carry no backlog (reviews/README.md).
   under the budgets") by someone other than its author, and decide whether
   the two-level search gates the external audit or is handed over as
   evidence. (dispute-game.md)
-- Re-evaluate the pinned solc against its bug list at the audit freeze: one
-  Yul optimizer entry fixed after 0.8.37 cannot be excluded by reading.
-  (plans/audit-readiness.md)
+- Re-check the pinned solc (0.8.38) against its bug list at the audit
+  freeze; none was listed for it on 2026-11-10. (plans/audit-readiness.md)
+- Recalibrate the refund-gas allocations once, after the last bytecode
+  change of this cycle: the move to solc 0.8.38 kept every one-sided witness
+  passing but shifted the margins, and no dated record covers it yet.
+  (runbooks/prt-refund-gas-calibration.md)
 - Prepare the external contracts audit: scope, trust boundaries, non-claims,
   the pre-audit items below, freeze and audit identity:
   [plans/audit-readiness.md](plans/audit-readiness.md).

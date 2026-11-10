@@ -146,14 +146,16 @@ before the freeze.
    events calibration (cartesi/dave#297) accepted them by manual runs; the
    `prt-contracts` CI job now runs `just test-prt-gas`, so a change that
    pushes a leaf proof past its allocation fails CI.
-7. The pinned compiler against its bug list. At solc 0.8.30 under via-IR
-   the campaign excluded the transient-storage clearing collision (needs
-   `delete` on a transient variable; the lock is only assigned), the two
-   mutual-recursion spill bugs (no recursion in `src/`) and the
-   named-parameter custom-error bug (none used). One Yul optimizer entry
-   fixed after 0.8.37 cannot be excluded by reading; re-run the check at the
-   freeze and either pin a fixed compiler or record why the entry does not
-   apply.
+7. The pinned compiler against its bug list. The pin is solc 0.8.38, moved
+   from 0.8.30 with the second contracts audit (N-02): 0.8.30 was inside
+   the range of a Yul optimizer bug (stale knowledge-base bookkeeping,
+   announced 2026-10-22, fixed in 0.8.38) that applies to any optimized
+   via-IR code and cannot be excluded by reading the source. The list named
+   no bug for 0.8.38 on 2026-11-10. Re-run the check at the freeze: fetch
+   `docs/bugs_by_version.json` from ethereum/solidity and, for each entry
+   that names the pinned version, either show its conditions are absent
+   from the compiled-in sources (ours, `machine/step`, the rollups-contracts
+   libraries) or pin a fixed compiler.
 
 The refill review's release-evidence item ("Remaining assurance work", 3) is
 covered elsewhere: the gas calibration by the events calibration

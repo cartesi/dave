@@ -15,7 +15,7 @@ remappings = [
     "step/=../../machine/step/",
 ]
 
-solc_version = "0.8.30"
+solc_version = "0.8.38"
 evm_version = "prague"
 fs_permissions = [{ access = "read-write", path = "deployments" }]
 
