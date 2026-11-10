@@ -1,9 +1,10 @@
 # Contracts audit, round two (2026-11-10)
 
 Status: PRT phase complete 2026-11-10. The settlement phase
-(`cartesi-rollups/contracts`) has a first read only and waits for the
-rollups-contracts alpha.11 adoption. This is internal engineering work, not
-a third-party audit, and it describes the tree it ran on and nothing later.
+(`cartesi-rollups/contracts`) has a first read and a stateful model; the
+factory and a re-read of the upstream seam wait for the rollups-contracts
+alpha.11 adoption. This is internal engineering work, not a third-party
+audit, and it describes the tree it ran on and nothing later.
 
 Reviewed state: tree `2df1a3bbdfa7ac3bb4c7b62d00429cb60693511f`, main on
 2026-11-10. Baseline before the review, all green: PRT disputes 447 tests,
@@ -312,7 +313,7 @@ adapter; canonical heights in any search; and the per-action reading of
 the leaf resolution, since both survival searches resolve a sealed leaf in
 one landing that picks the verb, the documented joint bound.
 
-## Settlement boundary: first read only
+## Settlement boundary: first read and a stateful model
 
 `DaveConsensus` and `DaveAppFactory` were read in full, and the upstream
 `Application` paths they serve were read against alpha.10. Upstream main
@@ -334,10 +335,82 @@ survive the bump; re-check the diff then.
 - The outputs proof compiles against the bundled step 0.15.0 and the
   tournament against 0.16.0. Their generated constants differ only in the
   architecture identifier and the pristine uarch hash.
-- Coverage: one scenario test exercises foreclosure gating on all four
-  mutators, the staging period and the sentry error paths. There is no
-  stateful test, and `TournamentResultNotStaged` and `InputHashMismatch`
-  are not exercised by selector.
+- Coverage on the reviewed tree: one scenario test exercises foreclosure
+  gating on all four mutators, the staging period and the sentry error
+  paths. There was no stateful test, and `TournamentResultNotStaged` and
+  `InputHashMismatch` were not exercised by selector.
+
+### The stateful model
+
+Added on the audit branch, under `cartesi-rollups/contracts/test`:
+
+- `DaveConsensusLifecycleHandler.sol` and `DaveConsensusLifecycle.t.sol`:
+  a model of one application's settlement over the production InputBox,
+  Application, factory, consensus and a real one-level root tournament.
+  The handler keeps its own ghost of epochs, inputs, sentry slots and
+  claims, the staged snapshot, settled values and each root's clocks, and
+  never reads a consensus getter to decide an expectation. A call the
+  model allows must succeed, a call it forbids must revert with the exact
+  error, and every view is compared with the model after each step. It
+  runs under forge's invariant engine (three sentries, and none), as
+  seeded walks at three sentry configurations that must reach every
+  settlement operation, every root outcome and every refusal the model
+  names outside the dispute moves, and as fifteen directed schedules.
+  Acceptance also runs while the retiring tournament's standing is
+  replaced by another winner, a failed root, or a revert: the staged
+  snapshot settles regardless.
+- `DaveConsensusErrorPaths.t.sol`: `TournamentResultNotStaged` in every
+  state that has nothing staged, and `InputHashMismatch` for every way the
+  bytes can differ, with the padding rule past the span.
+
+The rollups gate grew from 19 tests in 5 suites to 61 in 13.
+
+What the model does not own: the dispute itself, driven only as far as a
+root result needs; machine validity proofs, which come from the upstream
+emulator model rather than a machine; and a backlog beyond one epoch,
+written into the InputBox length slot, so those inputs have no bytes.
+
+Mutation: 55 single-statement mutants of `DaveConsensus.sol`. The new
+suites fail under 52. The other three (the ERC-165 advertisement, the
+constructor's sentry validation, the application-address check of
+`isOutputsMerkleRootValid`) are outside what the model claims and fail the
+older suites. Eight of the 55 pass the suites that existed before, among
+them input bytes not checked against the InputBox hash, acceptance without
+a staged result, acceptance ignoring its epoch argument, and a claim
+bitmap shared by all epochs. Most rows ran one edit before the final test
+files; five were re-run on the final files with the same verdicts (the
+snapshot replaced by the current standing, zero sentries counted as
+unanimous, unchecked input bytes, the shared claim bitmap, and the
+unchecked position of S-02).
+
+Campaigns, all passing: forge's invariant engine at 1,500 runs of depth
+256 under seeds 20261110 and 7 (384,000 calls per configuration and seed,
+no revert); seeded walks of 3,000 by 256 steps, 6,000 by 128, and 1,500
+by 256, at each of the three configurations; and, once the walk became a
+fuzz test, 4,000 runs per configuration under
+`FOUNDRY_FUZZ_SEED=0x2026111001`.
+
+Two leads came out of it, neither a defect.
+
+### S-01: the readiness views do not reflect foreclosure
+
+`canStageTournamentResult` and `canAcceptStagedTournamentResult` read the
+live tournament and the block number, foreclosed or not. After foreclosure
+`isClaimStagingPeriodOver` still turns true while the call it advertises
+reverts with `ApplicationForeclosed`. epoch-lifecycle.md documents the
+freeze and the node reads foreclosure separately; the interface comments
+told validators when to call without saying so, and now do.
+
+### S-02: an index whose position overflows panics instead of padding
+
+`provideMerkleRootOfInput` adds the epoch's lower bound to the index with
+checked arithmetic, so an index above `2^256 - 1` minus the lower bound
+reverts with an arithmetic panic where the padding rule would answer zero.
+A tournament cannot reach it: `CartesiStateTransition` rejects a counter
+outside the epoch and derives a 24-bit index. The sum must stay checked,
+since a wrapped position would land on a settled input and bind its bytes;
+the tests pin that an index of this kind never binds. Recorded in the
+directory's agent guidance; no code change.
 
 ## Follow-ups
 
@@ -352,15 +425,16 @@ Landed on the audit branch after this record was first written:
   dispute-game.md, prt-refund-accounting.md and `ITournament.sol`.
 - The fixture of N-09.
 - The evidence, as listed under "Evidence produced".
+- The settlement model and the two error paths, with the wording for S-01
+  and S-02.
 
 Open:
 
 - One gas recalibration at the end of the cycle, after every bytecode
   change has landed (todo.md).
 - N-08: one devnet transaction.
-- Settlement phase after the alpha.11 adoption: the factory, a stateful
-  test over stage, claim, accept, rotate and foreclose, and the two
-  unexercised errors.
+- Settlement phase after the alpha.11 adoption: the factory's reserved
+  CREATE2, and a re-read of the upstream diff against the model.
 
 ## Reproduction
 
