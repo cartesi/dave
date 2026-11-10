@@ -272,7 +272,9 @@ interface IDaveConsensus is
     /// @dev Total over every terminal state: no standing makes this view
     /// revert. Validators should only call `stageTournamentResult` if
     /// isFinished is true, isTournamentFailed is false, and
-    /// isTournamentResultStaged is false.
+    /// isTournamentResultStaged is false. Foreclosure is not reflected here:
+    /// once the application is foreclosed, `stageTournamentResult` reverts
+    /// whatever this view reports.
     function canStageTournamentResult()
         external
         view
@@ -313,6 +315,8 @@ interface IDaveConsensus is
     /// AND (doAllSentriesAgreeWithStagedTournamentResult OR isClaimStagingPeriodOver) is true. Be also mindful that
     /// doAllSentriesAgreeWithStagedTournamentResult, isClaimStagingPeriodOver, stagedPostEpochMachineStateHash, and
     /// stagedPostEpochOutputsMerkleRoot only have any meaning if isTournamentResultStaged is true.
+    /// Foreclosure is not reflected here: once the application is foreclosed, `acceptStagedTournamentResult`
+    /// reverts whatever this view reports, and isClaimStagingPeriodOver keeps following the block number.
     function canAcceptStagedTournamentResult()
         external
         view
