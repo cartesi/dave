@@ -36,6 +36,13 @@ default:
 print-foundry-version:
     @echo "{{FOUNDRY_VERSION}}"
 
+# Foundry {{FOUNDRY_VERSION}} cannot download a solc newer than 0.8.30 on
+# Linux arm64; the script says why and when to delete it. It also fails on
+# every platform when the compiler pin and the script disagree.
+# install the pinned solc where Foundry finds it (a no-op except on Linux arm64)
+install-solc:
+    ./script/solc-linux-arm64.sh install
+
 # Shell pipelines like `cmd | tail` report the LAST stage's status,
 # silently laundering failures - this recipe retires that trap for
 # long builds and test runs. Arguments pass through verbatim
@@ -61,6 +68,7 @@ logged log +cmd:
 # Everything the Rust workspace needs to compile and run its standard tests.
 setup:
     just machine::setup
+    just install-solc
     just prt-contracts::install-deps
     just rollups-contracts::install-deps
     just programs::download-deps
@@ -156,6 +164,7 @@ test-build-tooling:
     ./script/tests/devnet-fingerprint.sh
     ./script/tests/machine-image-fingerprint.sh
     ./script/tests/soldeer-prune.sh
+    ./script/tests/solc-linux-arm64.sh
 
 # A stale event layout would otherwise surface only as logs the client's
 # filter silently drops; the ABI step needs forge and the contract deps.

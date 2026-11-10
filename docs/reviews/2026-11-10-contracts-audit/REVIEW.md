@@ -420,7 +420,10 @@ Landed on the audit branch after this record was first written:
   dispute-game.md and the factory and tournament interface comments.
 - N-02: both projects and the gas script pin solc 0.8.38, and every gate
   passes on it. Every production bytecode moved; the ABI and storage
-  layouts of `Tournament` and the factory did not.
+  layouts of `Tournament` and the factory did not. The pinned Foundry
+  cannot download this compiler on Linux arm64, which the release build
+  for that platform showed; the tool setup now installs Solidity's
+  official build there by its checksum (build-system.md).
 - The wording for N-04, N-05, N-06, N-07 and the clock-floor invariant, in
   dispute-game.md, prt-refund-accounting.md and `ITournament.sol`.
 - The fixture of N-09.

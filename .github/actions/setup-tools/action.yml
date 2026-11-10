@@ -70,3 +70,9 @@ runs:
       uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
       with:
         version: ${{ steps.set-foundry-version.outputs.version }}
+
+    # This Foundry cannot download the pinned solc on Linux arm64; elsewhere
+    # the recipe only checks that its pin follows the projects'.
+    - name: Install solc where Foundry cannot
+      shell: bash
+      run: just install-solc
