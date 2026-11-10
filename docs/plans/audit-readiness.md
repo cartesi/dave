@@ -84,8 +84,9 @@ before the freeze.
    `prt/contracts/test/properties/HonestSurvivalInvariant.t.sol` with its argument
    in dimensioning.md. The campaign's one finding (F-01, the one-level
    in-flight reserve) was a bytecode change to `ClockBudgets`, made before
-   the freeze; the argument still awaits a reviewer other than its author
-   (todo.md).
+   the freeze. The second contracts audit extended the search to one to
+   four levels (`MultiLevelHonestSurvival.t.sol`, `DefendedWalk.t.sol`);
+   the argument still awaits a reviewer other than its author (todo.md).
 2. Contract code shaped for tests. `_getClockModel(Seconds commitmentBudget)`
    in `prt/contracts/script/Deployment.s.sol:232` takes a parameter only the
    devnet script varies (`test/devnet/DevnetGeometryDeployment.s.sol:63`);

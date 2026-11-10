@@ -526,9 +526,35 @@ adversary powers above, and one ledger, in both orientations at `C` of 0, 2
 and 5, 256 runs of depth 250 each; no schedule eliminated the correct
 commitment or finished the root with another final state, and removing the
 child-return refill makes every configuration fail. The deterministic worst
-schedule is `HonestSurvivalSchedule.t.sol`. The argument has not yet been
-reviewed by someone other than its author, and the search covers two levels
-in a small box; neither is a theorem for any level count.
+schedule is `HonestSurvivalSchedule.t.sol`.
+
+The second contracts audit (2026-11-10) re-derived the balance without
+reading this section and generalized the search to one to four levels
+(`MultiLevelHonestSurvival.t.sol`: heights one to three, `G = 3`, `T = 6`,
+the same `C` values and orientations, one build at a time). With strict
+latencies the least slack it observed on a running correct clock is
+
+```text
+(L - 1) * (G + 1) + 2 - below * G
+```
+
+blocks, where `below` counts inclusions the root allowance sits under the
+formula. So the formula carries a little over one spare inclusion per inner
+level, the unspent propagation inclusion of the balance above, and recorded
+schedules lose exactly where the expression turns non-positive: one
+inclusion below at one level, then two, four and five at two, three and four
+levels. `DefendedWalk.t.sol` searches two and three levels with a different
+adversary (any caller, any verb, any order) and latencies read inclusively,
+which spend part of that spare: no walk loses at the formula, and a recorded
+two-level walk loses one inclusion below it, the boundary
+`InclusiveLatencyBoundary.t.sol` pins on a fixed schedule. Both searches
+resolve a sealed leaf in one landing that picks the verb, which is the joint
+bound above; `LeafHandover.t.sol` prices the per-action reading.
+
+These are seeded searches in small boxes; none is a theorem for any level
+count, and canonical heights are not searched. The argument still awaits
+review by someone other than its author: the audit's re-derivation is a
+second automated reading, not that review (todo.md).
 
 For one leaf match with current live balances `b1`, `b2` and `h` responses left,
 the safe local wall-time bound is `b1 + b2 + h * G`. It cannot be replaced by one
