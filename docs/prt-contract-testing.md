@@ -44,7 +44,7 @@ exclude the `*FfiTest` contracts deliberately.
 | `test/*.t.sol` | Focused library tests and public `Tournament` composition |
 | `test/accounting/` | Reserve algebra, exact refund formula, and callback behavior |
 | `test/characterization/` | Frozen historical three-level behavior |
-| `test/config/` | Canonical and generic parameter-table validation |
+| `test/config/` | Canonical and generic parameter-table validation; factory wiring and clone identity |
 | `test/devnet/` | The devnet-only deployment of the three-level test table CI and local tests run (the default `DEVNET_GEOMETRY`) and its test |
 | `test/fixtures/` | Injected geometry, small trees, independent models, and test-only transitions |
 | `test/gas/` | Retained production refund witnesses |
@@ -133,7 +133,10 @@ The living clock evidence map is:
 | Shared child envelopes, propagation, concurrent children, and generic depth | `test/properties/RecursiveTournamentLifecycle.t.sol`, `ConcurrentRecursivePopulation.t.sol`, and `FourLevelRecursiveLifecycle.t.sol` |
 | Ethereum and local-devnet block conversion for response and allowance budgets | `test/Deployment.t.sol` |
 | Published schedules and standing against the views, the classifier, and the mutators | `test/properties/EventViewAgreement.t.sol`, `StandingExactness.t.sol`, `RecursiveTournamentLifecycle.t.sol` (parent verbs at the child's published standing), the schedule tests in `test/MatchClocks.t.sol`, and the deadline tests in `test/Clock.t.sol` |
-| Composed honest survival under `C`, both orientations, formula budgets | `test/properties/HonestSurvivalInvariant.t.sol`, `HonestSurvivalSchedule.t.sol` |
+| Composed honest survival under `C`, both orientations, formula budgets | `test/properties/HonestSurvivalInvariant.t.sol`, `HonestSurvivalSchedule.t.sol`; one to four levels in `MultiLevelHonestSurvival.t.sol`; a second adversary at two and three levels in `DefendedWalk.t.sol` |
+| Strict against inclusive latencies at the formula | `test/properties/InclusiveLatencyBoundary.t.sol` |
+| The priced leaf proof-to-timeout handover, and a sealed leaf race decided by the clocks | `test/properties/LeafHandover.t.sol`, `LeafRaceFastForward.t.sol` |
+| Legality, observer views, clock effects, child linkage, and root finality against a model at two and three levels | `test/properties/AdversarialWalk.t.sol` |
 | The predecessor state and counter Tournament hands the adapter, every descent and every epoch boundary | `test/properties/AdapterComposition.t.sol` (independent coordinate model), `test/TournamentStateTransitionExtremesFfi.t.sol` (real adapter and proofs at the extremes) |
 | The one-level in-flight reserve (F-01) | `test/config/RootAllowanceReserve.t.sol`, `test/config/ClockBudgets.t.sol` |
 
@@ -155,6 +158,19 @@ censorship ledger `C`, at budgets one inclusion below the formula, in both
 orientations; its mutation control is the child-return refill. It is
 evidence for two levels in a small box; the general recursive result remains
 open (dimensioning.md, "Honest survival under the budgets").
+
+`MultiLevelHonestSurvival.t.sol` generalizes that handler to one to four
+levels, one schedule per fuzz run. Its controls replay recorded schedules
+that survive at the last allowance the closed form allows and lose one
+inclusion further down. `AdversarialWalk.t.sol` walks two- and three-level
+clone trees with any caller trying any verb at boundary instants, and
+compares legality, the observer views, clock effects, and child linkage with
+a model written from the code; `DefendedWalk.t.sol` adds one defended claim
+to that walk. The walk's model reads raw clocks and topology from production
+storage, so it is a consistency oracle, not an independent specification:
+its sensitivity rests on the mutation run recorded in the 2026-11-10 review,
+which should be repeated when the model or the walked code changes
+materially. All three remain seeded searches in small boxes.
 
 Events and views take each published instant, descriptor, and bond from the
 same helpers, so a check that an event equals its view cannot see a wrong
@@ -348,10 +364,16 @@ Add a test when it:
 Name a test for what it establishes. A `testRefuted...` test keeps a refuted
 attack attempt as a negative oracle. A `testTrace...` test pins a reachable,
 priced schedule, a lower-bound trace, rather than a property. A
-`testRegression...` test reproduces a fixed finding. Review campaigns place
-their tests by the ownership table above, not in a directory of their own;
-the 2026-10-13 campaign's tests are listed in
-reviews/2026-10-13-prt-cyber-verification/REVIEW.md.
+`testRegression...` test reproduces a fixed finding. A `testSample...` test
+runs a fixed set of seeds of a fuzz or stateful property and asserts that
+the operations it is meant to exercise executed, so a green property is not
+vacuous. A `testControl...` test shows that a property can fail: it replays
+a recorded schedule one step past the boundary the property claims, and a
+behavior change that moves the schedule needs a new recording. Review
+campaigns place their tests by the ownership table above, not in a directory
+of their own; the 2026-10-13 campaign's tests are listed in
+reviews/2026-10-13-prt-cyber-verification/REVIEW.md and the 2026-11-10
+campaign's in reviews/2026-11-10-contracts-audit/REVIEW.md.
 
 Do not add fixed lifecycle traces or fuzz volume solely to improve headline
 counts. Current non-claims include a general recursive adversarial-arrival

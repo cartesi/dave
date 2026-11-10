@@ -126,8 +126,10 @@ carry no backlog (reviews/README.md).
   (epoch-lifecycle.md)
 - Review the honest-survival argument (dimensioning.md, "Honest survival
   under the budgets") by someone other than its author, and decide whether
-  the two-level search gates the external audit or is handed over as
-  evidence. (dispute-game.md)
+  the searches gate the external audit or are handed over as evidence. The
+  second contracts audit re-derived the balance blind and extended the
+  search to four levels; that is a second automated reading, not this
+  review. (dispute-game.md)
 - Re-check the pinned solc (0.8.38) against its bug list at the audit
   freeze; none was listed for it on 2026-11-10. (plans/audit-readiness.md)
 - Recalibrate the refund-gas allocations once, after the last bytecode

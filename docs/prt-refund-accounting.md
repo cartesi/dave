@@ -114,6 +114,16 @@ recovered would make the reserve argument circular.
 
 The executable population and reserve models live in
 [`RefundReserve.t.sol`](../prt/contracts/test/accounting/RefundReserve.t.sol).
+The same identities are checked on the production Tournament: with every
+refund at its action cap, including the tightest case where each match
+consumes its whole reserve
+([`ReserveAtRefundCaps.t.sol`](../prt/contracts/test/accounting/ReserveAtRefundCaps.t.sol)),
+and after every step of random schedules at one level and at two levels
+with real leaf children
+([`ProductionReserveSingleLevel.t.sol`](../prt/contracts/test/accounting/ProductionReserveSingleLevel.t.sol),
+[`ProductionReserveTwoLevel.t.sol`](../prt/contracts/test/accounting/ProductionReserveTwoLevel.t.sol)).
+Those are traces and seeded samples with a stub for the leaf proof, not a
+proof over schedules.
 
 ## Terminal conservation
 

@@ -1056,10 +1056,13 @@ eliminated, and a finished root carries its final state, in both
 orientations and at `C` of 0, 2 and 5; removing the child-return refill makes
 the search fail, as it must. Its argument is in dimensioning.md ("Honest
 survival under the budgets"). It is evidence for two levels in a small box,
-not a theorem. Remaining liveness work is unchanged: an unbounded proof or
-counterexample of termination and delay, and a recursive model for more than
-two levels. The finite searches discover and retain clock schedules; they
-must not be presented as that general theorem.
+not a theorem. The second contracts audit (2026-11-10) extended the search
+to one to four levels (`MultiLevelHonestSurvival.t.sol`) and added a second
+adversary at two and three levels (`DefendedWalk.t.sol`); both are seeded
+searches in small boxes. Remaining liveness work is unchanged: an unbounded
+proof or counterexample of termination and delay, and a recursive argument
+that holds for every level count. The finite searches discover and retain
+clock schedules; they must not be presented as that general theorem.
 
 Current Foundry evidence and its remaining gaps live in
 [`prt-contract-testing.md`](prt-contract-testing.md). The node's sealed-leaf
