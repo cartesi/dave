@@ -907,7 +907,10 @@ interface ITournament {
     /// when the standing degrades to `INNER_ELIMINABLE_WINNER_EXPIRED`. Its
     /// value is stable while the `INNER_WINNER` standing lasts and returns to
     /// canonical zero once it expires; the instant remains recomputable as
-    /// `finishedAt` plus the winner's frozen `clockAllowance`.
+    /// `finishedAt` plus the winner's frozen `clockAllowance`. A child cannot
+    /// tell whether its parent consumed its result: it reports `INNER_WINNER`
+    /// and then `INNER_ELIMINABLE_WINNER_EXPIRED` either way, so whether
+    /// anything remains to do is read from the parent's match.
     function tournamentStanding()
         external
         view

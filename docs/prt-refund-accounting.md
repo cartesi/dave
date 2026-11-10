@@ -179,7 +179,20 @@ maximum input's zero bytes leave under about 0.8M units. A wrapper contract
 can instead rebuild authenticated bytes in memory (zero input bytes, or
 pristine-subtree siblings from its own code), so the gap can approach the
 whole metered component: 16 units per byte of the fixed proof length, about
-1.5M at the maximum input's 94,180 bytes, within the action's cap.
+1.5M at the maximum input's 94,180 bytes, within the action's cap. A fourth
+source needs no batching, building or calldata trick: a match-deleting
+action clears storage, and the `gasleft()` delta does not net the credit
+the caller gets back for it. On the retained witnesses any plain account
+is refunded 17,500 to 35,700 units above its receipt cost on a timeout
+win, a double elimination, a child propagation or a child elimination,
+again within the action's cap.
+
+The same measurement gives the other side of the non-guarantee. A caller
+who is not refunded for what the meter does not see is short about 12,300
+units on each advance and 31,000 to 39,000 on each seal, and a join, which
+is never refunded, costs 181,000 to 300,000: roughly a million units per
+forced root-plus-child match before the leaf proof (second contracts
+audit, N-06).
 
 Adding an independent attacker loss would be a new policy. Doubling the work
 reserve without increasing refund liability would merely disguise that stake
