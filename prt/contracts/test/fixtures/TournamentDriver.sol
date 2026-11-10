@@ -105,8 +105,21 @@ abstract contract TournamentDriver is Test {
     // Claims: fine state tables and their root and child trees
     //
 
+    /// @dev Fine leaf `i` of claim family `family`. The family sits above
+    /// bit 16 and the index below it, so two leaves are equal only when
+    /// both the family and the index are, and no leaf is zero.
+    function fineLeaf(uint256 family, uint256 i)
+        internal
+        pure
+        returns (Tree.Node)
+    {
+        require(i < 0xff00, "harness: fine index out of range");
+        return Tree.Node.wrap(bytes32((family << 16) | (0x100 + i)));
+    }
+
     /// @dev Sixteen fine leaves. Leaves before `divergeAt` belong to family
-    /// `fam`, the rest to `altFam`; `fam == altFam` gives one family.
+    /// `fam`, the rest to `altFam`; `fam == altFam` gives one family. Tables
+    /// of distinct families differ at every index (`fineLeaf`).
     function fineLeaves(uint256 fam, uint256 divergeAt, uint256 altFam)
         internal
         pure
@@ -114,8 +127,7 @@ abstract contract TournamentDriver is Test {
     {
         fine = new Tree.Node[](uint256(1) << FINE_HEIGHT);
         for (uint256 i; i < fine.length; ++i) {
-            uint256 family = i < divergeAt ? fam : altFam;
-            fine[i] = Tree.Node.wrap(bytes32((family << 8) | (0x100 + i)));
+            fine[i] = fineLeaf(i < divergeAt ? fam : altFam, i);
         }
     }
 
