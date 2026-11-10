@@ -40,6 +40,9 @@ past the span.
   the contract changes.
 - Fetch pinned just assets directly and verify their checksums instead of
   relying on release-list discovery.
+- On Linux arm64 the pinned Foundry cannot download solc 0.8.38. `just setup`
+  now installs Solidity's official build where Foundry finds it
+  (`just install-solc`), and `just doctor` reports a miss.
 
 ## v3.0.0-alpha.6
 

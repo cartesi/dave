@@ -84,6 +84,9 @@ check_toolchain() {
                 "formatter output will differ from CI; align the devshell and FOUNDRY_VERSION in the root justfile"
         fi
     fi
+    # Only Linux arm64 can miss it: the pinned Foundry cannot download it there.
+    check "pinned solc within Foundry's reach" "just install-solc" \
+        script/solc-linux-arm64.sh verify
 }
 
 check_e2e_tools() {
