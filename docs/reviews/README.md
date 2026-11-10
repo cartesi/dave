@@ -70,3 +70,8 @@ with, and some of those name nothing on main.
   documentary leads, the honest-survival search, adapter composition at the
   epoch extremes, mutation and exploit-class evidence, and the honest node's
   composition contract.
+- [`2026-11-10-contracts-audit/REVIEW.md`](2026-11-10-contracts-audit/REVIEW.md)
+  - the second whole-boundary audit: four independent reads of `prt/contracts`
+  with no defect, the leaf handover executed and priced, the compiler pin
+  against a newly disclosed optimizer bug, and a first read of the rollups
+  consensus contracts, whose phase is still open.
