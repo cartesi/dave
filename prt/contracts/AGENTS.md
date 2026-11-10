@@ -121,7 +121,11 @@ Top/Middle/Bottom contracts.
 - A parent consumes only a child it recorded from its own sealed match.
   Permissionless orphan child creation does not establish parent legitimacy.
 - Objective proof correctness does not erase a missed deadline. A leaf proof
-  and timeout cleanup must never be simultaneously valid.
+  and timeout cleanup must never be simultaneously valid. The proof-to-timeout
+  handover this partition creates is an accepted, priced limitation. Before
+  changing the leaf verbs, read the argument and what would reopen it in
+  [`docs/dispute-game.md`](../../docs/dispute-game.md) ("Why the handover
+  stays"); it is reasoning to re-run, not a ruling.
 - Each paid join contributes one height-derived match work reserve. Progress
   refunds are bounded subsidies; terminal recovery pays one bond plus a tenth
   of the residual above it and burns the rest only after successful payment.

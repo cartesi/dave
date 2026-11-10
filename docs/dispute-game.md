@@ -424,7 +424,7 @@ a leaf proof in flight when the opponent's shorter leaf clock expires reverts,
 and the survivor needs a separate timeout claim. With `d1` the proof's latency
 from the seal and `d2` the claim's latency after it, the survivor is charged
 `max(0, d1 + d2 - G)` and must outlive `d1 + d2`. The adversary chooses how
-often this happens, one Sybil bond each, but not the latencies. Each
+often this happens, for a leaf bond or more each, but not the latencies. Each
 occurrence can cost up to one `G` of `C` even when both actions land within
 their own `G`: the review's trace lost a match at `C = 0` with every inclusion
 inside its bound. It costs nothing only if the proof and its fallback claim
@@ -441,8 +441,60 @@ at the opponent's deadline instead of sending the proof
 this yet: at a sealed leaf it claims a timeout only once one has occurred
 and otherwise sends the proof (`plan_engagement`,
 cartesi-rollups/node/src/hero/planner.rs); the predictive choice is node
-work in todo.md. Letting `winLeafMatch` settle as the timeout win the
-classifier selects was judged not worth revising the disjoint verbs.
+work in todo.md.
+
+Why the handover stays. This is a judgment made on 2026-11-10 with the
+[second contracts audit](reviews/2026-11-10-contracts-audit/REVIEW.md) (N-01)
+in hand: an argument to re-run when a premise moves, not a rule. That audit
+executed the limitation at the deployed two-level formula with `C = 0`: two
+occurrences, every landing inside its own `G`, and the root reported a wrong
+winner. It also showed that occurrences repeat after closure. A Sybil that
+joins a leaf tournament in its last `G - 1` blocks holds a clock that
+in-time responses never reduce; it can be parked as the paused side of
+another Sybil's match and released against the correct commitment by the
+leaf proof that ends that match. The first occurrence in a leaf tournament
+costs one leaf bond, each further one about three (the parked Sybil, its
+holder and the holder's partner). Planning the claim saves the proof's
+wasted latency, but the claim cannot land before the opponent's deadline
+and is charged from the seal, `r + d2 - G` for an opponent clock `r`, so the
+cost is zero exactly under the joint bound.
+
+The argument weighs three things:
+
+- The correct side loses only lateness. An occurrence charges at most the
+  amount by which the proof and the claim together overrun one `G`, never
+  more than `G - 2` blocks, and nothing when they fit. That is the one delay
+  ledger of dimensioning.md: a proof that late would draw the same blocks
+  from `C` with no Sybil involved. The node's documented latency terms (one
+  poll, preparation dimensioned to half of `G`, inclusion) put the two
+  landings at about 20 to 22 of Ethereum's 25 blocks, an estimate to
+  measure.
+- The adversary pays bonds for every one of those blocks. Draining a week
+  of `C` takes about 2,200 occurrences at the maximum overrun: about 6,600
+  leaf bonds, 3,400 ETH, at three bonds each, and no less than 1,100 ETH if
+  a single bond bought each occurrence. Smaller overruns raise the price in
+  proportion, and bonds do not shrink where gas is cheap. By the reference
+  price rule of dimensioning.md that is a door, not a wall.
+- A guard would change the trust boundary to close it. Three were
+  considered. Accepting a leaf proof while the proven side's own clock is
+  live removes the handover in a few lines, with the same winner and the
+  same charge, but gives up the partition in which one classification
+  enables exactly one verb at any block; the views, the model-based tests
+  and this document lean on that partition. Making the leaf an ordinary
+  turn, where the seal switches the clock and only the side to move may
+  refute the other's leaf, removes the two-clock race altogether, at the
+  price of the sealed-leaf events, the node's planner and a fresh review of
+  the phase. Charging the claim from the opponent's deadline keeps the
+  partition and still wastes the reverted proof.
+
+What would reopen it: a deployment with real value whose `C` is hours
+rather than days; measurements showing the node's proof and claim together
+approach `G`; a way to stage occurrences for less than a bond each (a
+sub-`G` clock without a late join, or parking without a holder); a
+reference price that falls below this one; or a redesign of the leaf phase
+for another reason, where the single-turn leaf is the form that has no
+handover. On the devnet kind (`C = 0`) the trace needs the correct side
+nearly `G` late twice in a row, which a local chain does not produce.
 
 A non-leaf match resolves when its linked child finishes:
 
