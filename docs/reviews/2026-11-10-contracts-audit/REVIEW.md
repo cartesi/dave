@@ -266,36 +266,51 @@ are open, and a child never closes before its parent.
 
 ## Evidence produced
 
-All of it passes on the reviewed tree. It is kept out of tree in the
-campaign's scratch record; promotion into the owning suites is pending.
+All of it passed on the reviewed tree in the reviewers' private copies.
+It was then curated into the owning suites on the audit branch, under
+`prt/contracts/test`: renamed to the testing guide's conventions, the
+receipt probe and two leftover debugging tests dropped, every environment
+knob removed, and the multi-level search restructured to one schedule per
+fuzz run so that it passes under forge's default gas limit. The dispute
+gate grew from 447 tests in 86 suites to 490 in 97.
 
-- Reserve and conservation on production code: three traces with every
-  refund cap binding at both levels, including the tightest case where
-  every match consumes its whole reserve, and randomized runs at one level
-  (3,000 runs) and two levels with real leaf children (2,500 runs). After
-  every step the balance equals joins times bond minus refunds, no refund
-  exceeds its cap, and a winner finds at least one bond. Not covered: the
-  receipt-level cost of `winLeafMatch` through the real adapter.
-- Lock release on every recovery return path; a refund that cannot be
-  silently starved by a low gas limit; an unrecorded child that is never
-  called; a clone that rejects plain value.
-- Honest survival at one to four levels: the October handler generalized,
-  14,400 seeded schedules in a small box (heights 1 to 3, `G = 3`,
-  `T = 6`, `C <= 5`), no loss; the one-inclusion-below controls fail where
-  the closed form predicts. Needs forge's gas limit raised. Not covered:
-  canonical heights, and the leaf resolution is one landing that picks the
-  verb, which is the documented joint bound.
-- A model-based adversarial walk over two- and three-level clone trees:
-  10,001 runs in which any caller tries any verb on any clone at boundary
-  instants, checking legality, the three views, clock effects, child
-  linkage, root finality and balances against a model written from the
-  code. Of 21 single-line mutants of `src`, 20 fail it; the survivor only
-  drops an assert.
-- A defended walk with inclusive latencies and the root allowance exactly
-  at the formula: 14,001 runs, every decided root correct; it fails when
-  the allowance is cut by one inclusion.
-- The N-01 trace with its control, the N-07 boundary pins, and the N-03
-  level-zero clone.
+| Evidence | File |
+| --- | --- |
+| Reserve and conservation with every refund cap binding at both levels, including the tightest case where every match consumes its whole reserve | `accounting/ReserveAtRefundCaps.t.sol` |
+| The same identities after every step of random schedules, at one level and at two levels with real leaf children | `accounting/ProductionReserveSingleLevel.t.sol`, `accounting/ProductionReserveTwoLevel.t.sol` |
+| Lock release on every recovery return path; a refund that a low gas limit cannot silently starve; a clone that rejects plain value | `accounting/PaymentBoundaries.t.sol` |
+| N-03: the level-zero orphan, the two orphans that lock a bond, a parent that never calls or refunds an unrecorded child, and the provider's panic outside the table | `config/OrphanClones.t.sol`, `config/CanonicalTournamentGeometry.t.sol` |
+| N-01: the wrong-winner trace at the formula with `C = 0`, and its control | `properties/LeafHandover.t.sol` |
+| N-07: what an inclusive reading of "within `G`" costs at one and two levels | `properties/InclusiveLatencyBoundary.t.sol` |
+| N-04: the one-block fast-forward to the leaf race, refuted, and an unproven race decided by the clocks | `properties/LeafRaceFastForward.t.sol` |
+| Honest survival at one to four levels, the October handler generalized, with controls that lose where the closed form predicts | `properties/MultiLevelHonestSurvival.t.sol` |
+| The model-based adversarial walk over two- and three-level clone trees: any caller, any verb, any clone, at boundary instants, against a model written from the code | `properties/AdversarialWalk.t.sol` |
+| The defended walk, inclusive latencies at the formula, with a control one inclusion below it | `properties/DefendedWalk.t.sol` |
+| N-09: one helper that keeps claim family and leaf index apart | `fixtures/TournamentDriver.sol` |
+
+Campaigns during the review, on the reviewed tree:
+
+- Reserve: 3,000 runs at one level and 2,500 at two.
+- Survival: 14,400 schedules without a loss (seeds 1 to 300 for each of
+  eight tables, three censorship budgets and two orientations; heights 1
+  to 3, `G = 3`, `T = 6`, `C <= 5`). The clock and standing invariants
+  added later ran at 80 to 100 seeds per configuration.
+- Adversarial walk: 10,001 runs, about 43 calls each, and the defended
+  walk 14,001, both under `FOUNDRY_FUZZ_SEED=0x5172756374757265`.
+- Mutation: of 21 single-line mutants of `src`, 20 fail the adversarial
+  walk; the survivor only drops an assert.
+
+Campaigns on the promoted tests, on the audit branch with solc 0.8.38,
+all passing under `FOUNDRY_FUZZ_SEED=0x2026111001`: 3,000 runs of each of
+the eight survival fuzz tests (one run is one schedule), and 4,000 runs
+of each walk and of each reserve fuzz. The promoted search stops a
+schedule 24 moves after its root finishes, where the review's loop ran
+its 300 to 500 moves out; after a finished root only time passes.
+
+Not covered: the receipt-level cost of `winLeafMatch` through the real
+adapter; canonical heights in any search; and the per-action reading of
+the leaf resolution, since both survival searches resolve a sealed leaf in
+one landing that picks the verb, the documented joint bound.
 
 ## Settlement boundary: first read only
 
@@ -326,14 +341,23 @@ survive the bump; re-check the diff then.
 
 ## Follow-ups
 
-- N-01 and N-03 are decided above; both are documentation.
-- Move the compiler pin to 0.8.38 (N-02).
-- Wording: N-04, N-05, N-06, N-07, and the invariant above.
-- Fix or document the fixture of N-09.
-- Promote the evidence into the owning suites, with the search's gas limit
-  set inline.
+Landed on the audit branch after this record was first written:
+
+- N-01 and N-03, decided above, as documentation: the argument in
+  dispute-game.md and the factory and tournament interface comments.
+- N-02: both projects and the gas script pin solc 0.8.38, and every gate
+  passes on it. Every production bytecode moved; the ABI and storage
+  layouts of `Tournament` and the factory did not.
+- The wording for N-04, N-05, N-06, N-07 and the clock-floor invariant, in
+  dispute-game.md, prt-refund-accounting.md and `ITournament.sol`.
+- The fixture of N-09.
+- The evidence, as listed under "Evidence produced".
+
+Open:
+
 - One gas recalibration at the end of the cycle, after every bytecode
-  change has landed.
+  change has landed (todo.md).
+- N-08: one devnet transaction.
 - Settlement phase after the alpha.11 adoption: the factory, a stateful
   test over stage, claim, accept, rotate and foreclose, and the two
   unexercised errors.
@@ -342,8 +366,9 @@ survive the bump; re-check the diff then.
 
 Run inside the nix devshell. The gates are `just prt-contracts::test-disputes`,
 `just rollups-contracts::test`, `just test-prt-gas` and
-`just prt-contracts::test-stf`; for N-02 the same forge commands with
-`--use 0.8.38` and artifacts outside the tree. The multi-level survival
-search needs `FOUNDRY_GAS_LIMIT=9223372036854775807`. Per the repository
-rule no commit hash is written here; the tree hash above identifies the
-reviewed state.
+`just prt-contracts::test-stf`. The deeper campaigns set `FOUNDRY_FUZZ_RUNS`
+and `FOUNDRY_FUZZ_SEED` as each test's contract comment shows. N-02 was
+first checked with the same forge commands under `--use 0.8.38` and
+artifacts outside the tree, before the pin moved. Per the repository rule
+no commit hash is written here; the tree hash above identifies the reviewed
+state.
