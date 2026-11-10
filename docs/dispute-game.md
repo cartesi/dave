@@ -31,10 +31,18 @@ Safety requires:
   every other action within `G` of becoming due, and a leaf proof together
   with its fallback timeout claim within `G` of the seal, with the
   adversary's cumulative censorship of those transactions at most `C` across
-  the root and its descendants. Under those bounds its clocks never expire
-  (dimensioning.md, "Honest survival under the budgets").
+  the root and its descendants. Each bound is strict: a landing exactly at
+  its bound is late. Under those bounds its clocks never expire
+  (dimensioning.md, "Honest survival under the budgets"). Read inclusively,
+  a one-level table has no slack (a join and a response at exactly `G` lose
+  by one block), while two levels keep a margin of `G`.
 - The participant can obtain the inputs, machine states, and proofs needed to
-  act.
+  act, and every proof it may need fits one transaction. A sealed leaf that
+  nobody proves is decided by the clocks, and a Sybil that joined the child
+  first holds the longer one, so an inadmissible proof is a safety failure,
+  not a gas matter. The only proof whose size an adversary controls embeds a
+  whole input; the InputBox's 64 KiB input cap bounds it, and the leaf gas
+  fixture fails if that cap grows (Bonds and refunds, admission headroom).
 - Commitment hashes and Merkle proofs have their assumed collision and
   preimage resistance.
 - The configured state-transition contract and data provider implement the
@@ -609,6 +617,13 @@ duration, while `ELIMINABLE` covers both a no-winner child and an expired
 winner. Propagation requires `WINNER` and elimination requires `ELIMINABLE`,
 so the parent verbs partition exactly.
 
+A child cannot see whether its parent consumed its result. After
+propagation it keeps reporting `INNER_WINNER` until the carryover instant
+and `INNER_ELIMINABLE_WINNER_EXPIRED` afterwards, while both parent verbs
+revert with `MatchDoesNotExist` because the parent's match is gone. A
+client decides what remains to do from the parent's match, not from the
+child's standing alone.
+
 `commitmentStanding(root)` projects one commitment's raw join record and
 clock snapshot: claimed final state, claimer, and either the paused clock's
 frozen reserve or the running clock's fixed inclusive deadline. Eliminated
@@ -707,6 +722,16 @@ overdue = max((now - startInstant) - allowance, 0)
 
 At exact equality the clock is expired and overdue is zero. A paused initialized
 clock retains its stored allowance and does not consume time.
+
+No clock can run out before its tournament stops accepting joins. For every live
+commitment, the remaining allowance plus the instant it was last paused, or
+its run start while running, is at least the tournament's closure: the join
+stores exactly the time left until closure, a response charges at most the
+time it ran, and a child return stays within an envelope that satisfies the
+same bound. So no clock expires before its tournament closes, no timeout
+verb is enabled while joins are still accepted, and a child, whose
+allowance is its parent pair's larger remainder, never closes before its
+parent.
 
 | Live phase | Clock shape | Permitted next transition |
 | --- | --- | --- |
