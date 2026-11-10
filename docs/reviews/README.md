@@ -73,5 +73,5 @@ with, and some of those name nothing on main.
 - [`2026-11-10-contracts-audit/REVIEW.md`](2026-11-10-contracts-audit/REVIEW.md)
   - the second whole-boundary audit: four independent reads of `prt/contracts`
   with no defect, the leaf handover executed and priced, the compiler pin
-  against a newly disclosed optimizer bug, and a first read of the rollups
-  consensus contracts, whose phase is still open.
+  against a newly disclosed optimizer bug, and a first read and a stateful
+  model of the rollups consensus contracts, whose phase is still open.
