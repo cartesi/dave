@@ -376,9 +376,8 @@ contract HonestSurvivalHandler is TournamentDriver {
         uint256 family = 2 + 2 * uint256(fam);
         for (uint256 j; j + 1 < SEGMENT_SIZE; ++j) {
             uint256 i = c.segment * SEGMENT_SIZE + j;
-            leaves[j] = (mask >> j) & 1 == 1
-                ? Tree.Node.wrap(bytes32((family << 8) | (0x100 + i)))
-                : honestFine[i];
+            leaves[j] =
+                (mask >> j) & 1 == 1 ? fineLeaf(family, i) : honestFine[i];
         }
         leaves[SEGMENT_SIZE - 1] = Tree.Node.wrap(Machine.Hash.unwrap(last));
         SmallFullTree.Data memory tree = SmallFullTree.buildFromLeaves(leaves);
@@ -695,7 +694,7 @@ contract HonestSurvivalHandler is TournamentDriver {
             uint256 from = s * SEGMENT_SIZE + (p2 % 4);
             uint256 family = 2 + 2 * ((p2 >> 2) % 4);
             for (uint256 i = from; i < (s + 1) * SEGMENT_SIZE; ++i) {
-                fine[i] = Tree.Node.wrap(bytes32((family << 8) | (0x100 + i)));
+                fine[i] = fineLeaf(family, i);
             }
         } else {
             // An identical copy of the honest root, claimed by the Sybil.
