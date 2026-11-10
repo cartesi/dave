@@ -19,7 +19,9 @@ import {CanonicalTournamentParametersProvider} from "src/arbitration-config/Cano
 import {ClockBudgets} from "src/arbitration-config/ClockBudgets.sol";
 import {MultiLevelTournamentFactory} from "src/tournament/factories/MultiLevelTournamentFactory.sol";
 import {Time} from "src/tournament/libs/Time.sol";
+import {Machine} from "src/types/Machine.sol";
 import {TournamentParameters} from "src/types/TournamentParameters.sol";
+import {Tree} from "src/types/Tree.sol";
 
 import {Util} from "../Util.sol";
 
@@ -143,6 +145,33 @@ contract CanonicalTournamentGeometryTest is Util {
         }
 
         assertEq(previousStride, 0);
+    }
+
+    /// @dev A level outside the table fails with an array panic, not a typed
+    /// error: the provider indexes fixed arrays, and the factory forwards the
+    /// level unchecked from its view and from the permissionless
+    /// `instantiateInner`.
+    function testCanonicalProviderPanicsOutsideTheTable() public {
+        uint64 outside = ArbitrationConstants.LEVELS;
+        bytes memory outOfBounds =
+            abi.encodeWithSignature("Panic(uint256)", 0x32);
+
+        vm.expectRevert(outOfBounds);
+        PROVIDER.tournamentParameters(outside);
+        vm.expectRevert(outOfBounds);
+        FACTORY.tournamentParameters(outside);
+        vm.expectRevert(outOfBounds);
+        FACTORY.instantiateInner(
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Tree.ZERO_NODE,
+            Machine.ZERO_STATE,
+            Time.Duration.wrap(1),
+            0,
+            outside,
+            IDataProvider(address(0))
+        );
     }
 
     function testFactoryRootUsesCanonicalRowZero() public {
