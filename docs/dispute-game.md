@@ -172,6 +172,22 @@ The factory permits anyone to instantiate root or inner clones. An inner clone
 created directly through the factory is an orphan: it is not authoritative for
 any parent. A parent accepts only a child recorded in its own
 `matchIdFromInnerTournaments` mapping when that parent sealed a match.
+
+`instantiateInner` checks none of its arguments, so an orphan may look like
+anything. Level zero gives a root-kind clone with a nonzero nested dispute
+and no `TournamentCreated`. An allowance no parent would pass gives a clone
+that never closes, and a bond joined there is never recovered; combined with
+the factory's nonce-derived addresses, a reorg can put such a clone at an
+address a client read earlier. None of this reaches a correct client, which
+follows tournaments only from the consensus's `EpochSealed` through each
+parent's `NewInnerTournament` and joins only what it has read after
+finality; the node does both and never reads factory events. Bounding the
+level and the allowance in the factory would remove the two shapes for a
+client that does otherwise. That was weighed on 2026-11-10
+([second contracts audit](reviews/2026-11-10-contracts-audit/REVIEW.md),
+N-03) and left out as machinery for a case the consumers do not have; it is
+worth a second look if a third-party client ever joins by address.
+
 Factory construction rejects a no-code tournament implementation, parameters
 provider, or state-transition dependency so those wiring errors fail before a
 clone is instantiated. The per-tournament `IDataProvider` remains a protocol

@@ -32,7 +32,10 @@ interface ITournament {
     /// @notice Dispute information from a parent match.
     /// @dev For non-root tournaments (level > 0), contains the two contested commitments
     ///      and final states from the parent match that created this tournament.
-    ///      For root tournaments (level == 0), all fields are zero.
+    ///      For root tournaments (level == 0), all fields are zero. Both hold
+    ///      for clones a consensus or a parent created; an orphan made through
+    ///      the factory's unchecked `instantiateInner` may carry any values at
+    ///      any level.
     struct NestedDispute {
         Tree.Node contestedCommitmentOne;
         Machine.Hash contestedFinalStateOne;
@@ -58,7 +61,8 @@ interface ITournament {
     /// @param tournamentFactory Multi-level factory address (cast to IMultiLevelTournamentFactory when needed), used by non-leaf operations when instantiating inner tournaments
     /// @dev A root tournament is at level 0.
     /// Time is measured by the contract time source, currently `block.number`.
-    /// For root tournaments (level == 0), nestedDispute fields are zero.
+    /// For root tournaments (level == 0), nestedDispute fields are zero,
+    /// orphan clones excepted (see `NestedDispute`).
     struct TournamentArguments {
         Commitment.Arguments commitmentArgs;
         uint64 level;

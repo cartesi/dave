@@ -14,7 +14,9 @@ interface ITournamentFactory {
     /// @param bondValue The new tournament's `bondValue()`, the value a join
     /// must send
     /// @dev Anyone can call `instantiate`, so a client trusts this event only
-    /// for tournaments it reached through the consensus's `EpochSealed`.
+    /// for tournaments it reached through the consensus's `EpochSealed`. Its
+    /// absence proves nothing either: `instantiateInner` can create a
+    /// level-zero clone and emits no event.
     event TournamentCreated(
         ITournament tournament,
         ITournament.TournamentDescriptor descriptor,
