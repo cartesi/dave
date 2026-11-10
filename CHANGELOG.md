@@ -10,6 +10,9 @@ past the span.
 
 ### Contracts
 
+- Compile every contract with solc 0.8.38 instead of 0.8.30, which was
+  inside the range of a Yul optimizer bug fixed in 0.8.38. No source
+  changes; all bytecode, and so every deterministic address, moves.
 - DaveConsensus seals at most 2^24 pending inputs, retaining excess inputs
   for later epochs. Only processed, accepted inputs become finalized.
 - DaveAppFactory binds application addresses to the full consensus settings,

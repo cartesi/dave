@@ -18,7 +18,7 @@ remappings = [
     "step/=../../machine/step/",
 ]
 
-solc_version = "0.8.30"
+solc_version = "0.8.38"
 evm_version = "prague"
 always_use_create_2_factory = true
 fs_permissions = [
