@@ -4,6 +4,14 @@ use super::*;
 use cartesi_dave_contracts::dave_consensus::DaveConsensus as C;
 use std::process::Command;
 
+async fn settlement_world(sentries: &[usize], period: u64) -> Result<World> {
+    let world = World::spawn(sentries, period).await?;
+    // Protocol clocks count blocks. Keep synthetic mining from putting a newly
+    // built bundle's timestamps ahead of the observer's real wall clock.
+    world.provider.anvil_set_block_timestamp_interval(0).await?;
+    Ok(world)
+}
+
 fn observer(world: &World, state: &std::path::Path, expected: i32) -> Result<serde_json::Value> {
     let output = Command::new("python3")
         .arg("../../script/settlement-watch.py")
@@ -131,7 +139,7 @@ async fn mine_transaction(world: &mut World, hash: alloy::primitives::B256) -> R
 #[ignore = "needs the devnet bundle and echo image"]
 async fn settlement_sender_outage_before_staging_is_detected_and_another_caller_recovers()
 -> Result<()> {
-    let mut world = World::spawn(&[], 0).await?;
+    let mut world = settlement_world(&[], 0).await?;
     let mut sender = world.honest_node().await?;
     world.add_input(b"input before outage".to_vec()).await?;
     settle(&mut sender, &mut world, 0).await?;
@@ -200,7 +208,7 @@ async fn settlement_sender_outage_before_staging_is_detected_and_another_caller_
 #[ignore = "needs the devnet bundle and echo image"]
 async fn settlement_sender_outage_after_staging_respects_wait_then_recovers() -> Result<()> {
     const PERIOD: u64 = 30;
-    let mut world = World::spawn(&[], PERIOD).await?;
+    let mut world = settlement_world(&[], PERIOD).await?;
     let mut sender = world.honest_node().await?;
     join_and_close(&mut sender, &mut world).await?;
     sender
@@ -242,7 +250,7 @@ async fn settlement_sender_outage_after_staging_respects_wait_then_recovers() ->
 #[ignore = "needs the devnet bundle and echo image"]
 async fn settlement_observer_distinguishes_open_tournament_failed_root_and_foreclosure()
 -> Result<()> {
-    let mut world = World::spawn(&[], 0).await?;
+    let mut world = settlement_world(&[], 0).await?;
     let reports = tempfile::tempdir()?;
     let state = reports.path().join("observer.json");
     assert_eq!(
@@ -274,6 +282,7 @@ async fn settlement_observer_never_treats_a_terminal_winner_as_safe_to_stage() -
     machine.store(&template)?;
     drop(machine);
     let mut world = World::spawn_on_template(&[], 0, template).await?;
+    world.provider.anvil_set_block_timestamp_interval(0).await?;
     let mut node = world.honest_node().await?;
     world.add_input(vec![1]).await?;
     settle(&mut node, &mut world, 0).await?;
