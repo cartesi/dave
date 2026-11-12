@@ -232,12 +232,22 @@ latencies the minimum slack on a running correct clock is
 canonical two-level table keeps a margin of `G` under either reading.
 `ClockBudgets` floors seconds to blocks and adds no boundary slack.
 
-### N-08: forced inclusion on the OP Stack rows probably earns no refund
+### N-08: forced inclusion on the OP Stack rows earns no refund
 
-Not executed. A deposit transaction is believed to report a zero gas
-price, which makes the refund zero for every action sent that way while
-the parent-chain data cost is paid in full. Inside the experimental-row
-non-claim; one devnet transaction would settle it.
+Not executed; confirmed afterwards from the OP Stack specification and
+op-geth. A deposit transaction has no fee fields and a gas price of zero:
+the specification's deposits chapter says so, op-geth returns zero for a
+deposit's price, fee cap and tip cap, and the price the `GASPRICE` opcode
+reads is the lesser of tip plus base fee and the fee cap. The refund
+multiplies the measured units by `min(tx.gasprice, basefee + cap)`, so
+every action sent through the portal is refunded nothing, while its sender
+pays Ethereum gas for the portal call, for the action's calldata, and for
+the L2 gas the deposit buys. dispute-game.md already said the parent-chain
+data fee is not refunded on an L2; this is the whole refund, on the one
+path a validator has when the sequencer censors it. The largest leaf proof
+fits the portal's limit on deposit data (about 94 of 120 thousand bytes).
+Result selection and bond recovery are unaffected. Inside the
+experimental-row non-claim, and now stated there.
 
 ### N-09: `fineLeaves` makes claim families 2n and 2n + 1 identical
 
@@ -430,14 +440,19 @@ Landed on the audit branch after this record was first written:
 - The evidence, as listed under "Evidence produced".
 - The settlement model and the two error paths, with the wording for S-01
   and S-02.
+- The gas calibration procedure, which a compiler change triggers, re-run
+  on the audit branch in its accepted mode: every family's maximum rounded
+  recommendation equals its configured allocation, so no constant moves
+  and the runbook asks for no record. Against a diagnostic run of the same
+  tree on 0.8.30, the compiler moved the 35 retained witnesses by between
+  -6 and +313 units, at most 0.016%.
+- N-08, confirmed from sources and stated in dispute-game.md.
 
 Open:
 
-- One gas recalibration at the end of the cycle, after every bytecode
-  change has landed (todo.md).
-- N-08: one devnet transaction.
-- Settlement phase after the alpha.11 adoption: the factory's reserved
-  CREATE2, and a re-read of the upstream diff against the model.
+- Settlement phase, in a follow-up change after the alpha.11 adoption: the
+  factory's reserved CREATE2, and a re-read of the upstream diff against
+  the model. That dependency bump is itself a calibration trigger.
 
 ## Reproduction
 

@@ -132,10 +132,6 @@ carry no backlog (reviews/README.md).
   review. (dispute-game.md)
 - Re-check the pinned solc (0.8.38) against its bug list at the audit
   freeze; none was listed for it on 2026-11-10. (plans/audit-readiness.md)
-- Recalibrate the refund-gas allocations once, after the last bytecode
-  change of this cycle: the move to solc 0.8.38 kept every one-sided witness
-  passing but shifted the margins, and no dated record covers it yet.
-  (runbooks/prt-refund-gas-calibration.md)
 - Prepare the external contracts audit: scope, trust boundaries, non-claims,
   the pre-audit items below, freeze and audit identity:
   [plans/audit-readiness.md](plans/audit-readiness.md).

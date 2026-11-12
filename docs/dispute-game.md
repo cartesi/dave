@@ -688,7 +688,12 @@ for a new deployment generation (build-system.md).
   of 50 honest actions, a correct commitment lands about 14 actions on OP
   Mainnet and 7 on Arbitrum One before `C` is spent, and the eight-hour
   testnets cannot land the root join (reviews/2026-10-13-prt-cyber-verification,
-  L-16; the forced-inclusion delays are leads to verify).
+  L-16; the forced-inclusion delays are leads to verify). A forced action
+  also earns no refund at all: a deposit transaction's gas price is zero,
+  and the refund is priced at `tx.gasprice`, while its sender pays Ethereum
+  gas for the call, its data and the L2 gas it buys
+  (reviews/2026-11-10-contracts-audit, N-08; read from the OP Stack
+  specification and op-geth, not executed).
 - Arbitrum One and Arbitrum Sepolia register 12 s: their `NUMBER` opcode
   returns an estimate of the parent chain's block number (Ethereum's or
   Sepolia's), so their deployment arguments, and therefore their addresses,
