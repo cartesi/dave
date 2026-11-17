@@ -94,7 +94,8 @@ pub struct Template {
 }
 
 impl Template {
-    /// Hashes the image and refuses one without the pristine uarch of the
+    /// Hashes the image, from its contents and not from its stored hash
+    /// tree, and refuses one without the pristine uarch of the
     /// linked emulator, which startup checks is the deployed step's (in
     /// `discover_deployed_tournament`): every commitment shortcut assumes it at
     /// big-cycle boundaries, and every closing reset restores it, so within
@@ -104,10 +105,11 @@ impl Template {
     /// so its uarch state's node must hash to the linked emulator's pristine
     /// uarch hash.
     ///
-    /// It also refuses an image whose files the runner maps shared for
-    /// writing lack the owner write bit: seeding clones the image keeping
-    /// each file's mode (hard-linking one without write bits), so such an
-    /// image seeds fine and then fails every advance batch.
+    /// It also refuses an image whose files a shared open maps for writing
+    /// lack the owner write bit: seeding clones the image keeping each
+    /// file's mode (hard-linking one without write bits), so the seed,
+    /// which opens its clone to rebuild the hash tree, and every advance
+    /// batch after it would fail on the emulator's own error.
     pub fn inspect(path: &Path) -> anyhow::Result<Self> {
         ensure!(
             path.is_dir(),
@@ -116,25 +118,8 @@ impl Template {
                 path.display()
             ))
         );
-        let mut machine = Machine::load(path, &RuntimeConfig::quiet_console())
+        let mut machine = Machine::load(path, &rebuilding_hash_tree())
             .with_context(|| format!("failed to load template `{}`", path.display()))?;
-        // The root hash comes from the image's stored hash tree, which a load
-        // does not check against pages marked clean.
-        // TODO (docs/todo.md, Decisions): the check staged below cannot
-        // authenticate an image, since v0.23's cm_verify_hash_tree checks
-        // page hashes and dirty tracking, not inner nodes or the root; a
-        // load with `clear_hash_tree` rebuilds the tree instead. Until that
-        // is decided, the notes that say to trust the seed image's source
-        // stand (the node README's operator notes and
-        // docs/node-architecture.md's startup section).
-        // ensure!(
-        //     machine.verify_hash_tree()?,
-        //     Fatal::terminal(format!(
-        //         "--template-path `{}`: the image's stored hash tree does not match \
-        //          its contents (a corrupt or forged image); refusing it",
-        //         path.display()
-        //     ))
-        // );
         let hash = machine.root_hash()?;
         let config = machine.initial_config()?;
         // Under any other hash function the comparison below fails for that
@@ -198,6 +183,17 @@ impl Template {
     /// one that cannot; tests seed such templates to reach terminal states.
     pub fn awaits_input(&self) -> bool {
         self.awaits_input
+    }
+}
+
+/// Loads an image without its stored hash tree. A load takes that tree's
+/// word for every page it marks clean, so a corrupt or forged image keeps
+/// the root it claims; cleared, the tree is rebuilt from the contents, and
+/// the root is theirs.
+fn rebuilding_hash_tree() -> RuntimeConfig {
+    RuntimeConfig {
+        clear_hash_tree: true,
+        ..RuntimeConfig::quiet_console()
     }
 }
 
@@ -345,6 +341,17 @@ impl Storage {
         // published leaves staging, which the next start sweeps; one after
         // it orphans the directory, which the next seed adopts.
         let working = self.checkout(&Durable::at(image.path()))?;
+        // The clone inherits the stored hash tree inspection did not
+        // trust. Rebuilt in place, later updates build on hashes of the
+        // contents, and the publisher checks its root against the image's.
+        let mut machine = working
+            .open(&rebuilding_hash_tree())
+            .map_err(anyhow::Error::from)?;
+        machine.root_hash().map_err(anyhow::Error::from)?;
+        let working = machine
+            .close()
+            .map_err(anyhow::Error::from)?
+            .expect("a shared open owns its directory");
         self.commit_clone(working, image.hash())?;
 
         self.write(|tx| {
@@ -621,11 +628,11 @@ mod tests {
     }
 
     /// A load takes the root hash from the stored tree on pages marked clean,
-    /// so contents edited behind a clean tree keep the old root.
+    /// so contents edited behind a clean tree keep the old root. Inspection
+    /// hashes the contents: a tampered image has another root, which
+    /// startup then refuses against the chain's.
     #[test]
-    #[ignore = "waits on the seed image's hash-tree check in Template::inspect \
-                (docs/todo.md, Decisions)"]
-    fn template_inspection_refuses_a_stale_hash_tree() {
+    fn a_tampered_image_has_another_root() {
         use std::os::unix::fs::FileExt;
         let dir = tempfile::tempdir().unwrap();
         let template = dir.path().join("template");
@@ -651,21 +658,22 @@ mod tests {
             .write(true)
             .open(&ram)
             .unwrap();
+        let original = *Template::inspect(&template).unwrap().hash();
         let mut bytes = [0; 32];
         file.read_exact_at(&mut bytes, 0).unwrap();
         file.write_all_at(&bytes.map(|byte| !byte), 0).unwrap();
         drop(file);
 
-        let error = Template::inspect(&template).expect_err("a stale hash tree must be refused");
-        assert!(
-            format!("{error:#}").contains("stored hash tree does not match"),
-            "unexpected error: {error:#}"
-        );
-        assert_eq!(crate::fatal::exit_code(&error), 30);
+        let stored_tree = Machine::load(&template, &RuntimeConfig::quiet_console())
+            .unwrap()
+            .root_hash()
+            .unwrap();
+        assert_eq!(stored_tree, original, "premise: the stored tree hides it");
+        assert_ne!(*Template::inspect(&template).unwrap().hash(), original);
     }
 
-    /// A read-only template seeds (cloning hard-links its files into the
-    /// store) and then fails every batch, so inspection refuses it first.
+    /// A read-only template clones into the store (hard-linking its files)
+    /// and then cannot be opened shared, so inspection refuses it first.
     #[test]
     fn template_inspection_refuses_files_the_runner_must_write() {
         let dir = tempfile::tempdir().unwrap();
@@ -686,8 +694,8 @@ mod tests {
         );
         assert_eq!(crate::fatal::exit_code(&error), 30);
 
-        // What the refusal prevents: past inspection, the seed succeeds and
-        // the runner's first batch cannot open its working clone.
+        // What the refusal prevents: past inspection, the seed cannot open
+        // its clone, and fails on the emulator's error instead.
         let image = Template {
             path: template,
             hash,
@@ -699,9 +707,12 @@ mod tests {
             watermark: 0,
         };
         let state_dir = dir.path().join("state");
-        let mut storage =
-            Storage::initialize(&state_dir, Some(&seed), &config(Address::ZERO, 1, hash)).unwrap();
-        assert!(storage.begin_advances().is_err());
+        let error = Storage::initialize(&state_dir, Some(&seed), &config(Address::ZERO, 1, hash))
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("Permission denied"),
+            "unexpected error: {error:#}"
+        );
     }
 
     /// Only files the runner writes need the bit: a read-only drive (and the
