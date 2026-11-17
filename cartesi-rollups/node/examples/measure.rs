@@ -151,6 +151,9 @@ fn main() -> Result<()> {
     bench_level0_fold(&mut report)?;
     bench_snapshot(&mut report, &image, &scratch_root)?;
     bench_clone_loop(&mut report, &image, &scratch_root)?;
+    if args.profile == BaselineProfile::Echo {
+        bench_runner(&mut report, &image, &scratch_root)?;
+    }
     bench_atoms(&mut report, &image, &scratch_root)?;
     bench_quartets(&mut report, &image, &scratch_root, args.full)?;
 
@@ -363,6 +366,88 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     }
     writeln!(report)?;
 
+    Ok(())
+}
+
+/// The runner's whole time per input on its production path
+/// (`MachineRunner::process_rollup`: the plan, the window collect at the
+/// root stride, the clone rotation and one publication per gap), over
+/// full batches of the default gap. The echo fixture rejects by the
+/// input's index field (build-echo.sh), so a batch carrying that index is
+/// a batch of rejections.
+fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
+    use cartesi_sling_node::machine_runner::MachineRunner;
+    use cartesi_sling_node::sync::ShutdownSignal;
+
+    const BATCHES: u64 = 4;
+    const REJECTED_INDEX: u64 = 2;
+    let count = BATCHES * DEFAULT_SNAPSHOT_GAP_INPUTS;
+
+    writeln!(report, "## The runner per input")?;
+    writeln!(report)?;
+    writeln!(
+        report,
+        "`MachineRunner::process_rollup` over {count} inputs of one kind at the\n\
+         default gap of {DEFAULT_SNAPSHOT_GAP_INPUTS}: the whole time per input, the \
+         application's work\n\
+         and one publication per gap included."
+    )?;
+    writeln!(report)?;
+    writeln!(report, "| inputs | time per input | rate |")?;
+    writeln!(report, "|---|---:|---:|")?;
+
+    for (label, rejected) in [("accepted", false), ("rejected", true)] {
+        let state_dir = scratch(scratch_root, &format!("runner-{label}"))?;
+        let mut storage = seeded_storage(&state_dir, image, bench_geometry()?)?;
+        let rows: Vec<StorageInput> = (0..count)
+            .map(|k| {
+                let index = match (rejected, k) {
+                    (true, _) => REJECTED_INDEX,
+                    (false, k) if k >= REJECTED_INDEX => k + 1,
+                    (false, k) => k,
+                };
+                StorageInput {
+                    id: InputId {
+                        epoch_number: 0,
+                        input_index_in_epoch: k,
+                    },
+                    data: evm_advance_input(index, b"measure"),
+                }
+            })
+            .collect();
+        storage.insert_consensus_data(0, rows.iter(), std::iter::empty())?;
+        let boundary = *storage
+            .snapshot_hash(0, 0)?
+            .as_ref()
+            .expect("the seed registers the epoch start");
+
+        let mut runner = MachineRunner::new(
+            Storage::new(&state_dir)?,
+            DEFAULT_SNAPSHOT_GAP_INPUTS,
+            Duration::ZERO,
+            ShutdownSignal::default(),
+        )?;
+        let (_, elapsed) = timed(|| runner.process_rollup())?;
+        let published = storage.snapshot_hash(0, count)?;
+        anyhow::ensure!(published.is_some(), "the runner left inputs unpublished");
+        // A rejection restores the pre-input state, so a batch of them
+        // ends where it started.
+        anyhow::ensure!(
+            (published == Some(boundary)) == rejected,
+            "the workload did not take the {label} inputs as such"
+        );
+
+        let per_input = elapsed / count as u32;
+        writeln!(
+            report,
+            "| {label} | {} | {:.1}/s |",
+            fmt_duration(per_input),
+            1.0 / per_input.as_secs_f64(),
+        )?;
+        drop(runner);
+        let _ = fs::remove_dir_all(&state_dir);
+    }
+    writeln!(report)?;
     Ok(())
 }
 
