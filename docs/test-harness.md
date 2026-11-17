@@ -102,13 +102,14 @@ oracle-owned epoch snapshots. Node output is never an input to the
 oracle, only a subject of comparison. Keep this property through any
 rewrite; it is what makes the e2e suite fit to judge one.
 
-The reference implementation, the pinned v0.22 `cartesi-machine` CLI, no
+The reference implementation, the pinned `cartesi-machine` CLI, no
 longer gates every e2e epoch: its answers are checked below e2e, where the
 node's runner, leaves and the release corpus are compared with it
 (`cartesi-rollups/node/tests/engine_machine.rs`, `just
 test-reference-cli-goldens`). Those tests identify the CLI by its
-`--version` line, which cannot tell the v0.22.0 release from its
-v0.22.0-testN pre-releases (some with another uarch) or from an unreleased
+`--version` line, which cannot tell a release from its pre-releases (the
+v0.23.0-test3 tag reports 0.23.0-test2, and v0.22.0's pre-releases, some
+with another uarch, reported the release's) or from an unreleased
 upstream build, so they need its package digest (todo.md).
 Where the CLI disagrees with the step it is no reference (computation-hash.md,
 the CLI exclusions).

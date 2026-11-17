@@ -938,10 +938,10 @@ impl Machine {
     // Integrity checking
     // ------------------------------------
 
-    // TODO: uncomment after the emulator release that supports
-    // cm_verify_hash_tree (docs/todo.md). v0.22.0 offers it for the
-    // emulator's internal tests only, unoptimized, and the emulator team
-    // asked that nothing call it there.
+    // TODO (docs/todo.md, Decisions): staged for the seed image's check.
+    // v0.23 documents cm_verify_hash_tree as a test and debugging aid that
+    // checks page hashes and dirty tracking, not inner nodes or the root; a
+    // tree to trust is rebuilt with the runtime's `clear_hash_tree`.
     //
     // /// Checks the hash tree against the current machine state: false when
     // /// a stored tree disagrees with the contents it covers.

@@ -3,7 +3,8 @@
 ## Unreleased
 
 A new deployment generation: the consensus and application-factory bytecode
-changes, moving deterministic deployment addresses. This node requires a
+changes and the state transition moves to Cartesi Machine v0.23, moving
+deterministic deployment addresses and every machine hash. This node requires a
 DaveConsensus that caps each epoch at the Machine's input span; earlier
 uncapped deployments are unsupported: the node stalls at the first seal
 past the span.
@@ -20,9 +21,21 @@ past the span.
   still occupy one through the shared ApplicationFactory, which makes
   `newDaveApp` revert: do not send value to a predicted address before
   `DaveAppCreated`.
+- `CartesiStateTransition` qualifies Cartesi Machine v0.23 through
+  solidity-step v0.17: `CM_MARCHID()` is 23 and every uarch reset restores
+  v0.23's pristine uarch hash. The step reports a halt before a cycle
+  overflow and refuses a TLB write outside the shadow TLB. Every machine
+  state hash moves, so templates must be rebuilt with the v0.23 tools.
 
 ### Node
 
+- Links Cartesi Machine v0.23, which refuses machines stored by v0.22: a
+  node built against v0.22 cannot start against these contracts, v0.22
+  templates do not load, and a data directory built by an earlier node is
+  refused (new store format and commitment semantics).
+- The runner's time per input falls from about 150 ms to about 25 ms on
+  the echo image (macOS): v0.23 no longer reads a fresh clone's hash-tree
+  cache one page at a time.
 - Once the dispute has a result, skip sentry claims, staging and acceptance
   while foreclosure is visible. Dispute moves and bond recovery continue;
   exit 30 only after recovery completes and foreclosure is finalized.
@@ -51,7 +64,8 @@ past the span.
 ### For developers
 
 - Rebuild the devnet bundle with `just rollups-contracts::build-devnet` after
-  the contract changes.
+  the contract changes, and the test machine images with
+  `just programs::build-programs`: v0.23 does not load v0.22 images.
 - Fetch pinned just assets directly and verify their checksums instead of
   relying on release-list discovery.
 - On Linux arm64 the pinned Foundry cannot download solc 0.8.38. `just setup`

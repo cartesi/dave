@@ -8,7 +8,7 @@ carry no backlog (reviews/README.md).
 ## Before the audited release
 
 - Confirm `[38, 0]` / `[54, 38]` at `T = 120` on validator-grade hardware
-  (measured on one M5 Max laptop, v0.21.0; re-measure on v0.22, whose uarch
+  (measured on one M5 Max laptop, v0.21.0; re-measure on v0.23, whose uarch
   changed); the per-input compute contract
   and the worst-case leaf proof plus fallback latency (CF-01, one shared
   `G` for both landings) follow from it, and re-measure the heaviest
@@ -17,9 +17,9 @@ carry no backlog (reviews/README.md).
   no priority), and count one re-preparation of a leaf proof still pending
   at the next tick in the fallback latency. Measure on Linux XFS on a cloud
   volume, since every figure so far is APFS and a Linux clone writes back
-  the source's dirty pages first: the per-input overhead on the emulator
-  release that fixes the cold hash-tree cache read (about 150 ms on macOS
-  with v0.22.0; time it on local NVMe and on the cloud volume at baseline
+  the source's dirty pages first: the runner's whole time per input (about
+  25 ms accepted and 22 ms rejected on macOS with v0.23, echo, against the
+  36 ms threshold; time it on local NVMe and on the cloud volume at baseline
   provisioning), the clone's latency and bytes written per input with a
   dirty source, the runner's sustained inputs per second for accepted,
   rejected and alternating inputs (a fixture that rejects by payload), and
@@ -38,6 +38,12 @@ carry no backlog (reviews/README.md).
   volume once, during a runner batch and during a crossing, and check that
   the node stops cleanly and settles the same root after space returns.
   (computation-hash.md, dispute-game.md)
+- Re-derive the reference price on the Linux figures. On v0.23 the runner's
+  whole time per input is under the 36 ms threshold on macOS, so inputs
+  alone no longer outrun the root join there, and the price follows from
+  the next wall: the drain (up to 2^24 inputs' time, 4.3 to 4.9 days of a
+  week at those figures) combined with other delays, or the snapshot disk.
+  (dimensioning.md, One reference price)
 - Have someone who did not write them review the commitment and proof paths
   (engine/ruler.rs, engine/machine_stf.rs, engine/dispute.rs,
   storage/rollups_machine.rs, storage/advance.rs), with computation-hash.md
@@ -61,32 +67,11 @@ carry no backlog (reviews/README.md).
 
 ## Upstream (Cartesi Machine, arm's length: nothing waits on it)
 
-- Ask for a hash-tree parallelism threshold based on work, not core count;
-  corpus vectors at both input-budget seams with later inputs; a collector
-  assert for a non-pristine uarch; and a CLI that delivers to a halted
-  template with an input yield pending, as the step does (a lead).
+- Ask for a CLI that delivers to a halted template with an input yield
+  pending, as the step does (a lead, unverified on v0.23).
   (computation-hash.md)
-- On the emulator release that fixes the cold load of the hash-tree cache
-  file (in progress upstream, not a blocker: about 2.5 ms per input in a
-  preliminary implementation, with validation on an untrusted load), bump
-  the emulator, re-measure the per-input overhead and re-derive the reference
-  price, which stops binding below about 36 ms per input. Check whether that
-  validation is the supported `cm_verify_hash_tree` the item below waits on
-  (a lead). (node-architecture.md, Storage)
-- Ask for EMLINK in `os::clone_file`'s copy fallback, low priority: a clone
-  hard-links every read-only file (each snapshot's PMA file), so on btrfs and
-  ext4 live snapshots stop at about 65k links per inode, and the runner and
-  positioning stall there. XFS, the one production filesystem, makes it
-  unreachable. (node README, filesystem)
 - Track upstream PR #390 (new pristine uarch hash and proof format) as its own
   coordinated generation. (build-system.md)
-- On the emulator release that supports `cm_verify_hash_tree` (v0.22.0 has
-  it for internal tests only, unoptimized, and the emulator team asked that
-  nothing call it there): bump the emulator, uncomment the binding and its
-  test in the cartesi-machine crate and the check in `Template::inspect`,
-  un-ignore that check's test, and drop the notes that say to trust a seed
-  image's source, since the node takes the image's root from its stored hash
-  tree. (node-architecture.md)
 
 ## Node
 
@@ -185,3 +170,12 @@ carry no backlog (reviews/README.md).
   (plans/audit-readiness.md).
 - Open: a `--version` flag; the startup line, which names the release tag,
   stands in for it. (node README, operator notes)
+- Open: rebuild a seed image's hash tree at first start. The node takes the
+  image's root from its stored hash tree, and v0.23's `cm_verify_hash_tree`
+  checks page hashes and dirty tracking, not inner nodes or the root, so
+  the check staged in `Template::inspect` cannot authenticate an image;
+  loading with `clear_hash_tree` rebuilds the tree from the contents (about
+  0.1 s for the inspection and 0.3 s for the seeded clone on the test
+  images). Either way the staged binding, check and test go, and with a
+  rebuild so do the notes that say to trust a seed image's source.
+  (node-architecture.md, startup)

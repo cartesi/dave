@@ -179,12 +179,13 @@ XFS. Elsewhere:
 
 - ext4 has no reflinks, so every clone is a sparse copy: each input pays a
   copy of the machine, and each kept snapshot costs the machine's allocated
-  size. Like btrfs it caps a file at about 65k links, so about 65k live
-  snapshots. Development and small applications only (many cloud volumes
-  default to it).
+  size. Like btrfs it caps a file at about 65k links; past that count the
+  emulator copies the machine's read-only files instead of linking them.
+  Development and small applications only (many cloud volumes default to
+  it).
 - btrfs is for development only: it caps a file at 65,535 links, every kept
-  snapshot links the machine's read-only files, and at that count clones
-  fail and the node stops computing.
+  snapshot links the machine's read-only files, and past that count each
+  clone copies them.
 - ZFS is untested; APFS (macOS) is for development; tmpfs does not survive a
   reboot.
 
@@ -306,14 +307,13 @@ Options:
   epochs complete, as in the side-by-side upgrade below. Until it has
   replayed the seeded epoch, it logs that it waits for the machine runner, at
   ERROR after 5 minutes, since that epoch's clock runs: seed early in an
-  epoch, between disputes. Across an emulator archive change (v0.22 refuses archive 7) an
+  epoch, between disputes. Across an emulator archive change (v0.23 refuses archive 8) an
   older release's snapshot does not load: the first node of the new release
   replays from a template stored by that release, and the others seed from
-  it. The node takes the image's root from its stored hash tree and cannot
-  check that tree against the contents until an emulator release supports
-  hash-tree verification ([todo.md](../../docs/todo.md)), so until then take
-  the image from a source you trust like the template, such as your own
-  node's store.
+  it. The node takes the image's root from its stored hash tree and does
+  not check that tree against the contents
+  ([todo.md](../../docs/todo.md)), so take the image from a source you
+  trust like the template, such as your own node's store.
 - To upgrade across a change that requires a fresh data directory, start the
   new node on a new directory with its own funded signer, let it catch up,
   then stop the old one; never wipe the only node's directory in place. The
