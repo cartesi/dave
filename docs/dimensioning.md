@@ -75,7 +75,7 @@ price. An attack that fills a resource (disk, links, memory, provider quota)
 for less than that is a wall to close; one that costs more, or is out of
 model, is a door, and a guard against it is not worth its code. These figures
 use emulator v0.22.0 on one macOS machine. On v0.23 that machine measures 22
-to 25 ms per input (measurements/measurements.md), under the threshold
+to 26 ms per input (measurements/measurements.md), under the threshold
 below, so the price is due its re-derivation, on the Linux measurement with
 the runner and a dispute sharing cores and the disk under pressure
 (todo.md).
@@ -88,9 +88,9 @@ outrun the root join, provided the snapshot disk keeps up (a full epoch keeps
 2^24 / gap boundaries, 262,144 at the default gap). That closes the loss
 bought with gas alone, not the drain: a full epoch still draws up to
 `2^24 x t` from that epoch's `C`, less the time the chain takes to carry it,
-and the ledger counts that drain like any other delay. At the 22 to 25 ms
-measured on macOS with emulator v0.23 the drain is at most about 4.3 to 4.9
-days (61% to 69% of a week), and the runner executes 40 to 47 such inputs a
+and the ledger counts that drain like any other delay. At the 22 to 26 ms
+measured on macOS with emulator v0.23 the drain is at most about 4.3 to 5.0
+days (61% to 72% of a week), and the runner executes 38 to 47 such inputs a
 second where Ethereum carries at most about 165, so it does not keep up as
 they land there (a lead: gas limits move). Below the threshold the
 reference price must be re-derived from the next wall, the drain combined with
