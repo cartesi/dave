@@ -40,7 +40,8 @@ use super::open::{Storage, snapshots_path};
 use super::rollups_machine::RollupsMachine;
 use crate::engine::InputBoundary;
 
-use cartesi_machine::machine::Machine;
+use cartesi_machine::config::runtime::RuntimeConfig;
+use cartesi_machine::stored::{Durable, Stored, Volatile};
 use cartesi_machine::types::Hash;
 use rusqlite::{OptionalExtension, Transaction, params};
 use std::path::{Path, PathBuf};
@@ -98,63 +99,53 @@ pub(super) fn assert_runner_boundary_root(
 
 impl Storage {
     /// The one durable CAS publication boundary. The staged machine
-    /// is root-verified, synced, and renamed without replacement. It
-    /// must be closed: the emulator refuses to sync a directory that a
-    /// machine still maps shared.
-    /// Only a destination that won the same CAS race makes a failed
-    /// rename benign. Database registration always follows this
-    /// function at its caller.
-    fn publish_staged(&self, staged: PathBuf, expected_hash: &Hash) -> anyhow::Result<PathBuf> {
-        let actual_hash = {
-            let mut verifier = Machine::load(
-                &staged,
-                &cartesi_machine::config::runtime::RuntimeConfig::quiet_console(),
-            )?;
-            verifier.root_hash()?
-        };
+    /// is root-verified, synced, and renamed without replacement. Its
+    /// type says it is closed: the emulator refuses to sync a directory
+    /// that a machine still maps shared. Only a destination that won
+    /// the same CAS race makes a failed rename benign, and a staged
+    /// machine that is not published goes with its handle. Database
+    /// registration always follows this function at its caller.
+    fn publish_staged(&self, staged: Volatile, expected_hash: &Hash) -> anyhow::Result<Durable> {
+        let actual_hash = staged.load(&RuntimeConfig::quiet_console())?.root_hash()?;
         assert_eq!(
             actual_hash, *expected_hash,
             "staged machine root disagrees with its CAS key"
         );
 
-        Machine::sync_stored(&staged)?;
         let dest = snapshot_path(self.state_dir(), expected_hash);
-
+        // A destination already in place may be a publisher's whose own
+        // directory fsync has not completed, so adoption establishes
+        // durability independently before any caller registers a row.
+        let adopt = |dest: PathBuf| -> anyhow::Result<Durable> {
+            let published = Durable::at(dest);
+            published.sync()?;
+            Ok(published)
+        };
         if dest.exists() {
-            Machine::sync_stored(&dest)?;
-            let _ = std::fs::remove_dir_all(&staged);
-            return Ok(dest);
+            return adopt(dest);
         }
-
-        if let Err(rename_err) = Machine::rename_stored(&staged, &dest) {
-            if dest.exists() {
-                // This may be a lost race, or our rename may have
-                // succeeded before its directory fsync failed. In
-                // either case, make the visible destination durable
-                // ourselves before treating it as adopted.
-                Machine::sync_stored(&dest)?;
-                let _ = std::fs::remove_dir_all(&staged);
-            } else {
-                return Err(rename_err.into());
-            }
+        match staged.persist(&dest) {
+            Ok(published) => Ok(published),
+            // A lost race, or our rename succeeded before its directory
+            // fsync failed.
+            Err(_) if dest.exists() => adopt(dest),
+            Err(error) => Err(error.into()),
         }
-
-        Ok(dest)
     }
 
-    /// A writable working clone of a stored machine, in the store's
-    /// staging namespace: scratch until committed, invisible to rows,
-    /// swept at startup if orphaned by a crash. Cheap where the
-    /// filesystem reflinks; a sparse copy elsewhere.
-    pub(super) fn checkout(&self, from: &Path) -> anyhow::Result<PathBuf> {
+    /// A working clone of a closed stored machine, in the store's
+    /// staging namespace: volatile until committed, invisible to rows,
+    /// removed with its handle, and swept at startup if a crash
+    /// orphaned it. Cheap where the filesystem reflinks; a sparse copy
+    /// elsewhere.
+    pub(super) fn checkout(&self, from: &impl Stored) -> anyhow::Result<Volatile> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let working = snapshots_path(self.state_dir()).join(format!(
             ".work-{}-{}",
             std::process::id(),
             SEQ.fetch_add(1, Ordering::Relaxed)
         ));
-        Machine::clone_stored(from, &working)?;
-        Ok(working)
+        Ok(from.clone_to(&working)?)
     }
 
     /// Durably publishes a closed working clone. The staged machine
@@ -162,17 +153,10 @@ impl Storage {
     /// row registration remains separate, as everywhere.
     pub(super) fn commit_clone(
         &self,
-        working: PathBuf,
+        working: Volatile,
         state_hash: &Hash,
-    ) -> anyhow::Result<PathBuf> {
+    ) -> anyhow::Result<Durable> {
         self.publish_staged(working, state_hash)
-    }
-
-    /// Removes an abandoned working clone (a poisoned post-reject
-    /// state, or the spare clone a finished batch leaves behind).
-    pub(super) fn discard_clone(&self, working: &Path) -> anyhow::Result<()> {
-        std::fs::remove_dir_all(working)
-            .map_err(|e| anyhow::anyhow!("Failed to stage snapshot store: {e}"))
     }
 
     /// Startup ritual: removes staging leftovers a crash orphaned -
