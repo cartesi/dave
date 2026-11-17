@@ -1553,6 +1553,19 @@ mod tests {
         Ok(())
     }
 
+    /// The directory a volatile removes is fixed when it takes it: a
+    /// relative path must not follow a later change of working directory.
+    #[test]
+    fn a_volatile_directory_is_held_by_an_absolute_path() -> Result<()> {
+        let adopted = Volatile::adopt("no-such-stored-machine")?;
+        assert!(adopted.path().is_absolute());
+        assert!(adopted.path().ends_with("no-such-stored-machine"));
+        assert!(Volatile::adopt("").is_err());
+        // Nothing is there to remove, and nothing is tried.
+        let _ = adopted.keep();
+        Ok(())
+    }
+
     /// Persisting syncs and renames without replacing, and a volatile that
     /// does not make it is discarded.
     #[test]

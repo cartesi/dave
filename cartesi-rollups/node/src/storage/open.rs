@@ -641,6 +641,7 @@ mod tests {
         // exact and every page clean.
         let ram = {
             let mut machine = cartesi_machine::stored::Volatile::adopt(&template)
+                .unwrap()
                 .open(&RuntimeConfig::quiet_console())
                 .unwrap();
             machine.root_hash().unwrap();

@@ -27,7 +27,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::config::runtime::RuntimeConfig;
-use crate::error::MachineResult as Result;
+use crate::constants;
+use crate::error::{MachineError, MachineResult as Result};
 use crate::machine::Machine;
 
 /// A stored machine directory that no machine maps for writing.
@@ -43,8 +44,9 @@ pub trait Stored {
     /// Clones the directory into `to`, which must not exist (see
     /// [`Machine::clone_stored`]). The clone is nobody's until synced.
     fn clone_to(&self, to: &Path) -> Result<Volatile> {
-        Machine::clone_stored(self.path(), to)?;
-        Ok(Volatile { dir: to.to_owned() })
+        let dir = absolute(to)?;
+        Machine::clone_stored(self.path(), &dir)?;
+        Ok(Volatile { dir })
     }
 }
 
@@ -53,14 +55,18 @@ pub trait Stored {
 #[derive(Debug)]
 #[must_use = "a dropped volatile directory is removed"]
 pub struct Volatile {
+    /// Absolute: the drop removes what was taken, wherever the process's
+    /// working directory went since.
     dir: PathBuf,
 }
 
 impl Volatile {
     /// Takes over `dir`, trusting that no machine maps it for writing: what
     /// [`Machine::store`] just wrote, for one.
-    pub fn adopt(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+    pub fn adopt(dir: impl AsRef<Path>) -> Result<Self> {
+        Ok(Self {
+            dir: absolute(dir.as_ref())?,
+        })
     }
 
     /// Opens the machine with every file mapped shared, so its changes land
@@ -109,6 +115,15 @@ impl Drop for Volatile {
             ),
         }
     }
+}
+
+/// Resolves `dir` against the working directory of now, without touching
+/// the filesystem.
+fn absolute(dir: &Path) -> Result<PathBuf> {
+    std::path::absolute(dir).map_err(|error| MachineError {
+        code: constants::error_code::INVALID_ARGUMENT,
+        message: format!("unable to resolve `{}`: {error}", dir.display()),
+    })
 }
 
 /// A stored machine that was synced after its last writer closed: a
