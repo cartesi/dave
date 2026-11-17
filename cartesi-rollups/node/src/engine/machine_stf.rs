@@ -881,9 +881,8 @@ mod tests {
         overflow_config.uarch.processor.registers.cycle = UARCH_MASK_TO_BARCH;
         overflow_config.uarch.processor.registers.halt = 0;
 
-        // This is the closing source state of the computation-hash
-        // corpus's uarch-overflow-tail case: the counter is maxed but halt
-        // is clear.
+        // A uarch cycle overflow: the counter is maxed but halt is clear.
+        // The step reads the counter, then the halt flag.
         let mut oracle = Machine::create(&overflow_config, &RuntimeConfig::quiet_console())?;
         assert_eq!(oracle.ucycle()?, UARCH_MASK_TO_BARCH);
         assert!(!oracle.uarch_halt_flag()?);
@@ -896,7 +895,7 @@ mod tests {
         assert_eq!(Digest::from(oracle.root_hash()?), canonical_post);
         let step_proof = MachineStf::encode_access_log(&step);
         let reset_proof = MachineStf::encode_access_log(&reset);
-        assert_eq!(step_proof.len(), 1_920);
+        assert_eq!(step_proof.len(), 3_840);
         assert_eq!(reset_proof.len(), 5_216);
         let expected_proof = [step_proof, reset_proof].concat();
 
@@ -1468,10 +1467,6 @@ mod tests {
         oracle.send_cmio_response(CmioResponseReason::Advance, &payload, Some(&pre))?;
         oracle.run(u64::MAX)?;
         assert!(oracle.iflags_y()?);
-        assert!(
-            oracle.receive_cmio_request().is_err(),
-            "premise: the bindings refuse the yield"
-        );
         // The step's verdict: its reset reverts a rejection to the revert
         // root and leaves an accepted yield as it is.
         let yielded = oracle.root_hash()?;

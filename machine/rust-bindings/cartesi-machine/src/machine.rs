@@ -160,6 +160,8 @@ impl Machine {
                 config_json.as_ptr(),
                 runtime_config_json.as_ptr(),
                 dir_cstr.as_ptr(),
+                // Ignored for an in-memory machine.
+                cartesi_machine_sys::CM_SHARING_NONE,
                 &mut machine,
             )
         };
@@ -259,8 +261,13 @@ impl Machine {
     /// failure, some files may remain.
     pub fn remove_stored(dir: &Path) -> Result<()> {
         let dir_cstr = path_to_cstring(dir)?;
-        let err_code =
-            unsafe { cartesi_machine_sys::cm_remove_stored(ptr::null(), dir_cstr.as_ptr()) };
+        let err_code = unsafe {
+            cartesi_machine_sys::cm_remove_stored(
+                ptr::null(),
+                dir_cstr.as_ptr(),
+                cartesi_machine_sys::CM_REMOVE_STORED,
+            )
+        };
         check_err!(err_code)?;
 
         Ok(())

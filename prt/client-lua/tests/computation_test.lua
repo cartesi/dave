@@ -128,14 +128,14 @@ return {
         )
         local canonical_post = physical:get_root_hash()
 
-        -- Exact source state of the corpus's uarch-overflow-tail boundary:
-        -- maximum counter with the halt flag still clear.
+        -- A uarch cycle overflow: maximum counter with the halt flag still
+        -- clear. The step reads the counter, then the halt flag.
         physical:write_reg("uarch_cycle", cartesi.UARCH_CYCLE_MAX)
         Test.equal(physical:read_reg("uarch_halt"), 0)
         local agree = physical:get_root_hash()
 
         local step = physical:log_step_uarch()
-        Test.equal(#step.accesses, 1)
+        Test.equal(#step.accesses, 2)
         Test.equal(physical:get_root_hash(), agree)
         physical:reset_uarch()
         Test.equal(physical:get_root_hash(), canonical_post)
@@ -147,7 +147,7 @@ return {
             {}
         )
 
-        Test.equal(#proof, 7136)
+        Test.equal(#proof, 9056)
         Test.equal(post.digest, canonical_post)
         Test.equal(physical:read_reg("uarch_cycle"), 0)
         Test.equal(physical:read_reg("uarch_halt"), 0)
