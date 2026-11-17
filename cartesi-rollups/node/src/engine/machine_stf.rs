@@ -309,6 +309,8 @@ impl MachineStf {
             .checkpoint
             .clone()
             .expect("revert requires a fed checkpoint");
+        // The poisoned machine goes here, and with it the working clone
+        // it owned, if it was opened shared.
         self.machine = Machine::load(&checkpoint, &runtime_config(self.hashing))
             .context("reload checkpoint")?;
         // Publication verifies a content-addressed snapshot, but a feed

@@ -261,7 +261,7 @@ fn bench_snapshot(report: &mut String, image: &Path, scratch_root: &Path) -> Res
 }
 
 /// The CoW clone loop: the per-input cost
-/// of clone -> load SHARING_ALL -> advance -> root_hash -> destroy,
+/// of clone -> shared open -> advance -> root_hash -> close,
 /// the physical cost of each kept boundary, and the mapping-mode A/B
 /// for the hash-hot sampling loop. Boundary cost is a free-space
 /// delta: order of magnitude only (any concurrent writer moves it),
@@ -270,12 +270,14 @@ fn bench_snapshot(report: &mut String, image: &Path, scratch_root: &Path) -> Res
 /// degrades to sparse copies and these rows price exactly that.
 fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     use cartesi_machine::config::runtime::RuntimeConfig;
-    use cartesi_machine::machine::Machine;
-    use cartesi_machine::types::SharingMode;
+    use cartesi_machine::stored::{Durable, Stored};
 
+    let quiet = RuntimeConfig::quiet_console();
     let chain_root = scratch(scratch_root, "clone-chain")?;
-    let boundary = |k: u64| chain_root.join(format!("boundary-{k}"));
-    let (_, template_clone) = timed(|| Ok(Machine::clone_stored(image, &boundary(0))?))?;
+    let (first, template_clone) =
+        timed(|| Ok(Durable::at(image).clone_to(&chain_root.join("boundary-0"))?))?;
+    // Every boundary stays until the loop ends, as a kept one would.
+    let mut boundaries = vec![first];
 
     writeln!(report, "## The boundary clone loop")?;
     writeln!(report)?;
@@ -299,25 +301,16 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     // yield takes no further input until the node reverts it.
     const INPUTS: u64 = 2;
     for k in 0..INPUTS {
-        let working = chain_root.join("working");
+        let working = chain_root.join(format!("boundary-{}", k + 1));
         let free_before = free_space_kb(&chain_root)?;
-        let (_, clone) = timed(|| Ok(Machine::clone_stored(&boundary(k), &working)?))?;
-        let (machine, load) = timed(|| {
-            Ok(Machine::load_with_sharing(
-                &working,
-                &RuntimeConfig::quiet_console(),
-                SharingMode::All,
-            )?)
-        })?;
-        let mut machine = machine;
+        let last = boundaries.last().expect("the template's clone");
+        let (working, clone) = timed(|| Ok(last.clone_to(&working)?))?;
+        let (mut machine, load) = timed(|| Ok(working.open(&quiet)?))?;
         let input = evm_advance_input(k, b"measure");
         let (_, advance) = timed(|| advance_one_input(&mut machine, &input))?;
         let (_, hash) = timed(|| Ok(machine.root_hash()?))?;
-        let (_, destroy) = timed(|| {
-            drop(machine);
-            Ok(())
-        })?;
-        fs::rename(&working, boundary(k + 1))?;
+        let (closed, destroy) = timed(|| Ok(machine.close()?))?;
+        boundaries.push(closed.expect("a shared open owns its directory"));
         let free_after = free_space_kb(&chain_root)?;
         let churn_mb = (free_before as i64 - free_after as i64) as f64 / 1024.0;
 
@@ -333,19 +326,23 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     }
     writeln!(report)?;
 
-    // The hash-hot sampling loop under each mapping mode: does
-    // MAP_SHARED slow the ustep + root_hash pair the leaf level's
-    // collect lives in? A fresh clone per mode (ALL locks and mutates
+    // The hash-hot sampling loop under each mapping: does MAP_SHARED
+    // slow the ustep + root_hash pair the leaf level's collect lives
+    // in? A fresh clone per mapping (a shared open locks and mutates
     // its directory).
     writeln!(report, "| hash-hot pairs (uarch step + root_hash) | rate |")?;
     writeln!(report, "|---|---:|")?;
-    for (tag, label, mode) in [
-        ("private", "private mapping (CONFIG)", SharingMode::Config),
-        ("shared", "shared mapping (ALL)", SharingMode::All),
+    let last = boundaries.last().expect("the template's clone");
+    for (tag, label, shared) in [
+        ("private", "private mapping", false),
+        ("shared", "shared mapping", true),
     ] {
-        let dir = chain_root.join(format!("pairs-{tag}"));
-        Machine::clone_stored(&boundary(INPUTS), &dir)?;
-        let mut machine = Machine::load_with_sharing(&dir, &RuntimeConfig::quiet_console(), mode)?;
+        let clone = last.clone_to(&chain_root.join(format!("pairs-{tag}")))?;
+        let mut machine = if shared {
+            clone.open(&quiet)?
+        } else {
+            clone.load(&quiet)?
+        };
         let pairs = 500u64;
         let start = Instant::now();
         for _ in 0..pairs {

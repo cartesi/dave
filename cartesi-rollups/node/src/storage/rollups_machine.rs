@@ -20,7 +20,8 @@ use cartesi_machine::{
     },
     error::MachineResult,
     machine::Machine,
-    types::{Hash, SharingMode, memory_proof::Proof as MachineMemoryProof},
+    stored::Volatile,
+    types::{Hash, memory_proof::Proof as MachineMemoryProof},
 };
 
 const DATA_BLOCK_SIZE: u64 = 1 << HASH_TREE_LOG2_WORD_SIZE;
@@ -262,15 +263,15 @@ impl RollupsMachine {
         })
     }
 
-    /// Loads a working clone SHARING_ALL: the directory IS the live
-    /// state, mutated in place and exclusively locked until close.
+    /// Opens a working clone shared: the directory IS the live state,
+    /// mutated in place, exclusively locked and owned by the machine
+    /// until close.
     pub(super) fn load_shared(
-        path: &Path,
+        working: Volatile,
         epoch_number: u64,
         next_input_index_in_epoch: u64,
     ) -> MachineResult<Self> {
-        let machine =
-            Machine::load_with_sharing(path, &RuntimeConfig::quiet_console(), SharingMode::All)?;
+        let machine = working.open(&RuntimeConfig::quiet_console())?;
 
         Ok(Self {
             machine: Some(machine),
@@ -279,21 +280,23 @@ impl RollupsMachine {
         })
     }
 
-    /// Destroys the machine instance, flushing the working clone and
-    /// releasing its locks; epoch and input bookkeeping survive the
-    /// swap. Every other method panics until reopen_shared.
-    pub(super) fn close(&mut self) {
-        self.machine = None;
+    /// Destroys the machine instance, checked, releasing its locks;
+    /// epoch and input bookkeeping survive the swap. Returns the working
+    /// clone it was open on, closed. After a rejected input there is
+    /// none: the machine here is then a private reload of the
+    /// checkpoint, and the poisoned clone went with the machine the stf
+    /// dropped. Every other method panics until reopen_shared.
+    pub(super) fn close(&mut self) -> MachineResult<Option<Volatile>> {
+        match self.machine.take() {
+            Some(machine) => machine.close(),
+            None => Ok(None),
+        }
     }
 
-    /// Reopens on a (new) working clone after close.
-    pub(super) fn reopen_shared(&mut self, path: &Path) -> MachineResult<()> {
+    /// Reopens on a new working clone after close.
+    pub(super) fn reopen_shared(&mut self, working: Volatile) -> MachineResult<()> {
         assert!(self.machine.is_none(), "reopen requires a closed machine");
-        self.machine = Some(Machine::load_with_sharing(
-            path,
-            &RuntimeConfig::quiet_console(),
-            SharingMode::All,
-        )?);
+        self.machine = Some(working.open(&RuntimeConfig::quiet_console())?);
         Ok(())
     }
 
