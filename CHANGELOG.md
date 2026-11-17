@@ -39,6 +39,8 @@ past the span.
   floor ran it out of gas. Fees paid do not change, but each pending
   transaction reserves up to 500,000 more gas at its max fee; see the
   README's funding floor.
+- An exit-40 error now ends with the README's procedure, a fresh data
+  directory beside the old one, instead of telling the operator to wipe.
 
 ### For developers
 

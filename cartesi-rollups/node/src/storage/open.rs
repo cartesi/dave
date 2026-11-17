@@ -505,7 +505,7 @@ fn check_pinned(
         Fatal::rebuild(format!(
             "data directory `{dir}` was built for another consensus, emulator or tournament \
              geometry: stored {pinned:?}, given {given:?}; {}",
-            schema::WIPE_GUIDANCE
+            schema::REBUILD_GUIDANCE
         ))
     );
     Ok(())
