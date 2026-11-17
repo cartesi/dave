@@ -696,7 +696,8 @@ mod tests {
         assert_eq!(crate::fatal::exit_code(&error), 30);
 
         // What the refusal prevents: past inspection, the seed cannot open
-        // its clone, and fails on the emulator's error instead.
+        // its clone, and fails on the emulator's error instead. A privileged
+        // process does open the file, and meets the emulator's own check.
         let image = Template {
             path: template,
             hash,
@@ -710,9 +711,11 @@ mod tests {
         let state_dir = dir.path().join("state");
         let error = Storage::initialize(&state_dir, Some(&seed), &config(Address::ZERO, 1, hash))
             .unwrap_err();
+        let message = format!("{error:#}");
         assert!(
-            format!("{error:#}").contains("Permission denied"),
-            "unexpected error: {error:#}"
+            message.contains("Permission denied")
+                || message.contains("is read-only and cannot be shared for writing"),
+            "unexpected error: {message}"
         );
     }
 
