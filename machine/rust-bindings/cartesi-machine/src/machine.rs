@@ -296,9 +296,13 @@ impl Machine {
     /// Removes a stored machine directory. The directory must not be in use;
     /// on success, the removal of its parent directory entry is durable. On
     /// failure, some files may remain, and the same call completes it.
-    /// [`RemoveMode::Stored`] refuses a directory that does not load or
-    /// holds another file, before removing anything; what an interrupted
-    /// store or clone left needs [`RemoveMode::Forced`].
+    /// [`RemoveMode::Stored`] refuses, before removing anything, a directory
+    /// whose config does not load or that holds a file the config does not
+    /// name; what an interrupted store or clone left needs
+    /// [`RemoveMode::Forced`]. It does not ask that every named file be
+    /// there: the config goes last, so an interrupted removal resumes in
+    /// the same mode, and a machine that does not load for a missing file
+    /// is removed all the same.
     pub fn remove_stored(dir: &Path, mode: RemoveMode) -> Result<()> {
         let dir_cstr = path_to_cstring(dir)?;
         let err_code = unsafe {
@@ -1715,9 +1719,10 @@ mod tests {
         Ok(())
     }
 
-    /// The default mode removes only what loads as a stored machine and
-    /// nothing else, and refuses before it removes anything; the leftovers
-    /// of an interrupted store or clone need the forced mode.
+    /// The stored mode removes only files the directory's config names: it
+    /// refuses a stray file or a missing config before it removes anything,
+    /// and such leftovers of an interrupted store or clone need the forced
+    /// mode. It does not check that the machine loads.
     #[test]
     fn test_remove_stored_modes() -> Result<()> {
         let tmp = tempfile::tempdir().expect("failed creating a temp dir");
