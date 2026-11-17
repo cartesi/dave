@@ -51,11 +51,12 @@ log search, and an image stays current for at least a root allowance. Any
 other image is refused with exit 30, naming `snapshots/0x<hash>`, where every
 node working on epoch k keeps the state to take; a state settled after the
 sampled head is refused until its settlement finalizes, since the
-finalized-only reader could not execute its epoch anyway. The root hash comes
-from the image's stored hash tree, which the node does not check against the
-contents (emulator v0.23 can rebuild the tree on a load; todo.md, Decisions),
-so a seed image is trusted like the template: take it from a store you
-trust. A matching image paused elsewhere is still refused:
+finalized-only reader could not execute its epoch anyway. The root hash is
+the contents': the node discards the image's stored hash tree, which a load
+would otherwise believe for every page it marks clean, and rebuilds it,
+once to inspect the image and once on the clone it seeds, so a corrupt or
+forged image has another root and is refused like any other.
+A matching image paused elsewhere is still refused:
 the engine starts every epoch from a state awaiting input, so the node could
 not defend any of its epochs (for a settled state this cannot happen, since
 staging requires the same yield). Only then does it take the data-directory

@@ -149,7 +149,7 @@ code, or an image built by another emulator) or whose hash tree is not
 Keccak-256. It also refuses an image with a file the node maps for writing
 (all but `config.json` and the data of the PMAs and read-only drives) that
 lacks the owner write bit: the copy the node seeds keeps each file's mode,
-so every advance batch would fail. Make such an image writable
+so the seed and every advance batch would fail. Make such an image writable
 (`chmod -R u+w`).
 
 One node process owns a data directory: startup locks its `node.lock` and
@@ -310,10 +310,9 @@ Options:
   epoch, between disputes. Across an emulator archive change (v0.23 refuses archive 8) an
   older release's snapshot does not load: the first node of the new release
   replays from a template stored by that release, and the others seed from
-  it. The node takes the image's root from its stored hash tree and does
-  not check that tree against the contents
-  ([todo.md](../../docs/todo.md)), so take the image from a source you
-  trust like the template, such as your own node's store.
+  it. The node rebuilds the image's hash tree from its contents before it
+  compares the root with the chain's, so an image from any source either
+  is that state or is refused.
 - To upgrade across a change that requires a fresh data directory, start the
   new node on a new directory with its own funded signer, let it catch up,
   then stop the old one; never wipe the only node's directory in place. The

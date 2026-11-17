@@ -36,6 +36,9 @@ past the span.
 - The runner's time per input falls from about 150 ms to about 26 ms on
   the echo image (macOS): v0.23 no longer reads a fresh clone's hash-tree
   cache one page at a time.
+- A first start rebuilds the seed image's hash tree from its contents
+  (about 0.4 s for a 540 MB image) instead of believing the tree stored
+  with it, so a corrupt or forged image is refused by its root.
 - A leaf build takes an input delivered with the machine's cycle counter
   saturated, which only a template can preset, where it used to stop the
   node.
