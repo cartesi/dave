@@ -36,11 +36,12 @@ range and response size, latency), and the action latency that results.
   and bracket shape"). That regime's size per level is a lead to compute.
   The open question is whether the reads follow that work. Each tick the
   tournament reader extends every live tournament in the tree, the Sybils'
-  own matches included, with one `eth_getLogs` each, in sequence
-  (`tournament/reader.rs`), and the recovery scan reads the disposition of
-  every open tournament. Resolved matches and their children are dropped,
-  so the reads track the live population, which at a dispute's start can
-  be linear in the Sybils.
+  own matches included, reading each level of the tree with one
+  multi-address `eth_getLogs` per 100 tournaments, in sequence
+  (`tournament/reader.rs`). The Hero then reads the standing of every live
+  tournament, and the recovery scan the disposition of every open one.
+  Resolved matches and their children are dropped, so the reads track the
+  live population, which at a dispute's start can be linear in the Sybils.
 
 ## What to measure
 
@@ -61,11 +62,14 @@ range and response size, latency), and the action latency that results.
   4m40s for 10,000 blocks, and after a restart the recovery walk spans the
   epoch's whole history. Time a prepared dispute action through a degraded
   scan and a large live tree before changing anything. A finality stall
-  widens the unfinalized tail every tick refetches whole for each tournament:
-  a week on Ethereum is about 50,400 blocks, 15 sequential calls per
-  tournament behind a fast-failing 10,000-block cap and 63 behind 2,000, or
-  seven 20 s timeouts behind a provider that times out above 10,000 blocks (a
-  lead to measure).
+  widens the unfinalized tail every tick refetches whole for each log
+  request (one per 100 tournaments of a level): a week on Ethereum is about
+  50,400 blocks, 15 sequential calls per request behind a fast-failing
+  10,000-block cap and 63 behind 2,000, or seven 20 s timeouts behind a
+  provider that times out above 10,000 blocks (a lead to measure). A request
+  for 100 tournaments returns up to 100 times one tournament's logs, so
+  result-count and response-size caps bind at a narrower range than they did
+  per tournament, and clear by the same splitting (also a lead).
 - How each supported client and hosted provider answers `eth_getLogs` over
   a range that ends past its own head: with an error, or with a clamped,
   short result. The tournament fold trusts log completeness, and a
@@ -74,19 +78,32 @@ range and response size, latency), and the action latency that results.
 - Hosted plans' caps (Infura, Alchemy, a self-hosted node) against the
   measured load. The live tests (`just test-live-rpc`) are the first data
   points: one 10,000-block chunk of USDC logs (349,084) took 138 s on
-  Infura, and Alchemy's free tier caps `eth_getLogs` at 10 blocks.
+  Infura, and Alchemy's free tier caps `eth_getLogs` at 10 blocks. A filter's
+  address list is one more cap: the tournament reader and the recovery walk
+  send up to 100 addresses per request (geth refuses more than 1,000 by
+  default), and no live test covers a multi-address filter yet. A provider
+  that refuses 100 would fail the fold at every range (a lead to check).
 
 Sybils buy read load. On the two-level table each live child tournament
-costs the adversary about two root bonds (about 0.72 ETH at 50 gwei), and
-each tick reads one `eth_getLogs` per live tournament, one after another,
-plus a standing and a bond read each; around 1,000 live children the reads
-alone take most of `G` before the Hero acts, at 0.1-0.2 s per call.
+costs the adversary about two root bonds (about 0.72 ETH at 50 gwei). The
+log reads grow with the live tournaments a hundred times slower than they
+did: a harvest (the latest tail every tick, and the finalized range on a
+tick whose finalized head advanced) reads a root with 1,000 live children in
+11 sequential `eth_getLogs`, where one request per tournament took 1,001
+(both counted on a mocked chain) and, at 0.1-0.2 s per call, most of `G`
+before the Hero acted. What still costs one call per live tournament is the
+point reads, sixteen at a time: one `tournamentStanding` per live tournament
+at the event head, and one `bondRecovery` per open tournament at the
+finalized head. Around 1,000 live children that is about 2,000 calls a tick,
+some 13-25 s if a round of sixteen takes one call's latency (a lead to
+measure).
 
 If reads dominate, the first lever is which reads the next action needs:
 reading only the tournaments on the honest commitment's path would make the
-reads follow the work. A smaller one keeps the full fold: one multi-address
-`eth_getLogs` per generation of live tournaments, as the recovery walk already
-reads (up to 100 addresses per request). Then come the tick's ordering and the
-read concurrency. Failure isolation and more retries come last: dispute
+reads follow the work. The smaller one, which keeps the full fold, is taken:
+the reader fetches each level of live tournaments with multi-address
+`eth_getLogs`, as the recovery walk reads its generations (up to 100
+addresses per request). Then come the tick's ordering and the read
+concurrency. Failure isolation and more retries come last: dispute
 planning's reads still fail together under a per-second cap, but that is worth
 machinery only once measured.

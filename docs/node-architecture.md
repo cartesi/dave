@@ -562,9 +562,12 @@ seal arrives in a later chunk; the actions it plans for it revert at
 estimation and are skipped with warnings.
 
 The deadline-sensitive tournament reader holds one recursive, event-derived
-`Dispute` through finalized `F`, in memory only. Each tick recursively extends
-every tournament's local event stream through `F`, applying events one at a
-time in log order, and only then replaces the Solid value. The fold does not
+`Dispute` through finalized `F`, in memory only. Each tick extends every
+tournament's local event stream through `F`, one level of the tree at a time:
+the tournaments of a level share one multi-address `eth_getLogs` per 100
+addresses, a log from an address the level did not request fails the tick,
+and each tournament applies the events it emitted one at a time in log order.
+Only then does the tick replace the Solid value. The fold does not
 re-prove what the contracts guarantee, so it cannot stall on a sequence they
 can emit: it rejects only an event it cannot apply without guessing (an
 unknown match or commitment, a second join, a seal, advance or delegation of a
@@ -572,8 +575,9 @@ match that is no longer clocked, a second deletion). A commitment's standing
 is derived from its latest match rather than tracked. A new reader folds from
 the root tournament's creation block, so a restart is a cold start: it
 refetches the finalized range of every tournament still live at the
-finalized head once, each from its own creation block (a child resolved
-before it costs no read of its own), which costs response-clock time on a
+finalized head once, each level from the earliest creation block among its
+tournaments (a child resolved before the head is never requested), which
+costs response-clock time on a
 long dispute behind a provider that caps log ranges, and a bad finalized
 prefix (a provider fault or a mixed fork) does not survive it. A finalized
 event that does not fold onto Solid (an omitted log surfacing at the match's
@@ -593,7 +597,7 @@ deletion outside Hero's path, can remain silent. These checks help detect
 contradictions; log completeness remains a trusted RPC property.
 
 After Solid advances, the reader samples latest `H`, deep-clones Solid, and
-recursively extends the clone over the numeric range `F + 1..H`. This latest
+extends the clone the same way over the numeric range `F + 1..H`. This latest
 quantum foam is used once and dropped. It is never promoted, reverse-applied,
 or compared with the previous tick. A tail log at `H`'s height must carry
 `H`'s hash, as a finalized log at `F` must carry `F`'s, so a tail served from
