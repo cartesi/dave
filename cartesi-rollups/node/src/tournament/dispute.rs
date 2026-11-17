@@ -146,7 +146,7 @@ impl Match {
         }
     }
 
-    fn child_mut(&mut self) -> Option<&mut Box<Tournament>> {
+    fn child_mut(&mut self) -> Option<&mut Tournament> {
         match &mut self.status {
             MatchStatus::Inner { child } => Some(child),
             MatchStatus::Clocked { .. }
@@ -399,40 +399,10 @@ impl Tournament {
         None
     }
 
-    /// Replaces each direct child with an empty shell of the same identity.
-    ///
-    /// This is crate-visible so the fused loader can move each child through
-    /// recursive extension, then restore it before publishing the tree.
-    pub(crate) fn take_children(&mut self) -> Vec<(Digest, Box<Tournament>)> {
-        let mut children = Vec::new();
-        for match_ in &mut self.matches {
-            let id_hash = match_.id_hash();
-            let Some(child) = match_.child_mut() else {
-                continue;
-            };
-            let placeholder = Box::new(Self::new(child.descriptor));
-            children.push((id_hash, std::mem::replace(child, placeholder)));
-        }
-        children
-    }
-
-    /// Restores one child taken by [`Self::take_children`] and returns the
-    /// displaced shell. Only the child's own stream folds in between, so its
-    /// parent match is still live.
-    pub(crate) fn restore_child(
-        &mut self,
-        match_id_hash: Digest,
-        mut child: Box<Tournament>,
-    ) -> Box<Tournament> {
-        let slot = self
-            .matches
-            .iter_mut()
-            .find(|match_| match_.id_hash() == match_id_hash)
-            .and_then(Match::child_mut)
-            .expect("a taken child returns to its live parent match");
-        debug_assert_eq!(slot.descriptor, child.descriptor);
-        std::mem::swap(slot, &mut child);
-        child
+    /// The child tournaments of this tournament's live matches, for the
+    /// loader to extend in place.
+    pub(crate) fn children_mut(&mut self) -> impl Iterator<Item = &mut Self> {
+        self.matches.iter_mut().filter_map(Match::child_mut)
     }
 }
 
@@ -752,24 +722,24 @@ mod tests {
     }
 
     #[test]
-    fn children_move_through_extension_and_drop_on_resolution() {
-        let (dispute, root_match, child_address) = delegated_dispute();
+    fn children_extend_in_place_and_drop_on_resolution() {
+        let (mut dispute, root_match, child_address) = delegated_dispute();
 
-        let mut root = dispute.root.clone();
-        let mut children = root.take_children();
-        assert_eq!(children.len(), 1);
+        for child in dispute.root.children_mut() {
+            assert_eq!(child.address(), child_address);
+            child
+                .apply(EventKind::CommitmentJoined { root: digest(50) })
+                .unwrap();
+        }
         assert!(
-            root.tournament(&child_address)
+            dispute
+                .tournament(&child_address)
                 .unwrap()
-                .commitment(&digest(30))
-                .is_none()
+                .commitment(&digest(50))
+                .is_some()
         );
-        let (match_id_hash, child) = children.pop().unwrap();
-        let displaced = root.restore_child(match_id_hash, child);
-        assert!(displaced.commitment(&digest(30)).is_none());
-        assert_eq!(root, dispute.root);
 
-        let dispute = dispute
+        let mut dispute = dispute
             .apply_block([event(
                 address(1),
                 EventKind::MatchDeleted {
@@ -787,6 +757,7 @@ mod tests {
             }
         );
         assert!(dispute.tournament(&child_address).is_none());
+        assert_eq!(dispute.root.children_mut().count(), 0);
     }
 
     #[test]

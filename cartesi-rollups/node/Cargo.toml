@@ -33,7 +33,6 @@ alloy-chains = { workspace = true }
 reqwest = { workspace = true }
 
 anyhow = { workspace = true }
-async-recursion = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
 thiserror = { workspace = true }

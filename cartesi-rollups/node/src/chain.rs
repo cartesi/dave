@@ -43,7 +43,7 @@ impl ChainHead {
 
 /// Addresses per log filter, well under geth's default
 /// `--rpc.logquerylimit` of 1,000.
-const MAX_FILTER_ADDRESSES: usize = 100;
+pub(crate) const MAX_FILTER_ADDRESSES: usize = 100;
 
 #[derive(Debug, Clone)]
 pub struct Chain {
@@ -127,11 +127,21 @@ impl Chain {
         Ok(head)
     }
 
-    /// Every log emitted by `address` in `[from, to]`, in the provider's
-    /// order: the caller validates and orders them.
-    pub async fn raw_logs(&self, address: Address, from: u64, to: u64) -> Result<Vec<Log>> {
-        let filter = Filter::new().address(address);
-        self.logs_bisecting(&filter, from, to).await
+    /// Every log emitted by any of `addresses` in `[from, to]`, in the
+    /// provider's order: the caller validates and orders them. One query per
+    /// `MAX_FILTER_ADDRESSES` addresses, as in `decoded_logs_from_any`.
+    pub async fn raw_logs_from_any(
+        &self,
+        addresses: &[Address],
+        from: u64,
+        to: u64,
+    ) -> Result<Vec<Log>> {
+        let mut logs = Vec::new();
+        for chunk in addresses.chunks(MAX_FILTER_ADDRESSES) {
+            let filter = Filter::new().address(chunk.to_vec());
+            logs.extend(self.logs_bisecting(&filter, from, to).await?);
+        }
+        Ok(logs)
     }
 
     /// `E`-typed logs emitted by `address` in `[from, to]`, optionally
@@ -463,7 +473,10 @@ mod tests {
             asserter.push_failure_msg("rate limited");
         }
 
-        let error = chain.raw_logs(Address::ZERO, 0, 7).await.unwrap_err();
+        let error = chain
+            .raw_logs_from_any(&[Address::ZERO], 0, 7)
+            .await
+            .unwrap_err();
         assert!(
             format!("{error:#}").contains("failed at block 0"),
             "unexpected error: {error:#}"
@@ -483,7 +496,10 @@ mod tests {
         asserter.push_success(&Vec::<Log>::new());
         asserter.push_failure_msg("lagging backend");
 
-        let error = chain.raw_logs(Address::ZERO, 0, 7).await.unwrap_err();
+        let error = chain
+            .raw_logs_from_any(&[Address::ZERO], 0, 7)
+            .await
+            .unwrap_err();
         assert!(
             format!("{error:#}").contains("failed at block 5"),
             "unexpected error: {error:#}"
