@@ -18,7 +18,9 @@ const STORE_FORMAT: u32 = 1;
 /// with every change that alters them, even one that leaves the store format
 /// alone.
 const COMMITMENT_SEMANTICS: u32 = 2;
-pub(crate) const WIPE_GUIDANCE: &str = "wipe the data directory and let the node rebuild";
+/// Ends every exit-40 error; the node README's upgrade note is the procedure.
+pub(crate) const REBUILD_GUIDANCE: &str = "start the node on a fresh data directory beside this \
+     one, and never wipe the only node's directory in place";
 
 fn schema_is_empty(conn: &Connection) -> anyhow::Result<bool> {
     let object_count: u64 =
@@ -58,21 +60,21 @@ pub fn initialize(conn: &Connection) -> anyhow::Result<()> {
         .map_err(|e| {
             Fatal::rebuild(format!(
                 "database has no readable store format ({e}): an older node built it; \
-                 {WIPE_GUIDANCE}"
+                 {REBUILD_GUIDANCE}"
             ))
         })?;
     anyhow::ensure!(
         store_format == STORE_FORMAT,
         Fatal::rebuild(format!(
             "database has store format {store_format}, but this node reads {STORE_FORMAT}; \
-             {WIPE_GUIDANCE}"
+             {REBUILD_GUIDANCE}"
         ))
     );
     anyhow::ensure!(
         semantics == COMMITMENT_SEMANTICS,
         Fatal::rebuild(format!(
             "database holds commitments under semantics {semantics}, but this node \
-             uses {COMMITMENT_SEMANTICS}; {WIPE_GUIDANCE}"
+             uses {COMMITMENT_SEMANTICS}; {REBUILD_GUIDANCE}"
         ))
     );
 
@@ -95,11 +97,11 @@ mod tests {
         .unwrap();
     }
 
-    fn assert_wipe_error(error: anyhow::Error, expected: &str) {
+    fn assert_rebuild_error(error: anyhow::Error, expected: &str) {
         assert_eq!(crate::fatal::exit_code(&error), 40, "{error:#}");
         let error = format!("{error:#}");
         assert!(
-            error.contains(expected) && error.contains(WIPE_GUIDANCE),
+            error.contains(expected) && error.contains(REBUILD_GUIDANCE),
             "unexpected initialization error: {error}"
         );
     }
@@ -162,7 +164,7 @@ mod tests {
             .query_row("PRAGMA schema_version", [], |row| row.get(0))
             .unwrap();
 
-        assert_wipe_error(initialize(&conn).unwrap_err(), "no readable store format");
+        assert_rebuild_error(initialize(&conn).unwrap_err(), "no readable store format");
         let schema_version_after: u64 = conn
             .query_row("PRAGMA schema_version", [], |row| row.get(0))
             .unwrap();
@@ -178,7 +180,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(SCHEMA).unwrap();
 
-        assert_wipe_error(initialize(&conn).unwrap_err(), "no readable store format");
+        assert_rebuild_error(initialize(&conn).unwrap_err(), "no readable store format");
     }
 
     #[test]
@@ -186,7 +188,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         apply_schema_with_identity(&conn, STORE_FORMAT + 1, COMMITMENT_SEMANTICS);
 
-        assert_wipe_error(
+        assert_rebuild_error(
             initialize(&conn).unwrap_err(),
             &format!("store format {}", STORE_FORMAT + 1),
         );
@@ -197,7 +199,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         apply_schema_with_identity(&conn, STORE_FORMAT, COMMITMENT_SEMANTICS + 1);
 
-        assert_wipe_error(
+        assert_rebuild_error(
             initialize(&conn).unwrap_err(),
             "commitments under semantics",
         );
