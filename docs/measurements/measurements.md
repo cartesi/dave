@@ -18,18 +18,18 @@ per epoch (logged node-side at roll).
 
 | runs | fold time |
 |---:|---:|
-| 1000 | 422 us |
+| 1000 | 505 us |
 | 10000 | 2.9 ms |
-| 100000 | 24.0 ms |
-| 1000000 | 188.8 ms |
+| 100000 | 29.2 ms |
+| 1000000 | 186.8 ms |
 
 ## Snapshot store and load
 
 | operation | time |
 |---|---:|
-| load template | 4.0 ms |
-| store | 291.7 ms |
-| resume from store | 2.5 ms |
+| load template | 6.9 ms |
+| store | 275.2 ms |
+| resume from store | 2.0 ms |
 | stored size | 543.4 MB |
 
 ## The boundary clone loop
@@ -38,43 +38,44 @@ Chain of clones over workload inputs: clone the previous boundary,
 load SHARING_ALL, advance one input, root_hash (sidecars exact),
 destroy. Boundary cost is the free-space delta of one whole
 iteration - what keeping that boundary physically costs.
-Template clone: 2.6 ms.
+Template clone: 2.5 ms.
 
 | input | clone | load | advance | root_hash | destroy | boundary cost |
 |---:|---:|---:|---:|---:|---:|---:|
-| 0 | 2.7 ms | 3.2 ms | 12.6 ms | 1.7 ms | 5.4 ms | 3.5 MB |
-| 1 | 2.6 ms | 3.0 ms | 11.7 ms | 1.7 ms | 5.7 ms | 1.6 MB |
+| 0 | 3.8 ms | 3.4 ms | 13.0 ms | 1.7 ms | 4.1 ms | 3.5 MB |
+| 1 | 2.3 ms | 2.3 ms | 10.1 ms | 1.1 ms | 4.6 ms | 1.5 MB |
 
 | hash-hot pairs (uarch step + root_hash) | rate |
 |---|---:|
-| private mapping | 46512/s |
-| shared mapping | 46972/s |
+| private mapping | 48558/s |
+| shared mapping | 49378/s |
 
 ## The runner per input
 
 `MachineRunner::process_rollup` over 256 inputs of one kind at the
-default gap of 64: the whole time per input, the application's work
-and one publication per gap included.
+default gap of 64, on the canonical two-level table (window roots at
+stride 2^38): the whole time per input, the application's work and one
+publication per gap included.
 
 | inputs | time per input | rate |
 |---|---:|---:|
-| accepted | 25.8 ms | 38.8/s |
-| rejected | 22.0 ms | 45.5/s |
+| accepted | 24.2 ms | 41.4/s |
+| rejected | 21.1 ms | 47.5/s |
 
 ## Machine atoms
 
 | atom | rate |
 |---|---:|
-| idle big cycles (churn + ureset) | 37326/s (43.0 usteps/cycle) |
-| input feed | 285.0 ms |
-| active usteps | 15.96 M/s |
-| ustep + state_hash pair | 81958/s |
+| idle big cycles (churn + ureset) | 38092/s (43.0 usteps/cycle) |
+| input feed | 282.0 ms |
+| active usteps | 16.43 M/s |
+| ustep + state_hash pair | 81875/s |
 
 ## Span replays (get_or_compute, two-input echo epoch)
 
 | span | quartet | miss | cache hit |
 |---|---|---:|---:|
-| uarch span | r0 h20 | 14.6 ms | 15 us |
-| mid stride | r27 h10 | 28.2 ms | 21 us |
-| coarse | r44 h4 | 14.3 ms | 11 us |
-| dense 2^27 usteps | r0 h27 | 1.31 s | 32 us |
+| uarch span | r0 h20 | 11.0 ms | 15 us |
+| mid stride | r27 h10 | 21.3 ms | 13 us |
+| coarse | r44 h4 | 5.4 ms | 18 us |
+| dense 2^27 usteps | r0 h27 | 1.30 s | 33 us |
