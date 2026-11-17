@@ -317,13 +317,11 @@ impl<S: Stf> Ruler<S> {
                     self.position += cycles * big_span;
                     continue;
                 }
-                // Only an input fed at mcycle 2^64 - 1, whose saturated budget
-                // leaves no cycle to collect, gets here: out of model
-                // (docs/computation-hash.md).
+                // A fed input always has its opening cycle, even into a
+                // fixed point; stepping it here would feed it again.
                 assert!(
                     !p.is_window_start(),
-                    "the collector declined a fed input's first cycle: the input \
-                     was fed one cycle before the mcycle counter saturates"
+                    "the collector returned no cycle for a fed input"
                 );
             }
             let mut sampler = StrideSampler::new(self.position, 0);
