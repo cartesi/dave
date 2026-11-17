@@ -408,6 +408,14 @@ Options:
   since an adversary can time input load into a dispute. A host outage, a
   restart loop or an unanswered page draws on the same censorship budget as a
   provider outage.
+- Under a CPU quota below the host's core count (a container limit), set
+  `OMP_NUM_THREADS` to that quota, rounded up, in the node's environment.
+  The Cartesi Machine sizes its hash-tree threads from the cores it sees,
+  not from the quota: at 1.5 CPUs on a 24-core host, QA measured the runner
+  about 15 times slower on emulator v0.22, and that setting recovered it.
+  Set `OMP_WAIT_POLICY=passive` there as well: on Linux the machine's idle
+  hash-tree threads spin unless it is in the environment when the process
+  starts. The machine's own CLI defaults it; the node's process does not.
 - Alert on every ERROR line, including an input that makes the application
   terminal (paged after its batch commits; ask the guardian to foreclose), on
   restart loops, on free space on the data directory's filesystem (the node
