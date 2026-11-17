@@ -490,7 +490,11 @@ impl Stf for MachineStf {
         let end = add_and_clamp(start, big_cycles);
         let mut roots = vec![];
         let mut mcycle = start;
-        while mcycle < end {
+        // A counter saturated at 2^64 - 1 leaves no cycle to run, but an
+        // input fed there makes an overflow fixed point, whose opening
+        // period the collector still returns.
+        let saturated = big_cycles > 0 && end == start && self.fixed()?;
+        while mcycle < end || (saturated && roots.is_empty()) {
             let tail = self
                 .revert_tail
                 .as_deref()
@@ -508,8 +512,9 @@ impl Stf for MachineStf {
                 |period: &[Hash]| Digest::from(*period.last().expect("a period ends at reset"));
             if reached == mcycle {
                 // Fed into a fixed point (a template preset halted with an
-                // input yield pending): the opening cycle is that fixed
-                // point's period, and the machine stays put.
+                // input yield pending, or a saturated counter): the opening
+                // cycle is that fixed point's period, and the machine stays
+                // put.
                 ensure!(
                     self.fixed()? && collected.periods().count() == 1,
                     "the uarch collector made no progress"
@@ -963,6 +968,18 @@ mod tests {
         Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
     }
 
+    /// Awaiting input with the cycle counter saturated at 2^64 - 1, as only
+    /// a template can preset it: the delivery cannot renew the budget, so
+    /// the fed machine is an overflow fixed point.
+    fn saturated_yield_machine() -> Result<Machine> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.mcycle = u64::MAX;
+        config.processor.registers.iflags.y = 1;
+        config.processor.registers.htif.tohost = manual_yield(RX_ACCEPTED, 0);
+        Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
+    }
+
     /// iflags.Y set over a preset tohost, which execution never produces.
     fn preset_yield_machine(tohost: u64) -> Result<Machine> {
         let mut config = Machine::default_config()?;
@@ -1149,6 +1166,11 @@ mod tests {
         assert_opening_delivers(halted_yield_machine)
     }
 
+    #[test]
+    fn opening_at_a_saturated_counter_delivers_the_input() -> Result<()> {
+        assert_opening_delivers(saturated_yield_machine)
+    }
+
     /// The input budget's seams and the terminal openings as chain witnesses
     /// for the Solidity step, which NodeWitnessesTest (cartesi-rollups/contracts)
     /// replays: RX_ACCEPTED openings on the budget's last cycle and on a
@@ -1259,13 +1281,17 @@ mod tests {
     /// Dense leaves through the ruler, bulk against stepped, on the seam
     /// openings: on the budget's last cycle (the delivery renews the
     /// budget and the guest yields within the first chunk), and on a
-    /// halted machine with a yield pending, which the delivery leaves at a
-    /// fixed point.
+    /// halted machine with a yield pending or a saturated counter, which
+    /// the delivery leaves at a fixed point.
     #[test]
     fn bulk_and_stepped_dense_leaves_agree_at_the_seam_openings() -> Result<()> {
         let structure = Structure::PRODUCTION;
         let to = U256::from(4) << structure.log2_uarch_span;
-        let openings: [fn() -> Result<Machine>; 2] = [budget_seam_machine, halted_yield_machine];
+        let openings: [fn() -> Result<Machine>; 3] = [
+            budget_seam_machine,
+            halted_yield_machine,
+            saturated_yield_machine,
+        ];
         for make in openings {
             let [bulk, stepped] = [Collector::Bulk, Collector::Stepped].map(|collector| {
                 let work = tempfile::tempdir().unwrap();

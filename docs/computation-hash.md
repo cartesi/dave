@@ -320,13 +320,12 @@ only the two-level table's leaf level does, at its top two fanout strata
 every other quartet, every leaf of the three-level table (height 27)
 included, is stepped through
 `Ruler::collect`. `Collector::Stepped`, which steps a tall build as well, stays
-permanently as the collector's test reference. Bulk collection cannot take an
-input delivered at mcycle 2^64 - 1, whose saturated budget leaves no cycle to
-collect: a template preset there, or centuries of machine time. It is out of
-model, and the node stops with an assert where stepping would proceed. The
-v0.23 release corpus carries the case (`uarch-budget-seam-accept-input-1`):
-the release gate pins the assert and compares the stepped build with the
-released answer. Memory is one
+permanently as the collector's test reference. An input delivered at mcycle
+2^64 - 1 (a template preset there, or centuries of machine time) leaves no
+cycle to run: its saturated budget makes the fed machine an overflow fixed
+point, and the collector returns that fixed point's opening period, as it
+does for a template preset halted with an input yield pending. The release
+corpus carries the case (`uarch-budget-seam-accept-input-1`). Memory is one
 collection call's roots, one span's roots and the 256 span roots, and an idle
 stretch costs one captured big cycle per stratum span it covers (at most 256
 per build) however long it is.

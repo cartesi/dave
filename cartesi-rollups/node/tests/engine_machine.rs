@@ -282,18 +282,6 @@ fn engine_level_root(
     } else {
         &[Collector::Bulk]
     };
-    facade_level_root(image, inputs, geometry, level, collectors)
-}
-
-/// The facade's root of a level inside one window, on a fresh store per
-/// collector; the collectors must agree.
-fn facade_level_root(
-    image: &Path,
-    inputs: Vec<Vec<u8>>,
-    geometry: &TournamentGeometry,
-    level: &LevelCoords,
-    collectors: &[Collector],
-) -> String {
     let roots: Vec<String> = collectors
         .iter()
         .map(|&collector| {
@@ -508,12 +496,6 @@ fn computation_hash_corpus_cli_matches_release_manifest() {
     assert_eq!(uarch_count, 20, "unexpected v0.23 uarch corpus size");
 }
 
-/// The one corpus case the bulk collector declines: its second input is
-/// delivered at mcycle 2^64 - 1, whose saturated budget leaves no cycle to
-/// collect, so the node stops with an assert where stepping proceeds
-/// (docs/computation-hash.md).
-const BULK_OUT_OF_MODEL: &str = "uarch-budget-seam-accept-input-1";
-
 /// The mcycle cases whose application is terminal after its inputs.
 const TERMINAL_MCYCLE_CASES: [&str; 6] = [
     "mcycle-halt",
@@ -531,8 +513,7 @@ const TERMINAL_MCYCLE_CASES: [&str; 6] = [
 /// delivers and the step ignores, so the released root must hold, settled
 /// and served. Every case of this release carries a hash: the emulator's
 /// uarch collector now refuses a non-pristine uarch, as the node does, so
-/// the corpus dropped its two cases with custom uarch code. One case is
-/// stepped only ([`BULK_OUT_OF_MODEL`]).
+/// the corpus dropped its two cases with custom uarch code.
 #[test]
 #[ignore = "requires the pinned Cartesi Machine v0.23 computation-hash corpus; run `just test-computation-hash-corpus-dave`"]
 fn computation_hash_corpus_dave_matches_release_manifest() {
@@ -593,25 +574,7 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
             }
             level => panic!("{id}: unexpected corpus level {level}"),
         };
-        let engine_hash = if id == BULK_OUT_OF_MODEL {
-            let bulk = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let bulk = [Collector::Bulk];
-                facade_level_root(&image, inputs.clone(), &three_level(), &level, &bulk)
-            }));
-            assert!(
-                bulk.is_err(),
-                "{id}: the bulk collector no longer declines this case; compare it"
-            );
-            facade_level_root(
-                &image,
-                inputs,
-                &three_level(),
-                &level,
-                &[Collector::Stepped],
-            )
-        } else {
-            engine_level_root(&image, inputs, &three_level(), &level)
-        };
+        let engine_hash = engine_level_root(&image, inputs, &three_level(), &level);
         assert_eq!(engine_hash, expected, "{id}: Dave vs release manifest");
         println!("{id}: {engine_hash}");
     }
