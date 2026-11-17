@@ -8,7 +8,10 @@
 //! re-checking the metadata.
 
 use crate::constants::break_reason;
-use crate::types::{BreakReason, Hash, base64_decode::deserialize_base64_32_array};
+use crate::types::{
+    BreakReason, Hash,
+    base64_decode::{deserialize_base64_32_array, deserialize_base64_32_array_opt},
+};
 use serde::{Deserialize, Deserializer};
 
 /// The emulator's bundling continuation: an opaque JSON object, handed back
@@ -35,6 +38,12 @@ pub struct McycleRootHashes {
     /// Present while a bundle is incomplete; absent at fixed points.
     #[serde(default, deserialize_with = "deserialize_partial_bundle")]
     pub partial_bundle: Option<PartialBundle>,
+    /// With bundling, when the call ends on a sample that completes a bundle
+    /// or at a fixed point: the siblings, leaf to root, of that bundle's
+    /// rightmost leaf, the last state root collected. At a fixed point the
+    /// bundle is the entry before the padding-only one that ends `hashes`.
+    #[serde(default, deserialize_with = "deserialize_base64_32_array_opt")]
+    pub final_bundle_sibling_hashes: Option<Vec<Hash>>,
     /// Console errors do not stop collection; the first one is reported here.
     #[serde(default)]
     pub console_io_error: Option<String>,
@@ -191,6 +200,7 @@ mod tests {
         let parsed = McycleRootHashes::from_json(&json).unwrap();
         assert_eq!(parsed.mcycle_phase, 7);
         assert_eq!(parsed.console_io_error, None);
+        assert_eq!(parsed.final_bundle_sibling_hashes, None);
         let bundle: serde_json::Value =
             serde_json::from_str(parsed.partial_bundle.unwrap().as_json()).unwrap();
         assert_eq!(bundle["leaf_count"], 1);

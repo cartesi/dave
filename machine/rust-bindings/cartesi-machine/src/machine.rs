@@ -12,7 +12,7 @@ use crate::{
     constants,
     error::{MachineError, MachineResult as Result},
     types::{
-        BreakReason, Hash, LogType, Register, SharingMode, UArchBreakReason,
+        BreakReason, Hash, LogType, Register, RemoveMode, SharingMode, UArchBreakReason,
         access_proof::AccessLog,
         cmio::{CmioRequest, CmioResponseReason},
         collect::{McycleRootHashes, PartialBundle, UarchCycleRootHashes},
@@ -148,7 +148,7 @@ impl Machine {
     // Machine API functions
     // -----------------------------------------------------------------------------
 
-    /// Creates a new machine instance from configuration.
+    /// Creates a new in-memory machine instance from configuration.
     pub fn create(config: &MachineConfig, runtime_config: &RuntimeConfig) -> Result<Self> {
         let config_json = serialize_to_json!(&config);
         let runtime_config_json = serialize_to_json!(&runtime_config);
@@ -160,7 +160,8 @@ impl Machine {
                 config_json.as_ptr(),
                 runtime_config_json.as_ptr(),
                 dir_cstr.as_ptr(),
-                // Ignored for an in-memory machine.
+                // The sharing mode of a machine created in a directory;
+                // ignored in memory.
                 cartesi_machine_sys::CM_SHARING_NONE,
                 &mut machine,
             )
@@ -258,15 +259,14 @@ impl Machine {
 
     /// Removes a stored machine directory. The directory must not be in use;
     /// on success, the removal of its parent directory entry is durable. On
-    /// failure, some files may remain.
-    pub fn remove_stored(dir: &Path) -> Result<()> {
+    /// failure, some files may remain, and the same call completes it.
+    /// [`RemoveMode::Stored`] refuses a directory that does not load or
+    /// holds another file, before removing anything; what an interrupted
+    /// store or clone left needs [`RemoveMode::Forced`].
+    pub fn remove_stored(dir: &Path, mode: RemoveMode) -> Result<()> {
         let dir_cstr = path_to_cstring(dir)?;
         let err_code = unsafe {
-            cartesi_machine_sys::cm_remove_stored(
-                ptr::null(),
-                dir_cstr.as_ptr(),
-                cartesi_machine_sys::CM_REMOVE_STORED,
-            )
+            cartesi_machine_sys::cm_remove_stored(ptr::null(), dir_cstr.as_ptr(), mode.into())
         };
         check_err!(err_code)?;
 
@@ -1633,9 +1633,41 @@ mod tests {
         Machine::clone_stored(&stored, &after)?;
         assert!(after.join("config.json").exists());
 
-        Machine::remove_stored(&after)?;
+        Machine::remove_stored(&after, RemoveMode::Stored)?;
         assert!(!after.exists());
 
+        Ok(())
+    }
+
+    /// The default mode removes only what loads as a stored machine and
+    /// nothing else, and refuses before it removes anything; the leftovers
+    /// of an interrupted store or clone need the forced mode.
+    #[test]
+    fn test_remove_stored_modes() -> Result<()> {
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+        let stray = tmp.path().join("stray");
+        let torn = tmp.path().join("torn");
+
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        create_machine(&config)?.store(&stored)?;
+
+        Machine::clone_stored(&stored, &stray)?;
+        std::fs::write(stray.join("note"), b"not a machine file").unwrap();
+        Machine::clone_stored(&stored, &torn)?;
+        std::fs::remove_file(torn.join("config.json")).unwrap();
+
+        for dir in [&stray, &torn] {
+            let files = std::fs::read_dir(dir).unwrap().count();
+            assert!(Machine::remove_stored(dir, RemoveMode::Stored).is_err());
+            assert_eq!(std::fs::read_dir(dir).unwrap().count(), files);
+            Machine::remove_stored(dir, RemoveMode::Forced)?;
+            assert!(!dir.exists());
+        }
+
+        let mut source = Machine::load(&stored, &RuntimeConfig::quiet_console())?;
+        source.root_hash()?;
         Ok(())
     }
 
@@ -1758,6 +1790,12 @@ mod tests {
             feed(&mut machine)?;
             let one_shot =
                 machine.collect_mcycle_root_hashes(u64::MAX, LOG2_PERIOD, 0, log2_bundle, None)?;
+            // Only a bundled collection proves its last leaf.
+            assert_eq!(
+                one_shot.final_bundle_sibling_hashes.as_ref().map(Vec::len),
+                (log2_bundle > 0).then_some(log2_bundle as usize),
+                "bundle 2^{log2_bundle}"
+            );
 
             let mut machine = yield_machine()?;
             feed(&mut machine)?;
