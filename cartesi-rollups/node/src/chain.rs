@@ -43,7 +43,7 @@ impl ChainHead {
 
 /// Addresses per log filter, well under geth's default
 /// `--rpc.logquerylimit` of 1,000.
-pub(crate) const MAX_FILTER_ADDRESSES: usize = 100;
+pub const MAX_FILTER_ADDRESSES: usize = 100;
 
 #[derive(Debug, Clone)]
 pub struct Chain {
