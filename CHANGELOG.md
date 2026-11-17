@@ -45,6 +45,8 @@ past the span.
   existing tx") takes the max-tip retry, as under geth's wording.
 - Refuse at startup an application whose consensus serves another
   application.
+- Read each level of the dispute tree with one multi-address `eth_getLogs`
+  per 100 tournaments instead of one request per tournament.
 
 ### For developers
 
