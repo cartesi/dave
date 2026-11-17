@@ -111,7 +111,7 @@ struct Args {
 
     /// Leaf-tournament height for --node-vs-emulator: 38 is the
     /// canonical two-level leaf; lower it for a quick run.
-    #[arg(long, default_value_t = 38)]
+    #[arg(long, default_value_t = CANONICAL_LEAF_HEIGHT)]
     leaf_height: u64,
 
     /// Internal: runs one --node-vs-emulator row in this process, so its
@@ -369,7 +369,9 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
 /// The runner's whole time per input on its production path
 /// (`MachineRunner::process_rollup`: the plan, the window collect at the
 /// root stride, the clone rotation and one publication per gap), over
-/// full batches of the default gap. The echo fixture rejects by the
+/// full batches of the default gap. The window roots make the root stride
+/// part of the figure, so this runs on the canonical table, not on
+/// `bench_geometry`'s coarser one. The echo fixture rejects by the
 /// input's index field (build-echo.sh), so a batch carrying that index is
 /// a batch of rejections.
 fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
@@ -385,9 +387,11 @@ fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Resul
     writeln!(
         report,
         "`MachineRunner::process_rollup` over {count} inputs of one kind at the\n\
-         default gap of {DEFAULT_SNAPSHOT_GAP_INPUTS}: the whole time per input, the \
-         application's work\n\
-         and one publication per gap included."
+         default gap of {DEFAULT_SNAPSHOT_GAP_INPUTS}, on the canonical two-level table \
+         (window roots at\n\
+         stride 2^{CANONICAL_LEAF_HEIGHT}): the whole time per input, the application's \
+         work and one\n\
+         publication per gap included."
     )?;
     writeln!(report)?;
     writeln!(report, "| inputs | time per input | rate |")?;
@@ -395,7 +399,8 @@ fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Resul
 
     for (label, rejected) in [("accepted", false), ("rejected", true)] {
         let state_dir = scratch(scratch_root, &format!("runner-{label}"))?;
-        let mut storage = seeded_storage(&state_dir, image, bench_geometry()?)?;
+        let geometry = two_level_geometry(CANONICAL_LEAF_HEIGHT)?;
+        let mut storage = seeded_storage(&state_dir, image, geometry)?;
         let rows: Vec<StorageInput> = (0..count)
             .map(|k| {
                 let index = match (rejected, k) {
@@ -766,6 +771,26 @@ fn bench_geometry() -> Result<TournamentGeometry> {
         })
         .collect();
     TournamentGeometry::new(levels, &Structure::PRODUCTION)
+}
+
+/// The leaf height of the canonical two-level table [38, 0] / [54, 38]
+/// (docs/dimensioning.md).
+const CANONICAL_LEAF_HEIGHT: u64 = 38;
+
+/// The two-level table whose root stride is its leaf's height.
+fn two_level_geometry(leaf_height: u64) -> Result<TournamentGeometry> {
+    let structure = Structure::PRODUCTION;
+    let levels = vec![
+        Level {
+            log2_stride: leaf_height,
+            height: structure.log2_ruler_span() - leaf_height,
+        },
+        Level {
+            log2_stride: 0,
+            height: leaf_height,
+        },
+    ];
+    TournamentGeometry::new(levels, &structure)
 }
 
 /// Big cycles per timed leaf-build sample, and the samples whose median
@@ -1208,19 +1233,7 @@ mod versus {
         let input = args.gap_inputs - 1;
 
         let state = scratch(scratch_root, "state")?;
-        let geometry = TournamentGeometry::new(
-            vec![
-                Level {
-                    log2_stride: height,
-                    height: structure.log2_ruler_span() - height,
-                },
-                Level {
-                    log2_stride: 0,
-                    height,
-                },
-            ],
-            &structure,
-        )?;
+        let geometry = two_level_geometry(height)?;
         let mut storage = seeded_storage(&state, image, geometry)?;
         let rows: Vec<StorageInput> = (0..args.gap_inputs)
             .map(|i| StorageInput {
