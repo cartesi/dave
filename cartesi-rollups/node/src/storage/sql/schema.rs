@@ -13,11 +13,11 @@ const SCHEMA: &str = include_str!("schema.sql");
 /// node keeps beside them. Bump it, never reusing a number, with every change
 /// a store built by an older node cannot be read under; the schema pin test
 /// makes every edit of schema.sql decide.
-const STORE_FORMAT: u32 = 1;
+const STORE_FORMAT: u32 = 2;
 /// What stored commitments mean: leaf values and transition shapes. Bump it
 /// with every change that alters them, even one that leaves the store format
 /// alone.
-const COMMITMENT_SEMANTICS: u32 = 2;
+const COMMITMENT_SEMANTICS: u32 = 3;
 /// Ends every exit-40 error; the node README's upgrade note is the procedure.
 pub(crate) const REBUILD_GUIDANCE: &str = "start the node on a fresh data directory beside this \
      one, and never wipe the only node's directory in place";
