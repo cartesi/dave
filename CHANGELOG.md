@@ -33,7 +33,7 @@ past the span.
   node built against v0.22 cannot start against these contracts, v0.22
   templates do not load, and a data directory built by an earlier node is
   refused (new store format and commitment semantics).
-- The runner's time per input falls from about 150 ms to about 25 ms on
+- The runner's time per input falls from about 150 ms to about 26 ms on
   the echo image (macOS): v0.23 no longer reads a fresh clone's hash-tree
   cache one page at a time.
 - A leaf build takes an input delivered with the machine's cycle counter
