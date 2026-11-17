@@ -215,9 +215,11 @@ impl Chain {
     /// end, so they split too. A single block's logs are bounded by its
     /// gas, so a failure there aborts the call, and the caller retries
     /// next tick: a persistent error costs one left spine of sequential
-    /// queries, about log2(width) + 1, never the whole tree. Iterative
-    /// worklist, left half first, so logs come back in ascending block
-    /// order.
+    /// queries, about log2(width) + 1, never the whole tree. That bound is
+    /// the same for one address as for a hundred, since one emitter can
+    /// spend the whole block, so a failed block does not split the
+    /// filter's address list either. Iterative worklist, left half first,
+    /// so logs come back in ascending block order.
     async fn logs_bisecting(&self, filter: &Filter, from: u64, to: u64) -> Result<Vec<Log>> {
         let mut pending = vec![(from, to)];
         let mut logs = Vec::new();
