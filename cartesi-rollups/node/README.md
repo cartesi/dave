@@ -312,7 +312,11 @@ Options:
   replays from a template stored by that release, and the others seed from
   it. The node rebuilds the image's hash tree from its contents before it
   compares the root with the chain's, so an image from any source either
-  is that state or is refused.
+  is that state when the node seeds from it or is refused. The seeded
+  copy still shares the image's read-only files with it (hard links, where
+  the filesystem makes them), so never modify a template or snapshot
+  directory in place once a node was seeded from it; removing it and
+  storing it again makes new files and is safe.
 - To upgrade across a change that requires a fresh data directory, start the
   new node on a new directory with its own funded signer, let it catch up,
   then stop the old one; never wipe the only node's directory in place. The
