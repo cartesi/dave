@@ -81,8 +81,9 @@ range and response size, latency), and the action latency that results.
   Infura, and Alchemy's free tier caps `eth_getLogs` at 10 blocks. A filter's
   address list is one more cap: the tournament reader and the recovery walk
   send up to 100 addresses per request (geth refuses more than 1,000 by
-  default), and no live test covers a multi-address filter yet. A provider
-  that refuses 100 would fail the fold at every range (a lead to check).
+  default). A provider that refuses 100 would fail the fold at every range (a
+  lead to check): a live test now sends such a filter, and still has to be
+  run against the providers.
 
 Sybils buy read load. On the two-level table each live child tournament
 costs the adversary about two root bonds (about 0.72 ETH at 50 gwei). The

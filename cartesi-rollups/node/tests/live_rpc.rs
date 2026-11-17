@@ -1,14 +1,15 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The node's `eth_getLogs` splitting (chain.rs) against real providers:
-//! a busy contract's logs over one ingestion chunk, and maximum-size inputs.
+//! The node's `eth_getLogs` reads (chain.rs) against real providers: a busy
+//! contract's logs over one ingestion chunk, maximum-size inputs, and the
+//! widest address filter the node sends.
 //! Providers change their caps and error shapes, so these are the evidence
 //! that splitting still completes. They depend on third parties and spend
 //! their quota, so they are ignored and stay out of `just check` and CI:
 //! `just test-live-rpc` runs them with endpoints from the environment
 //! (INFURA_MAINNET_URL, ALCHEMY_MAINNET_URL, INFURA_SEPOLIA_URL,
-//! ALCHEMY_SEPOLIA_URL; any subset). Both ranges are history, so their
+//! ALCHEMY_SEPOLIA_URL; any subset). Every range is history, so its
 //! contents never change.
 
 use std::{collections::BTreeSet, time::Instant};
@@ -20,7 +21,10 @@ use alloy::{
 };
 use alloy_chains::NamedChain;
 use cartesi_rollups_contracts::i_input_box::IInputBox::InputAdded;
-use cartesi_sling_node::{chain::Chain, provider::create_rpc_provider};
+use cartesi_sling_node::{
+    chain::{Chain, MAX_FILTER_ADDRESSES},
+    provider::create_rpc_provider,
+};
 
 /// USDC on Ethereum mainnet: about 30 logs per block.
 const USDC: Address = address!("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
@@ -142,6 +146,57 @@ async fn maximum_size_inputs_are_complete() {
             "{name}: {} inputs of {MAX_ENCODED_INPUT} bytes in {:.1?}",
             inputs.len(),
             started.elapsed()
+        );
+    }
+}
+
+/// The tournament reader and the recovery walk put up to
+/// MAX_FILTER_ADDRESSES addresses in one filter, and a provider that refuses
+/// that many fails those reads at every range. USDC among addresses that
+/// emit nothing must come back as it does alone.
+#[tokio::test]
+#[ignore = "live providers: run `just test-live-rpc`"]
+async fn a_filter_of_the_most_addresses_the_node_sends_is_answered() {
+    init_logging();
+    // Ten blocks, about 300 logs: within Alchemy's free-tier range cap.
+    let (from, to) = (USDC_RANGE.0, USDC_RANGE.0 + 9);
+    let mut addresses = vec![USDC];
+    addresses.extend(
+        (1..MAX_FILTER_ADDRESSES as u64).map(|i| Address::left_padding_from(&i.to_be_bytes())),
+    );
+    for (name, chain) in chains(
+        &["INFURA_MAINNET_URL", "ALCHEMY_MAINNET_URL"],
+        NamedChain::Mainnet,
+    )
+    .await
+    {
+        let mut answers = Vec::new();
+        for filter in [&addresses[..1], &addresses[..]] {
+            let logs = chain
+                .raw_logs_from_any(filter, from, to)
+                .await
+                .unwrap_or_else(|error| panic!("{name}, {} addresses: {error:#}", filter.len()));
+            assert!(
+                logs.iter().all(|log| log.address() == USDC),
+                "{name} returned a log of another address"
+            );
+            let keys: BTreeSet<(u64, u64)> = logs
+                .iter()
+                .map(|log| (log.block_number.unwrap(), log.log_index.unwrap()))
+                .collect();
+            assert_eq!(keys.len(), logs.len(), "{name} returned duplicate logs");
+            answers.push(keys);
+        }
+        assert!(!answers[0].is_empty(), "{name} returned no USDC log");
+        assert!(
+            answers[0] == answers[1],
+            "{name}: {} logs alone against {} among {MAX_FILTER_ADDRESSES} addresses",
+            answers[0].len(),
+            answers[1].len()
+        );
+        println!(
+            "{name}: {} logs through a filter of {MAX_FILTER_ADDRESSES} addresses",
+            answers[1].len()
         );
     }
 }
