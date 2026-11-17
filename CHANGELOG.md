@@ -43,6 +43,8 @@ past the span.
   directory beside the old one, instead of telling the operator to wipe.
 - A same-nonce replacement that an Erigon pool refuses ("could not replace
   existing tx") takes the max-tip retry, as under geth's wording.
+- Refuse at startup an application whose consensus serves another
+  application.
 
 ### For developers
 

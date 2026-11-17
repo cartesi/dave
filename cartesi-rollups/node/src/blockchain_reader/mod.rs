@@ -79,6 +79,17 @@ impl AddressBook {
             .context("failed to query the application's consensus")?;
 
         let consensus_contract = DaveConsensus::new(consensus, provider);
+        // The binding must hold both ways: an application can name a
+        // consensus that settles another application's epochs.
+        let served = consensus_contract
+            .getApplicationContract()
+            .call()
+            .await
+            .with_context(|| format!("failed to query the application of consensus {consensus}"))?;
+        anyhow::ensure!(
+            served == app,
+            "consensus {consensus} serves application {served}, not application {app}"
+        );
         let input_box = consensus_contract
             .getInputBox()
             .call()
@@ -846,6 +857,35 @@ mod address_book_tests {
             ..book
         };
         assert_eq!(at_zero.initial_watermark(5000), 0);
+    }
+
+    #[tokio::test]
+    async fn a_consensus_serving_another_application_is_refused() {
+        use crate::chain::recording::recording_provider;
+        use alloy::sol_types::SolValue;
+
+        let (app, consensus, served) = (
+            Address::repeat_byte(0xaa),
+            Address::repeat_byte(0xcc),
+            Address::repeat_byte(0xbb),
+        );
+        let (provider, rpc, requests) = recording_provider();
+        rpc.push_success(&alloy::primitives::Bytes::from(consensus.abi_encode()));
+        rpc.push_success(&alloy::primitives::Bytes::from(served.abi_encode()));
+
+        let error = AddressBook::new(app, &provider).await.unwrap_err();
+        let message = error.to_string();
+        for expected in [consensus, served, app] {
+            assert!(
+                message.contains(&expected.to_string()),
+                "{expected} missing: {message}"
+            );
+        }
+        assert_eq!(
+            requests.lock().unwrap().len(),
+            2,
+            "refused at the second read"
+        );
     }
 
     const INITIAL: Hash = [0x11; 32];
