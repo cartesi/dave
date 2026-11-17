@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Download and test the computation-hash corpus published with emulator v0.22.0.
+# Download and test the computation-hash corpus published with emulator v0.23.0-test3.
 set -euo pipefail
 
 cd "${BASH_SOURCE%/*}/.."
 
-readonly release_version="v0.22.0"
-readonly archive_sha256="e4cc7bf9a7e1f0017a9d848c54ee3449f9e96343833c53513a149c1d35169e76"
-readonly manifest_sha256="9c7dddfd211958f2fc71b0f7bbd1dacdfc57fde15bddfe18f10d34efb7399547"
+readonly release_version="v0.23.0-test3"
+readonly archive_sha256="7e22e75052b2bfa05a88c218ee0374571bfadfb3fc1b14e92101b4307c7dc71a"
+readonly manifest_sha256="f48f97a9a9d3346f07f9a65d8f4edf2052eb0546b86b1f9499af1c6281a481c4"
 readonly release_url="https://github.com/cartesi/machine-emulator/releases/download/${release_version}/computation-hash-corpus.tar.gz"
 readonly cache_root="$(pwd -P)/target/computation-hash-corpus"
 readonly release_cache="${cache_root}/${release_version}-${archive_sha256}"

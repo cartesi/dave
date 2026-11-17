@@ -282,6 +282,18 @@ fn engine_level_root(
     } else {
         &[Collector::Bulk]
     };
+    facade_level_root(image, inputs, geometry, level, collectors)
+}
+
+/// The facade's root of a level inside one window, on a fresh store per
+/// collector; the collectors must agree.
+fn facade_level_root(
+    image: &Path,
+    inputs: Vec<Vec<u8>>,
+    geometry: &TournamentGeometry,
+    level: &LevelCoords,
+    collectors: &[Collector],
+) -> String {
     let roots: Vec<String> = collectors
         .iter()
         .map(|&collector| {
@@ -301,7 +313,7 @@ fn engine_level_root(
 
 fn computation_hash_corpus() -> (PathBuf, Vec<serde_json::Value>) {
     let corpus_path = std::env::var_os("CARTESI_COMPUTATION_HASH_CORPUS_PATH").expect(
-        "CARTESI_COMPUTATION_HASH_CORPUS_PATH must name the extracted v0.22 corpus directory",
+        "CARTESI_COMPUTATION_HASH_CORPUS_PATH must name the extracted v0.23 corpus directory",
     );
     let corpus = PathBuf::from(corpus_path);
     assert!(
@@ -334,6 +346,10 @@ fn corpus_cli() -> String {
     std::env::var("CARTESI_MACHINE_CLI").unwrap_or_else(|_| "cartesi-machine".into())
 }
 
+/// The pinned release's `--version` line. The v0.23.0-test3 tag still
+/// carries the label of its predecessor.
+const REFERENCE_CLI_VERSION: &str = "cartesi-machine 0.23.0-test2";
+
 fn assert_corpus_cli_version(cli: &str) {
     let version = Command::new(cli).arg("--version").output().unwrap();
     assert!(version.status.success(), "failed to run {cli} --version");
@@ -342,8 +358,8 @@ fn assert_corpus_cli_version(cli: &str) {
         version
             .lines()
             .next()
-            .is_some_and(|line| line == "cartesi-machine 0.22.0"),
-        "corpus requires cartesi-machine 0.22.0, found {version:?}"
+            .is_some_and(|line| line == REFERENCE_CLI_VERSION),
+        "corpus requires {REFERENCE_CLI_VERSION}, found {version:?}"
     );
 }
 
@@ -396,7 +412,7 @@ fn run_corpus_cli_case(
 /// release-package conformance, not a Dave differential: all mcycle and uarch
 /// cases, including nonzero exits and the no-hash failure, belong here.
 #[test]
-#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus; run `just test-computation-hash-corpus-cli`"]
+#[ignore = "requires the pinned Cartesi Machine v0.23 computation-hash corpus; run `just test-computation-hash-corpus-cli`"]
 fn computation_hash_corpus_cli_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
     let cli = corpus_cli();
@@ -488,30 +504,24 @@ fn computation_hash_corpus_cli_matches_release_manifest() {
         }
         println!("{id}: {category}");
     }
-    assert_eq!(mcycle_count, 18, "unexpected v0.22 mcycle corpus size");
-    assert_eq!(uarch_count, 18, "unexpected v0.22 uarch corpus size");
+    assert_eq!(mcycle_count, 20, "unexpected v0.23 mcycle corpus size");
+    assert_eq!(uarch_count, 20, "unexpected v0.23 uarch corpus size");
 }
 
-/// The one corpus case outside Dave's model: its template carries custom
-/// uarch code instead of the deployed step's pristine uarch.
-const UARCH_OUT_OF_MODEL: &str = "uarch-near-limit-tail";
+/// The one corpus case the bulk collector declines: its second input is
+/// delivered at mcycle 2^64 - 1, whose saturated budget leaves no cycle to
+/// collect, so the node stops with an assert where stepping proceeds
+/// (docs/computation-hash.md).
+const BULK_OUT_OF_MODEL: &str = "uarch-budget-seam-accept-input-1";
 
-/// Whether the node refuses a template at startup for lacking the pristine
-/// uarch every big-cycle boundary must carry.
-fn refused_as_non_pristine(image: &Path) -> bool {
-    match Template::inspect(image) {
-        Ok(_) => false,
-        Err(error) => format!("{error:#}").contains("pristine uarch"),
-    }
-}
-
-/// The mcycle cases whose application is terminal after its input.
-const TERMINAL_MCYCLE_CASES: [&str; 5] = [
+/// The mcycle cases whose application is terminal after its inputs.
+const TERMINAL_MCYCLE_CASES: [&str; 6] = [
     "mcycle-halt",
     "mcycle-halt-nonzero",
     "mcycle-exception",
     "mcycle-manual-other",
     "mcycle-overflow",
+    "mcycle-budget-seam-accept",
 ];
 
 /// Dave against the released answers: every mcycle case as a whole-epoch
@@ -519,30 +529,23 @@ const TERMINAL_MCYCLE_CASES: [&str; 5] = [
 /// the big-cycle-root builder). The terminal mcycle cases also run through
 /// the production runner with one more input, which the chain still
 /// delivers and the step ignores, so the released root must hold, settled
-/// and served. The two error-no-hash uarch cases have no released hash:
-/// uarch-overflow-tail, and uarch-near-limit-tail, whose template is out of
-/// model (docs/computation-hash.md). The node refuses that template at
-/// startup, and the test asserts the refusal.
+/// and served. Every case of this release carries a hash: the emulator's
+/// uarch collector now refuses a non-pristine uarch, as the node does, so
+/// the corpus dropped its two cases with custom uarch code. One case is
+/// stepped only ([`BULK_OUT_OF_MODEL`]).
 #[test]
-#[ignore = "requires the pinned Cartesi Machine v0.22 computation-hash corpus; run `just test-computation-hash-corpus-dave`"]
+#[ignore = "requires the pinned Cartesi Machine v0.23 computation-hash corpus; run `just test-computation-hash-corpus-dave`"]
 fn computation_hash_corpus_dave_matches_release_manifest() {
     let (corpus, cases) = computation_hash_corpus();
     let structure = Structure::PRODUCTION;
 
-    let (mut mcycle, mut uarch, mut no_hash, mut terminal) = (0, 0, 0, 0);
+    let (mut mcycle, mut uarch, mut terminal) = (0, 0, 0);
     for case in &cases {
         let id = case["id"].as_str().unwrap();
         let image = corpus.join(case["template"].as_str().unwrap());
-        let expected = case["expected"]["computation_hash"].as_str();
-        let Some(expected) = expected else {
-            assert_eq!(case["expected"]["category"], "error-no-hash", "{id}");
-            assert!(
-                id != UARCH_OUT_OF_MODEL || refused_as_non_pristine(&image),
-                "{id}: the node no longer refuses this template; compare the case"
-            );
-            no_hash += 1;
-            continue;
-        };
+        let expected = case["expected"]["computation_hash"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{id}: a case without a released hash; compare it"));
         let inputs: Vec<Vec<u8>> = case["inputs"]
             .as_array()
             .unwrap()
@@ -590,14 +593,32 @@ fn computation_hash_corpus_dave_matches_release_manifest() {
             }
             level => panic!("{id}: unexpected corpus level {level}"),
         };
-        let engine_hash = engine_level_root(&image, inputs, &three_level(), &level);
+        let engine_hash = if id == BULK_OUT_OF_MODEL {
+            let bulk = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let bulk = [Collector::Bulk];
+                facade_level_root(&image, inputs.clone(), &three_level(), &level, &bulk)
+            }));
+            assert!(
+                bulk.is_err(),
+                "{id}: the bulk collector no longer declines this case; compare it"
+            );
+            facade_level_root(
+                &image,
+                inputs,
+                &three_level(),
+                &level,
+                &[Collector::Stepped],
+            )
+        } else {
+            engine_level_root(&image, inputs, &three_level(), &level)
+        };
         assert_eq!(engine_hash, expected, "{id}: Dave vs release manifest");
         println!("{id}: {engine_hash}");
     }
     assert_eq!(
-        (mcycle, uarch, no_hash, terminal),
-        (18, 16, 2, TERMINAL_MCYCLE_CASES.len()),
-        "unexpected v0.22 corpus shape"
+        (mcycle, uarch, terminal),
+        (20, 20, TERMINAL_MCYCLE_CASES.len()),
+        "unexpected v0.23 corpus shape"
     );
 }
 
@@ -1016,7 +1037,7 @@ fn reference_cli_leaf(cli: &str, image: &Path, inputs: &[Vec<u8>], case: LeafCas
 /// images they answer for. Outside the engine gate because it needs
 /// that exact CLI; CI runs it where the release package is installed.
 #[test]
-#[ignore = "requires the released cartesi-machine 0.22.0 CLI; run `just test-reference-cli-goldens`"]
+#[ignore = "requires the pinned cartesi-machine CLI; run `just test-reference-cli-goldens`"]
 fn reference_cli_goldens_hold() {
     let cli = corpus_cli();
     assert_corpus_cli_version(&cli);
