@@ -16,7 +16,8 @@ pub type UArchBreakReason = cartesi_machine_sys::cm_uarch_break_reason;
 /// (`cm_remove_mode`). Either way it must hold regular files only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RemoveMode {
-    /// An empty directory, or a loadable stored machine and no other file.
+    /// An empty directory, or one whose config loads and that holds no
+    /// file the config does not name. Named files may be missing.
     Stored,
     /// Any regular files, such as what an interrupted store or clone left.
     Forced,
