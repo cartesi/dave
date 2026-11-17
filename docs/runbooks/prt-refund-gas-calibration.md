@@ -231,7 +231,7 @@ As of the 2026-10-11 calibration, Ethereum Mainnet's
 and 8.46% of the block. Treat that as dated evidence, not a permanent
 constant.
 
-The node pads each estimate by half again, at least 150,000 units, and stops
+The node pads each estimate by half again, at least 650,000 units, and stops
 the limit at the cap (`gas_limit_for` in
 `cartesi-rollups/node/src/provider.rs`). A retained maximum above about
 11.18M units (the cap over 1.5) therefore loses part of its headroom under
