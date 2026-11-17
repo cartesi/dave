@@ -41,6 +41,8 @@ past the span.
   README's funding floor.
 - An exit-40 error now ends with the README's procedure, a fresh data
   directory beside the old one, instead of telling the operator to wipe.
+- A same-nonce replacement that an Erigon pool refuses ("could not replace
+  existing tx") takes the max-tip retry, as under geth's wording.
 
 ### For developers
 
