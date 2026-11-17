@@ -830,11 +830,11 @@ fn normalize_fees(mut fees: Eip1559Estimation) -> Eip1559Estimation {
     fees
 }
 
-// The pool and revert wordings below are checked against geth and anvil;
-// erigon's and other clients' are a lead. An unmatched replacement
-// rejection logs an error and skips the max-tip retry; an unmatched revert
-// falls back to the flat gas limit and pays the revert on chain. Neither
-// stalls the lane.
+// The pool and revert wordings below are checked against geth and anvil,
+// and erigon's replacement rejection against its pool's discard reasons;
+// the rest are a lead. An unmatched replacement rejection logs an error and
+// skips the max-tip retry; an unmatched revert falls back to the flat gas
+// limit and pays the revert on chain. Neither stalls the lane.
 fn is_revert(error: &TransportError) -> bool {
     error
         .as_error_resp()
@@ -889,6 +889,7 @@ fn classify_submission_error(error: &TransportError) -> SubmissionErrorKind {
     } else if message.contains("replacement transaction underpriced")
         || message.contains("replacement underpriced")
         || message.contains("fee too low to replace")
+        || message.contains("could not replace existing tx")
     {
         SubmissionErrorKind::ReplacementUnderpriced
     } else if message.contains("transaction underpriced") {
@@ -1404,6 +1405,11 @@ mod tests {
         );
         assert_eq!(
             classify_submission_error(&error("replacement transaction underpriced")),
+            SubmissionErrorKind::ReplacementUnderpriced
+        );
+        // Erigon's pool, as its RPC wraps it.
+        assert_eq!(
+            classify_submission_error(&error("INTERNAL_ERROR: could not replace existing tx")),
             SubmissionErrorKind::ReplacementUnderpriced
         );
         // Not replacements, so not a pending transaction to wait out: a full
