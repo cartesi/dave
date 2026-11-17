@@ -11,6 +11,7 @@ use crate::{
     config::{self, machine::MachineConfig, runtime::RuntimeConfig},
     constants,
     error::{MachineError, MachineResult as Result},
+    stored::Volatile,
     types::{
         BreakReason, Hash, LogType, Register, RemoveMode, SharingMode, UArchBreakReason,
         access_proof::AccessLog,
@@ -27,6 +28,10 @@ use crate::{
 /// pointer is kept private — exposing it would let callers clone it and cause
 /// a double-free when both `Machine`s get dropped.
 ///
+/// A machine opened with [`Volatile::open`] also owns the directory it
+/// changes in place. [`Machine::close`] destroys the instance and hands the
+/// directory back; a drop destroys it unchecked and discards the directory.
+///
 /// `Machine` is intentionally `!Send + !Sync` (the default, given the raw
 /// pointer field). Do not add `unsafe impl Send for Machine` without auditing
 /// `cm_get_last_error_message`: the C library threads error messages through
@@ -35,6 +40,10 @@ use crate::{
 /// `MachineError::message` fields.
 pub struct Machine {
     machine: *mut cartesi_machine_sys::cm_machine,
+    /// The directory a shared load changes in place. Declared after the
+    /// instance and so dropped after `Drop::drop` destroyed it: the
+    /// directory is removed only once nothing maps it.
+    home: Option<Volatile>,
 }
 
 impl Drop for Machine {
@@ -168,7 +177,10 @@ impl Machine {
         };
         check_err!(err_code)?;
 
-        Ok(Self { machine })
+        Ok(Self {
+            machine,
+            home: None,
+        })
     }
 
     /// Loads a new machine instance from a previously stored directory with
@@ -178,19 +190,22 @@ impl Machine {
         Self::load_with_sharing(dir, runtime_config, SharingMode::None)
     }
 
+    /// [`Volatile::open`]: loads with every file mapped shared, so the
+    /// machine changes the directory in place, on any call, `root_hash` and
+    /// `proof` included, and holds an exclusive lock on its writable files
+    /// until destroyed. Dirtiness is recorded in the persisted dirty-page
+    /// trees and the next `root_hash` rehashes exactly the dirty set, so a
+    /// `root_hash` before [`Machine::close`] leaves the stored hash tree
+    /// exact.
+    pub(crate) fn open_shared(home: Volatile, runtime_config: &RuntimeConfig) -> Result<Self> {
+        use crate::stored::Stored;
+        // A failed load drops `home`, discarding the directory.
+        let mut machine = Self::load_with_sharing(home.path(), runtime_config, SharingMode::All)?;
+        machine.home = Some(home);
+        Ok(machine)
+    }
+
     /// Loads a stored machine with an explicit sharing mode.
-    ///
-    /// With [`SharingMode::All`] the machine mutates the directory in
-    /// place, on any call, `root_hash` and `proof` included. The directory
-    /// is a valid stored machine again once this machine is dropped:
-    /// dirtiness is recorded in the persisted dirty-page sidecars and the
-    /// next `root_hash` rehashes exactly the dirty set, and calling
-    /// [`Machine::root_hash`] before the drop leaves the on-disk hash tree
-    /// exact. It is durable only after a [`Machine::sync_stored`] that
-    /// follows the drop; a process that stops before the drop leaves a
-    /// directory to discard, even if it loads. Note the lifetime exclusive
-    /// lock: the directory cannot be cloned, synced or re-loaded shared
-    /// until this machine is dropped.
     pub fn load_with_sharing(
         dir: &Path,
         runtime_config: &RuntimeConfig,
@@ -210,7 +225,22 @@ impl Machine {
         };
         check_err!(err_code)?;
 
-        Ok(Self { machine })
+        Ok(Self {
+            machine,
+            home: None,
+        })
+    }
+
+    /// Destroys the machine instance, checked: a drop cannot report a
+    /// failed destroy (`cm_delete` fails silently). Returns the directory a
+    /// shared open changed in place, closed and a stored machine again for
+    /// this process, though not synced. On failure that directory is
+    /// discarded. A local machine's destroy does not report a failed unmap;
+    /// an I/O error surfaces at the sync.
+    pub fn close(mut self) -> Result<Option<Volatile>> {
+        let err_code = unsafe { cartesi_machine_sys::cm_destroy(self.machine) };
+        check_err!(err_code)?;
+        Ok(self.home.take())
     }
 
     /// Clones a stored machine directory without loading it: read-only
@@ -1052,6 +1082,7 @@ mod tests {
         },
         constants,
         error::MachineResult as Result,
+        stored::{Durable, Stored},
         types::cmio::ManualReason,
     };
 
@@ -1466,20 +1497,19 @@ mod tests {
     //     Ok(())
     // }
 
-    /// A clone loaded with SharingMode::All advances on disk and remains
-    /// a valid stored machine after drop, with the hash sidecars exact
-    /// when root_hash ran before the drop, and self-healing from the
-    /// recorded dirty pages when it did not (the crash shape). Both
-    /// clones must reload to the root hash of an in-memory advance of
-    /// the same cycles, and the clone source must not move.
+    /// A clone opened shared advances on disk and is a stored machine again
+    /// once closed, before any sync: with the hash sidecars exact when
+    /// root_hash ran before the close, and self-healing from the recorded
+    /// dirty pages when it did not. Both reload, and clone, to the root
+    /// hash of an in-memory advance of the same cycles, and the clone
+    /// source does not move.
     #[test]
-    fn test_clone_stored_round_trip_sharing_all() -> Result<()> {
+    fn a_closed_directory_is_a_stored_machine_before_any_sync() -> Result<()> {
         const PREFIX: u64 = 5_000_000;
         const TARGET: u64 = 15_000_000;
+        let quiet = RuntimeConfig::quiet_console();
         let tmp = tempfile::tempdir().expect("failed creating a temp dir");
         let stored = tmp.path().join("stored");
-        let hashed = tmp.path().join("hashed");
-        let crashed = tmp.path().join("crashed");
 
         let config = make_basic_machine_config();
         let mut machine = create_machine(&config)?;
@@ -1494,42 +1524,99 @@ mod tests {
         );
         let expected = machine.root_hash()?;
         drop(machine);
+        let stored = Durable::at(stored);
 
-        // Advance one clone on disk with the sidecars brought exact
-        // before the drop.
-        Machine::clone_stored(&stored, &hashed)?;
-        {
-            let mut on_disk = Machine::load_with_sharing(
-                &hashed,
-                &RuntimeConfig::quiet_console(),
-                SharingMode::All,
-            )?;
+        // One clone closed with its sidecars brought exact, another closed
+        // cold: stale hash sidecars, dirtiness recorded.
+        let mut closed = vec![];
+        for (name, hash_first) in [("hashed", true), ("cold", false)] {
+            let mut on_disk = stored.clone_to(&tmp.path().join(name))?.open(&quiet)?;
             on_disk.run(TARGET)?;
-            on_disk.root_hash()?;
+            if hash_first {
+                on_disk.root_hash()?;
+            }
+            closed.push(on_disk.close()?.expect("a shared open owns its directory"));
         }
 
-        // Advance another and drop it cold: no root_hash, stale hash
-        // sidecars, dirtiness recorded. The crash shape.
-        Machine::clone_stored(&stored, &crashed)?;
-        {
-            let mut on_disk = Machine::load_with_sharing(
-                &crashed,
-                &RuntimeConfig::quiet_console(),
-                SharingMode::All,
-            )?;
-            on_disk.run(TARGET)?;
-        }
-
-        for dir in [&hashed, &crashed] {
-            let mut reloaded = Machine::load(dir, &RuntimeConfig::quiet_console())?;
+        for (index, dir) in closed.iter().enumerate() {
+            let mut reloaded = dir.load(&quiet)?;
             assert_eq!(reloaded.mcycle()?, TARGET);
             assert_eq!(reloaded.root_hash()?, expected);
+
+            let copy = dir.clone_to(&tmp.path().join(format!("copy-{index}")))?;
+            assert_eq!(copy.load(&quiet)?.root_hash()?, expected);
+            let mut reopened = copy.open(&quiet)?;
+            assert_eq!(reopened.root_hash()?, expected);
         }
 
         // Clone isolation: writes to the clones never reach the source.
-        let mut source = Machine::load(&stored, &RuntimeConfig::quiet_console())?;
-        assert_eq!(source.mcycle()?, PREFIX);
+        assert_eq!(stored.load(&quiet)?.mcycle()?, PREFIX);
 
+        Ok(())
+    }
+
+    /// The directory of a shared open goes with the machine: a close hands
+    /// it back, a drop discards it, and so does an open that fails.
+    #[test]
+    fn a_shared_open_owns_its_directory() -> Result<()> {
+        let quiet = RuntimeConfig::quiet_console();
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        create_machine(&config)?.store(&stored)?;
+        let stored = Durable::at(stored);
+        let dir = |name: &str| tmp.path().join(name);
+
+        let closed = stored.clone_to(&dir("closed"))?.open(&quiet)?.close()?;
+        let closed = closed.expect("a shared open owns its directory");
+        assert!(closed.path().is_dir());
+        drop(closed);
+        assert!(!dir("closed").exists(), "a dropped volatile is removed");
+
+        drop(stored.clone_to(&dir("dropped"))?.open(&quiet)?);
+        assert!(!dir("dropped").exists(), "an unclosed machine's is too");
+
+        let torn = stored.clone_to(&dir("torn"))?;
+        std::fs::remove_file(dir("torn").join("config.json")).unwrap();
+        assert!(torn.open(&quiet).is_err());
+        assert!(!dir("torn").exists(), "and a failed open's");
+
+        // A private load owns nothing.
+        assert!(stored.load(&quiet)?.close()?.is_none());
+        assert!(stored.path().is_dir());
+        Ok(())
+    }
+
+    /// Persisting syncs and renames without replacing, and a volatile that
+    /// does not make it is discarded.
+    #[test]
+    fn a_volatile_directory_persists_or_is_discarded() -> Result<()> {
+        let quiet = RuntimeConfig::quiet_console();
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        let mut machine = create_machine(&config)?;
+        let root = machine.root_hash()?;
+        machine.store(&stored)?;
+        let stored = Durable::at(stored);
+        let dir = |name: &str| tmp.path().join(name);
+
+        let published = stored
+            .clone_to(&dir("staged"))?
+            .persist(&dir("published"))?;
+        assert!(!dir("staged").exists());
+        assert_eq!(published.load(&quiet)?.root_hash()?, root);
+        published.sync()?;
+
+        let contender = stored.clone_to(&dir("contender"))?;
+        assert!(contender.persist(published.path()).is_err());
+        assert!(!dir("contender").exists());
+        assert_eq!(published.load(&quiet)?.root_hash()?, root);
+
+        let kept = stored.clone_to(&dir("kept"))?.keep();
+        assert!(kept.is_dir());
         Ok(())
     }
 
@@ -1607,72 +1694,46 @@ mod tests {
         assert!(!destination.exists());
     }
 
-    /// A SharingMode::All load owns its directory for its lifetime (the
-    /// emulator's advisory locks): cloning it must fail until the
-    /// machine drops. And remove_stored deletes a stored machine
-    /// wholesale.
+    /// A shared open holds its directory against a clone and a sync (the
+    /// emulator's advisory locks) until it closes; a private load holds
+    /// back neither.
     #[test]
-    fn test_clone_stored_locked_while_loaded_shared() -> Result<()> {
+    fn a_shared_open_holds_its_directory_against_clone_and_sync() -> Result<()> {
+        let quiet = RuntimeConfig::quiet_console();
         let tmp = tempfile::tempdir().expect("failed creating a temp dir");
         let stored = tmp.path().join("stored");
-        let blocked = tmp.path().join("blocked");
-        let after = tmp.path().join("after");
+        let working = tmp.path().join("working");
 
         let config = make_basic_machine_config();
         let mut machine = create_machine(&config)?;
         machine.run(1_000_000)?;
         machine.store(&stored)?;
         drop(machine);
+        let stored = Durable::at(stored);
 
         {
-            let _held = Machine::load_with_sharing(
-                &stored,
-                &RuntimeConfig::quiet_console(),
-                SharingMode::All,
-            )?;
-            assert!(
-                Machine::clone_stored(&stored, &blocked).is_err(),
-                "cloning a directory loaded SharingMode::All must fail"
-            );
+            let _private = stored.load(&quiet)?;
+            stored.sync()?;
+            drop(stored.clone_to(&tmp.path().join("beside"))?);
         }
 
-        // A fresh destination after the drop: the failed attempt may
-        // leave partial files behind, but the lock is gone.
-        Machine::clone_stored(&stored, &after)?;
+        let held = stored.clone_to(&working)?.open(&quiet)?;
+        assert!(
+            Machine::clone_stored(&working, &tmp.path().join("blocked")).is_err(),
+            "cloning a directory a machine maps shared must fail"
+        );
+        let error = Machine::sync_stored(&working)
+            .expect_err("syncing a directory a machine maps shared must fail");
+        assert!(error.message.contains("unable to sync file"), "{error:?}");
+
+        let closed = held.close()?.expect("a shared open owns its directory");
+        Machine::sync_stored(closed.path())?;
+        let after = closed.clone_to(&tmp.path().join("after"))?.keep();
         assert!(after.join("config.json").exists());
 
         Machine::remove_stored(&after, RemoveMode::Stored)?;
         assert!(!after.exists());
 
-        Ok(())
-    }
-
-    /// A machine that maps a directory shared holds it against a sync, as
-    /// against a clone; a private load does not.
-    #[test]
-    fn test_sync_stored_refuses_a_directory_mapped_shared() -> Result<()> {
-        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
-        let stored = tmp.path().join("stored");
-
-        let mut config = Machine::default_config()?;
-        config.ram.length = 4096;
-        create_machine(&config)?.store(&stored)?;
-
-        {
-            let _private = Machine::load(&stored, &RuntimeConfig::quiet_console())?;
-            Machine::sync_stored(&stored)?;
-        }
-        {
-            let _shared = Machine::load_with_sharing(
-                &stored,
-                &RuntimeConfig::quiet_console(),
-                SharingMode::All,
-            )?;
-            let error = Machine::sync_stored(&stored)
-                .expect_err("syncing a directory mapped shared must fail");
-            assert!(error.message.contains("unable to sync file"), "{error:?}");
-        }
-        Machine::sync_stored(&stored)?;
         Ok(())
     }
 
