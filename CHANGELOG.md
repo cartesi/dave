@@ -33,6 +33,12 @@ past the span.
   those boundaries, and stall at the first seal past the span.
 - Check a candidate against the already-read standing before waiting under
   active matches; a contradiction discards and refolds the event cache.
+- The least gas headroom over an estimate rises from 150,000 to 650,000.
+  Under Glamsterdam's state-gas pricing (EIP-8037, live on Sepolia) a join
+  that pairs on inclusion needs 489,365 more than its estimate, so the old
+  floor ran it out of gas. Fees paid do not change, but each pending
+  transaction reserves up to 500,000 more gas at its max fee; see the
+  README's funding floor.
 
 ### For developers
 

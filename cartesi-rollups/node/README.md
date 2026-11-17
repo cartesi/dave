@@ -197,10 +197,12 @@ without acting, for comparison with the deployed response and commitment
 budgets.
 
 Each transaction's gas limit is its estimate at the latest block plus half
-again, at least 150,000 (a join that pairs on inclusion needs up to 110,161
-more than its estimate), and stops at the EIP-7825 cap of 16,777,216 when the
+again, at least 650,000 (a join that pairs on inclusion measured 489,365
+more than its estimate on Sepolia under Glamsterdam's state-gas pricing,
+110,161 before), and stops at the EIP-7825 cap of 16,777,216 when the
 estimate fits under it; the largest action, a maximum-input leaf proof,
-estimates about 5.1M. A call that already reverts there is not sent. When
+estimates about 5.1M (about 6.04M under Glamsterdam's calldata floor). A
+call that already reverts there is not sent. When
 estimation fails for another reason the node falls back to 15M. A transaction
 the pool turns down on price is sent once more with its priority fee raised
 to its max fee, which displaces a pending transaction the base fee has
@@ -219,13 +221,15 @@ plus the tip):
 
 ```
 floor = root bond + 2 x the leaf bond
-        + (leaf-proof gas limit + 1M) x peak max fee
-      = 0.36115 + 2 x 0.51265 + (7.61M + 1M) x 200 gwei
-      = about 3.1 ETH
+        + (leaf-proof gas limit + bond-recovery gas limit) x peak max fee
+      = 0.36115 + 2 x 0.51265 + (7.61M + 0.70M) x 200 gwei
+      = about 3.05 ETH
 ```
 
-The 1M covers the settlement step and bond recoveries that share the leaf
-proof's batch. A slot whose estimate fails other than by a revert reserves
+The recovery is the earlier leaf tournament's bond, the only transaction that
+can follow a leaf proof in its batch: a settlement step waits for the root's
+result. Under Glamsterdam the leaf proof's limit is about 9.06M and the floor
+about 3.34 ETH. A slot whose estimate fails other than by a revert reserves
 15M, 3 ETH at that fee. Above the work-price cap an action's refund falls short
 of its cost, and a replaced transaction pays its whole max fee, so a long
 dispute during a fee spike draws the balance down: the per-tick error is the

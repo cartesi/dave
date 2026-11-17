@@ -359,19 +359,25 @@ pub type LaneRequest = (String, TransactionRequest);
 /// proof, is about 5.1M) and stays below the EIP-7825 transaction cap.
 const FALLBACK_GAS_LIMIT: u64 = 15_000_000;
 
-/// EIP-7825's per-transaction gas cap: a pool on a chain past Osaka admits
-/// nothing above it.
+/// EIP-7825's per-transaction gas cap. An Osaka pool admits nothing above
+/// it; under EIP-8037 (Glamsterdam) gas above it is valid but only funds a
+/// state-gas reservoir, which `gasleft()`, and so the refund meter, cannot
+/// see.
 const TX_GAS_CAP: u64 = 1 << 24;
 const _: () = assert!(FALLBACK_GAS_LIMIT <= TX_GAS_CAP);
 
 /// The least headroom over an estimate. It covers the pairing branch, the
 /// largest state move between an estimate and inclusion: a join or one of
 /// the three win paths that finds a rival's commitment dangling by
-/// inclusion stores a match and starts its clocks. The harness measured
-/// that move at up to 110,161 gas on every level's first match, 66% of the
-/// cheapest join's estimate, so half the estimate alone runs a join out of
-/// gas; this adds a third as margin.
-const MIN_HEADROOM: u64 = 150_000;
+/// inclusion stores a match and starts its clocks. A rival can front-run
+/// to arrange that, so this is sized for the worst case, not a typical one.
+/// Under EIP-8037 a join's move nets four new slots at 64 x 1530 = 97,920
+/// state gas each, and Sepolia measured it at 489,365 gas, 76% of the
+/// join's estimate, so half the estimate alone runs a join out of gas; this
+/// adds about a third as margin. Before Glamsterdam the harness measured
+/// 110,161. The slot part scales with the cost per state byte: should a
+/// later EIP re-derive the 1530, this floor holds up to about 2,100.
+const MIN_HEADROOM: u64 = 650_000;
 
 /// The gas limit for an estimate at latest: half the estimate again, at
 /// least [`MIN_HEADROOM`], for drift before inclusion (cold slots, a refund
@@ -379,8 +385,9 @@ const MIN_HEADROOM: u64 = 150_000;
 /// pool reserves the whole limit at the max fee against the balance.
 ///
 /// The limit stops at the EIP-7825 cap, which never lowers it below its
-/// estimate. An estimate above the cap keeps its headroom: no EIP-7825
-/// chain admits it anyway, and a chain without the cap needs it.
+/// estimate and keeps any EIP-8037 reservoir empty. An estimate above the
+/// cap keeps its headroom: an Osaka pool rejects it anyway, and a chain
+/// without the cap, or with a reservoir, needs it.
 pub(crate) fn gas_limit_for(estimate: u64) -> u64 {
     let padded = estimate.saturating_add((estimate / 2).max(MIN_HEADROOM));
     if estimate <= TX_GAS_CAP {
@@ -1189,16 +1196,26 @@ mod tests {
     fn gas_headroom_never_lifts_an_admissible_estimate_past_the_cap() {
         assert_eq!(gas_limit_for(21_000), 21_000 + MIN_HEADROOM);
         // Half the estimate takes over from the floor.
-        assert_eq!(gas_limit_for(300_000), 450_000);
-        assert_eq!(gas_limit_for(400_000), 600_000);
+        assert_eq!(gas_limit_for(1_300_000), 1_950_000);
+        assert_eq!(gas_limit_for(1_400_000), 2_100_000);
         // The maximum-input leaf proof of the 2026-10-02 calibration.
         assert_eq!(gas_limit_for(5_079_603), 7_619_404);
         assert_eq!(gas_limit_for(12_000_000), TX_GAS_CAP);
         assert_eq!(gas_limit_for(TX_GAS_CAP), TX_GAS_CAP);
-        // Above the cap nothing is admitted on an EIP-7825 chain; a chain
-        // without the cap keeps the headroom.
+        // Above the cap an Osaka pool admits nothing; a chain without the
+        // cap, or with an EIP-8037 reservoir, keeps the headroom.
         assert_eq!(gas_limit_for(20_000_000), 30_000_000);
         assert_eq!(gas_limit_for(u64::MAX), u64::MAX);
+    }
+
+    /// The pairing moves the floor is sized from, measured on Sepolia under
+    /// EIP-8037 (October 2026): each estimate alone, then the least gas that
+    /// lands once a rival's commitment dangles. The Prague anvil the
+    /// harness runs cannot reproduce them.
+    #[test]
+    fn gas_headroom_covers_the_glamsterdam_pairing_moves() {
+        assert!(gas_limit_for(640_116) >= 1_129_481); // join
+        assert!(gas_limit_for(265_853) >= 657_622); // timeout win
     }
 
     #[test]

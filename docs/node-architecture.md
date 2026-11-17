@@ -701,12 +701,16 @@ at Latest, obtains a fresh EIP-1559 fee estimate, and signs the batch at
 consecutive nonces from that base. It submits each raw transaction to the
 configured endpoint in order; a rejected submission does not discard the tail.
 It does not wait for a receipt. Each gas limit is the estimate at latest plus
-half again, at least 150,000: a join or win that finds a rival's commitment
-dangling at inclusion takes the pairing branch, which the harness measured at
-up to 110,161 gas over the estimate, 66% of the cheapest join's. The limit
-stops at the EIP-7825 cap when the estimate fits under it, so the padding
-never makes an admissible call inadmissible (a fork that lifts the cap leaves
-the clamp conservative, never harmful); estimation failing other than by a
+half again, at least 650,000: a join or win that finds a rival's commitment
+dangling at inclusion takes the pairing branch, which stores new slots, and a
+rival can front-run to force it. Under EIP-8037's state-gas pricing
+(Glamsterdam, live on Sepolia) a join's move measured 489,365 gas over its
+estimate, 76% of the estimate; before the fork the harness measured 110,161.
+A call estimated just before the fork activates may still run out of gas
+once; the next tick re-estimates at the new prices. The limit stops at the
+EIP-7825 cap when the estimate fits under it, so the padding never makes an
+admissible call inadmissible and never funds an EIP-8037 reservoir, whose
+state gas the refund meter cannot see; estimation failing other than by a
 revert falls back to 15M. A call that already reverts at latest is not sent:
 it costs nothing, and the lane warns with its revert reason: the custom error
 decoded against the consensus, tournament and step bindings by name, or the

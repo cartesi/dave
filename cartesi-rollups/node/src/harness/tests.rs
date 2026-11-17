@@ -650,9 +650,10 @@ async fn planned_join(adversary: &mut Adversary) -> Result<TransactionRequest> {
 /// largest state move an action meets between its estimate and inclusion,
 /// which the lane's headroom (`gas_limit_for`) must cover. Every level is
 /// measured, since an inner level's shorter proof makes its join cheaper
-/// and the move relatively larger; `--nocapture` prints the estimates
-/// behind the lane's MIN_HEADROOM. Two adversaries play it out; the node
-/// only rolls the epoch.
+/// and the move relatively larger; `--nocapture` prints the estimates.
+/// This anvil runs Prague, where the move is about 110k; MIN_HEADROOM is
+/// sized from the larger EIP-8037 move measured on Sepolia. Two adversaries
+/// play it out; the node only rolls the epoch.
 #[tokio::test]
 #[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
 async fn a_join_estimated_alone_still_lands_when_it_pairs() -> Result<()> {
