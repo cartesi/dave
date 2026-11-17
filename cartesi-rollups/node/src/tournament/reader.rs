@@ -219,10 +219,11 @@ async fn extend_tournament(
             .iter()
             .map(|tournament| tournament.address())
             .collect();
-        // A clone emits nothing before its creation, so a level created
-        // within this harvest is read from its earliest creation block. On a
-        // cold fold that starts at the root's creation, a child created
-        // weeks later would otherwise be read over the whole dispute.
+        // A clone emits nothing before its creation, which `observe` checks,
+        // so a level created within this harvest is read from its earliest
+        // creation block. On a cold fold that starts at the root's creation,
+        // a child created weeks later would otherwise be read over the whole
+        // dispute.
         let from = *addresses
             .iter()
             .map(|address| validation.created.get(address).unwrap_or(&phase.from))
@@ -304,7 +305,8 @@ struct HarvestValidation {
     block_hashes: HashMap<u64, B256>,
     positions: HashSet<LogPosition>,
     /// The block of each child's creation folded in this harvest: a clone
-    /// has no logs before it, so its stream starts there.
+    /// has no logs before it, so its stream starts there, and a log below
+    /// it fails the harvest.
     created: HashMap<Address, u64>,
 }
 
@@ -318,8 +320,8 @@ impl HarvestValidation {
         }
     }
 
-    /// Checks one log against the harvest. Its emitter is checked by the
-    /// caller, which knows the addresses it requested.
+    /// Checks one log against the harvest. Whether its emitter was requested
+    /// is checked by the caller, which knows the addresses it requested.
     fn observe(&mut self, log: &Log) -> Result<()> {
         let ReadPhase { from, head } = self.phase;
         let to = head.number;
@@ -331,6 +333,16 @@ impl HarvestValidation {
             from <= block && block <= to,
             "requested range [{from}, {to}] returned block {block}"
         );
+        // A level is read from its earliest creation, so a sibling created
+        // later is asked about blocks where it did not exist. One chain has
+        // no log of it there; a provider mixing forks can return one.
+        if let Some(&created) = self.created.get(&log.address()) {
+            ensure!(
+                created <= block,
+                "log at block {block} belongs to tournament {}, created at block {created}",
+                log.address()
+            );
+        }
         let block_hash = log
             .block_hash
             .ok_or_else(|| anyhow!("tournament log at block {block} has no block hash"))?;
@@ -1225,6 +1237,60 @@ mod tests {
                 .contains(&format!("address {root_address}, which was not requested")),
             "{error:#}"
         );
+        assert!(asserter.read_q().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_log_below_its_emitters_creation_block_is_rejected() {
+        let root = address(1);
+        let children = [address(2), address(3)];
+        let id = |byte| MatchID {
+            commitment_one: digest(byte),
+            commitment_two: digest(byte + 1),
+        };
+        let pairing = |at: ChainHead, id: MatchID| {
+            vec![
+                join_log(root, at, 0, id.commitment_one),
+                join_log(root, at, 1, id.commitment_two),
+                match_created_log(root, at, 2, id, 90),
+            ]
+        };
+        let (chain, asserter, requests) = recording_chain();
+        asserter.push_success(
+            &[
+                pairing(head(10, 0x10), id(10)),
+                pairing(head(11, 0x11), id(20)),
+                vec![
+                    new_inner_log(root, head(20, 0x20), 0, id(10), children[0]),
+                    new_inner_log(root, head(25, 0x25), 0, id(20), children[1]),
+                ],
+            ]
+            .concat(),
+        );
+        // The level is read from block 20, where the later child is not
+        // created yet: only another fork has a log of it there.
+        asserter.push_success(&vec![join_log(children[1], head(22, 0x22), 0, digest(30))]);
+
+        let phase = ReadPhase {
+            from: 10,
+            head: head(30, 0x30),
+        };
+        let mut validation = HarvestValidation::new(phase);
+        let error = extend_tournament(
+            &chain,
+            Tournament::new(descriptor(root, 0, TournamentKind::NonLeaf)),
+            &mut validation,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.to_string().contains(&format!(
+                "log at block 22 belongs to tournament {}, created at block 25",
+                children[1]
+            )),
+            "{error:#}"
+        );
+        assert_eq!(log_requests(&requests), [(10, 30, 1), (20, 30, 2)]);
         assert!(asserter.read_q().is_empty());
     }
 

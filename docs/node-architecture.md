@@ -565,8 +565,9 @@ The deadline-sensitive tournament reader holds one recursive, event-derived
 `Dispute` through finalized `F`, in memory only. Each tick extends every
 tournament's local event stream through `F`, one level of the tree at a time:
 the tournaments of a level share one multi-address `eth_getLogs` per 100
-addresses, a log from an address the level did not request fails the tick,
-and each tournament applies the events it emitted one at a time in log order.
+addresses, a log from an address the level did not request, or from a block
+before its emitter's creation in the same harvest, fails the tick, and each
+tournament applies the events it emitted one at a time in log order.
 Only then does the tick replace the Solid value. The fold does not
 re-prove what the contracts guarantee, so it cannot stall on a sequence they
 can emit: it rejects only an event it cannot apply without guessing (an
