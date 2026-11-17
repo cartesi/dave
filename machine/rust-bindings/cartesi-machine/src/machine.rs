@@ -962,28 +962,6 @@ impl Machine {
 
         Ok(obtained_root_hash)
     }
-
-    // ------------------------------------
-    // Integrity checking
-    // ------------------------------------
-
-    // TODO (docs/todo.md, Decisions): staged for the seed image's check.
-    // v0.23 documents cm_verify_hash_tree as a test and debugging aid that
-    // checks page hashes and dirty tracking, not inner nodes or the root; a
-    // tree to trust is rebuilt with the runtime's `clear_hash_tree`.
-    //
-    // /// Checks the hash tree against the current machine state: false when
-    // /// a stored tree disagrees with the contents it covers.
-    // pub fn verify_hash_tree(&mut self) -> Result<bool> {
-    //     let mut result = false;
-    //     // SAFETY: `self.machine` is the live machine `self` owns, and
-    //     // `result` is a writable bool that outlives the call.
-    //     let err_code =
-    //         unsafe { cartesi_machine_sys::cm_verify_hash_tree(self.machine, &mut result) };
-    //     check_err!(err_code)?;
-    //
-    //     Ok(result)
-    // }
 }
 
 /// The C API takes CMIO response lengths as `uint32_t`. A longer payload is
@@ -1483,18 +1461,6 @@ mod tests {
 
         Ok(())
     }
-
-    // TODO: uncomment with `verify_hash_tree` above (docs/todo.md).
-    //
-    // #[test]
-    // fn test_verify_hash_tree_accepts_a_consistent_machine() -> Result<()> {
-    //     let mut config = Machine::default_config()?;
-    //     config.ram.length = 4096;
-    //     let mut machine = create_machine(&config)?;
-    //     assert!(machine.verify_hash_tree()?);
-    //
-    //     Ok(())
-    // }
 
     /// A clone opened shared advances on disk and is a stored machine again
     /// once closed, before any sync: with the hash sidecars exact when

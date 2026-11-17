@@ -170,12 +170,3 @@ carry no backlog (reviews/README.md).
   (plans/audit-readiness.md).
 - Open: a `--version` flag; the startup line, which names the release tag,
   stands in for it. (node README, operator notes)
-- Open: rebuild a seed image's hash tree at first start. The node takes the
-  image's root from its stored hash tree, and v0.23's `cm_verify_hash_tree`
-  checks page hashes and dirty tracking, not inner nodes or the root, so
-  the check staged in `Template::inspect` cannot authenticate an image;
-  loading with `clear_hash_tree` rebuilds the tree from the contents (about
-  0.1 s for the inspection and 0.3 s for the seeded clone on the test
-  images). Either way the staged binding, check and test go, and with a
-  rebuild so do the notes that say to trust a seed image's source.
-  (node-architecture.md, startup)
