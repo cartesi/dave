@@ -240,7 +240,7 @@ The state-transition suites separate cheap routing evidence from semantic
 oracles. Solidity-only tests exercise input and ordinary-step dispatch across
 the full 24-bit input, 48-bit mcycle, and 20-bit ucycle fields. Structured FFI
 fuzzing adds canonical closing proofs and all four transition shapes, generated
-with the v0.22 emulator and replayed through `CartesiStateTransition`.
+with the v0.23 emulator and replayed through `CartesiStateTransition`.
 
 The deterministic FFI matrix pins boundary-adjacent counters at the first and
 last uarch spans, input-window transitions, and the epoch tail. A tiny RV64
@@ -289,7 +289,7 @@ position-zero divergence on the plain-step branch, a child's last position,
 and a rejected-input closing, on both leaf heights and both orientations,
 asserting the counter by exact calldata and the branch by the provider call.
 
-This is bounded cross-implementation evidence for the v0.22 adapter. It is not
+This is bounded cross-implementation evidence for the v0.23 adapter. It is not
 an exhaustive enumeration of every RV64 instruction, access-log shape, proof
 byte, or gas envelope; those lower-level instruction and log semantics remain
 owned by `machine/step` and the emulator.

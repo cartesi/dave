@@ -52,10 +52,10 @@ other image is refused with exit 30, naming `snapshots/0x<hash>`, where every
 node working on epoch k keeps the state to take; a state settled after the
 sampled head is refused until its settlement finalizes, since the
 finalized-only reader could not execute its epoch anyway. The root hash comes
-from the image's stored hash tree, which the node cannot check against the
-contents until an emulator release supports hash-tree verification (todo.md
-tracks it), so until then a seed image is trusted like the template: take it
-from a store you trust. A matching image paused elsewhere is still refused:
+from the image's stored hash tree, which the node does not check against the
+contents (emulator v0.23 can rebuild the tree on a load; todo.md, Decisions),
+so a seed image is trusted like the template: take it from a store you
+trust. A matching image paused elsewhere is still refused:
 the engine starts every epoch from a state awaiting input, so the node could
 not defend any of its epochs (for a settled state this cannot happen, since
 staging requires the same yield). Only then does it take the data-directory
@@ -321,16 +321,18 @@ boundary, which every later action of that dispute resumes from.
 
 Every input, accepted or rejected, pays a fixed overhead on top of the
 application's work: the close, clone and `SHARING_ALL` reload of the
-rotation, about 140-200 ms per input measured on macOS
-(measurements/measurements.md). Nearly all of it is the reload reading the
-clone's 50 MB page hash-tree cache (`hash_tree.phtc`): the emulator walks it
-one dependent page at a time, and a fresh clone is a new inode with nothing
-in the page cache, so a warm reload of the same directory takes about 2 ms
-whatever the sharing mode. The next emulator release fixes the cold read
-(about 2.5 ms per input in a preliminary implementation; todo.md, Upstream).
-On v0.22.0 the overhead caps the runner near a handful of inputs per second
-whatever the application does, and a crossing costs it once per crossed input. That is
-why the gap stays a fixed input count. A policy that keeps a bounded number
+rotation, and the removal of the clone it retires. On emulator v0.23 the
+echo image's whole time per input is about 25 ms accepted and 22 ms
+rejected on macOS (measurements/measurements.md): about 15 ms of rotation
+(close 5, clone 3, reload 3, removal 3), and most of the rest the input's
+first touch of its pages, since a fresh clone is a new inode with nothing in
+the page cache (a warm input runs in about 2 ms). On v0.22.0 the reload
+alone took about 130 ms: it walked the clone's 50 MB page hash-tree cache
+(`hash_tree.phtc`) one dependent page at a time, a layout v0.23 changed.
+The overhead still caps the runner, near 40 inputs per second there
+whatever the application does, and a crossing costs it once per crossed
+input. That is why the gap stays a fixed input count. A policy that keeps a
+bounded number
 of boundaries and widens their spacing as the epoch grows (the emulator's
 prt recipe keeps eight) spaces them about n/K inputs apart for an n the
 adversary chooses, so a crossing's overhead grows with the input count even
