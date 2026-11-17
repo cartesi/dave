@@ -155,10 +155,11 @@ template can break the assumption, and the template is the trusted app
 developer's (docs/dimensioning.md). Dave relies on it twice: the big
 machine runs whole cycles without touching the uarch, and one captured idle
 span stands for every later one. The CLI and the Lua client rely on it too.
-A template with custom uarch code is outside the model: on the release
-corpus case `uarch-near-limit-tail`, Solidity and Dave give different roots,
-and the CLI refuses the epoch. The node refuses such a template at startup, before
-it touches the data directory: a template is a big-cycle boundary, so the
+A template with custom uarch code is outside the model: on such a case of
+the v0.22 release corpus, `uarch-near-limit-tail`, Solidity and Dave gave
+different roots, and since v0.23 the emulator's uarch collector and its CLI
+refuse a uarch that is not pristine. The node refuses such a template at
+startup, before it touches the data directory: a template is a big-cycle boundary, so the
 hash of its uarch state's node must be the linked emulator's pristine uarch
 hash (T == H above). Startup also requires the deployed step's
 `UARCH_PRISTINE_STATE_HASH` to be that hash (S == H), so the template
@@ -322,7 +323,10 @@ included, is stepped through
 permanently as the collector's test reference. Bulk collection cannot take an
 input delivered at mcycle 2^64 - 1, whose saturated budget leaves no cycle to
 collect: a template preset there, or centuries of machine time. It is out of
-model, and the node stops with an assert where stepping would proceed. Memory is one
+model, and the node stops with an assert where stepping would proceed. The
+v0.23 release corpus carries the case (`uarch-budget-seam-accept-input-1`):
+the release gate pins the assert and compares the stepped build with the
+released answer. Memory is one
 collection call's roots, one span's roots and the 256 span roots, and an idle
 stretch costs one captured big cycle per stratum span it covers (at most 256
 per build) however long it is.
@@ -382,20 +386,22 @@ proving the transition through Solidity, and a golden is regenerated only
 after its differential passes.
 
 Since v0.22 the collector and the CLI follow the step at both input-budget
-seams, an oversized input is a no-op on both sides, and the CLI refuses
-`uarch-near-limit-tail`. Where the release CLI still disagrees with the step,
-the step wins and the case is a named exclusion rather than a reference
-answer, until a tagged release carries the fix (todo.md, Upstream):
+seams, and an oversized input is a no-op on both sides. Since v0.23 they
+refuse a uarch that is not pristine, a uarch that halts on the step reaching
+`UARCH_CYCLE_MAX` reports the halt (the step changed with them), and the
+release corpus carries both seams with a later input, which the node's
+builds match. Where the release CLI still disagrees with the step, the step
+wins and the case is a named exclusion rather than a reference answer, until
+a tagged release carries the fix (todo.md, Upstream):
 
-- A uarch cycle overflow, or a uarch halting at `UARCH_CYCLE_MAX`, throws
-  where the step defines an identity step.
+- A uarch cycle overflow with the halt flag clear throws where the step
+  defines an identity step.
 - Lead, unverified: a template preset halted with an RX_ACCEPTED yield
   pending ends the CLI's epoch at the halt, where the step delivers the
   input.
 
-The release corpus carries no seam case with later inputs, so the node's
-seam behavior rests on its own seam tests and their Solidity replay
-(`NodeWitnessesTest`).
+The node's own seam tests and their Solidity replay (`NodeWitnessesTest`)
+stay as the evidence that does not pass through the emulator's collectors.
 
 One emulator trait shapes Dave's leaf builds without changing any value: its
 hash tree goes parallel by core count rather than by work, so per-step leaf

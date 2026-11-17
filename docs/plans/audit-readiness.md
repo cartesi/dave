@@ -17,7 +17,7 @@ at the commit that added this file; re-check them.
   `BaseDeploymentScript.sol`; `cartesi-rollups/contracts/script/`
   `Deployment.s.sol`, `deploy.sh`, `deploy-mainnets.sh`, `deploy-testnets.sh`
   and `deploy-experimental.sh`.
-- `machine/step` (the generated Solidity uarch, solidity-step v0.16): in
+- `machine/step` (the generated Solidity uarch, solidity-step v0.17): in
   scope, or trusted as upstream with `CartesiStateTransition` as the seam
   (an open question).
 
@@ -133,7 +133,7 @@ before the freeze.
    name but silently imports stale extra names, so deploy from a clean
    checkout.
 5. `CM_MARCHID`. `CartesiStateTransition` imports it from solidity-step
-   (v0.16), as it does `UARCH_PRISTINE_STATE_HASH`, and a node unit test
+   (v0.17), as it does `UARCH_PRISTINE_STATE_HASH`, and a node unit test
    holds both to the linked emulator's. A new node refuses a deployment whose
    values differ from its library's. One case would still start silently (a
    lead): a step change that keeps both values while changing other
@@ -182,8 +182,8 @@ against the released one:
   fingerprints only `Tournament` and `MultiLevelTournamentFactory`: wire
   ABI, storage layout, and creation and runtime bytecode with and without
   metadata. Extend it to `CanonicalTournamentParametersProvider` (the
-  canonical switch changed it), `CartesiStateTransition` (the v0.22
-  step bump changed it, and upstream PR #390 will), `DaveConsensus` and
+  canonical switch changed it), `CartesiStateTransition` (the v0.22 and
+  v0.23 step bumps changed it, and upstream PR #390 will), `DaveConsensus` and
   `DaveAppFactory`.
 - Record its output and a clean `just measure-prt-gas` at the audit commit
   and again at the release commit. Equal metadata-free fingerprints show

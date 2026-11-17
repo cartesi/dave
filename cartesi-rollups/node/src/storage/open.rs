@@ -119,12 +119,13 @@ impl Template {
             .with_context(|| format!("failed to load template `{}`", path.display()))?;
         // The root hash comes from the image's stored hash tree, which a load
         // does not check against pages marked clean.
-        // TODO: uncomment after the emulator release that supports
-        // cm_verify_hash_tree (docs/todo.md), with the binding it calls
-        // (cartesi-machine's machine.rs), un-ignore its test below, and then
-        // drop the notes that say to trust the seed image's source (the node
-        // README's operator notes and docs/node-architecture.md's startup
-        // section).
+        // TODO (docs/todo.md, Decisions): the check staged below cannot
+        // authenticate an image, since v0.23's cm_verify_hash_tree checks
+        // page hashes and dirty tracking, not inner nodes or the root; a
+        // load with `clear_hash_tree` rebuilds the tree instead. Until that
+        // is decided, the notes that say to trust the seed image's source
+        // stand (the node README's operator notes and
+        // docs/node-architecture.md's startup section).
         // ensure!(
         //     machine.verify_hash_tree()?,
         //     Fatal::terminal(format!(
@@ -621,8 +622,8 @@ mod tests {
     /// A load takes the root hash from the stored tree on pages marked clean,
     /// so contents edited behind a clean tree keep the old root.
     #[test]
-    #[ignore = "enable with the commented-out cm_verify_hash_tree check in Template::inspect, \
-                after the emulator release that supports it (docs/todo.md)"]
+    #[ignore = "waits on the seed image's hash-tree check in Template::inspect \
+                (docs/todo.md, Decisions)"]
     fn template_inspection_refuses_a_stale_hash_tree() {
         use std::os::unix::fs::FileExt;
         let dir = tempfile::tempdir().unwrap();
