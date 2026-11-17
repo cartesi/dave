@@ -7,6 +7,7 @@ pub mod config;
 pub mod constants;
 pub mod error;
 pub mod machine;
+pub mod stored;
 pub mod types;
 
 pub use machine::Machine;
