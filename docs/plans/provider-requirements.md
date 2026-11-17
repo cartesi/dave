@@ -107,3 +107,14 @@ addresses per request). Then come the tick's ordering and the read
 concurrency. Failure isolation and more retries come last: dispute
 planning's reads still fail together under a per-second cap, but that is worth
 machinery only once measured.
+
+Considered and left out: splitting a filter's address list when a one-block
+read fails. A block's tournament logs are bounded by its gas, and one
+tournament can spend the whole block, so the bound is the same for one address
+as for a hundred. An advance costs 86,000 to 106,000 gas in the gas witnesses
+(`TournamentGas.t.sol`) and emits two logs, which puts a 60M-gas block on the
+order of a thousand tournament logs (a lead: cheaper shapes are not measured).
+A level's read therefore asks no more of a provider on one block than one
+tournament's read did, and a provider that fails the one would fail the other
+at the same density. What reopens this is a mainstream provider that refuses a
+100-address filter.
