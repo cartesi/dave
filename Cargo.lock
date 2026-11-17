@@ -1724,6 +1724,7 @@ dependencies = [
  "cartesi-machine-sys",
  "derive_builder",
  "hex",
+ "log",
  "serde",
  "serde_json",
  "tempfile",
