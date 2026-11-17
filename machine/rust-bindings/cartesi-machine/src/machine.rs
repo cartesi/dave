@@ -13,7 +13,7 @@ use crate::{
     error::{MachineError, MachineResult as Result},
     stored::Volatile,
     types::{
-        BreakReason, Hash, LogType, Register, RemoveMode, SharingMode, UArchBreakReason,
+        BreakReason, Hash, LogType, Register, RemoveMode, UArchBreakReason,
         access_proof::AccessLog,
         cmio::{CmioRequest, CmioResponseReason},
         collect::{McycleRootHashes, PartialBundle, UarchCycleRootHashes},
@@ -187,7 +187,7 @@ impl Machine {
     /// every backing file mapped privately. Mutations stay in memory and are
     /// discarded when the machine is destroyed.
     pub fn load(dir: &Path, runtime_config: &RuntimeConfig) -> Result<Self> {
-        Self::load_with_sharing(dir, runtime_config, SharingMode::None)
+        Self::load_with_sharing(dir, runtime_config, cartesi_machine_sys::CM_SHARING_NONE)
     }
 
     /// [`Volatile::open`]: loads with every file mapped shared, so the
@@ -200,16 +200,16 @@ impl Machine {
     pub(crate) fn open_shared(home: Volatile, runtime_config: &RuntimeConfig) -> Result<Self> {
         use crate::stored::Stored;
         // A failed load drops `home`, discarding the directory.
-        let mut machine = Self::load_with_sharing(home.path(), runtime_config, SharingMode::All)?;
+        let sharing = cartesi_machine_sys::CM_SHARING_ALL;
+        let mut machine = Self::load_with_sharing(home.path(), runtime_config, sharing)?;
         machine.home = Some(home);
         Ok(machine)
     }
 
-    /// Loads a stored machine with an explicit sharing mode.
-    pub fn load_with_sharing(
+    fn load_with_sharing(
         dir: &Path,
         runtime_config: &RuntimeConfig,
-        sharing: SharingMode,
+        sharing: cartesi_machine_sys::cm_sharing_mode,
     ) -> Result<Self> {
         let dir_cstr = path_to_cstring(dir)?;
         let runtime_config_json = serialize_to_json!(&runtime_config);
@@ -219,7 +219,7 @@ impl Machine {
             cartesi_machine_sys::cm_load_new(
                 dir_cstr.as_ptr(),
                 runtime_config_json.as_ptr(),
-                sharing.into(),
+                sharing,
                 &mut machine,
             )
         };
@@ -251,10 +251,9 @@ impl Machine {
     /// about 65k on ext4 and btrfs) also falls back to a copy, which starts
     /// its own link count. A filesystem that has reflinks and refuses one
     /// (EPERM) fails the clone instead: copying every clone could fill the
-    /// disk. Refuses an existing destination. Fails while the
-    /// source is loaded with [`SharingMode::All`] (the load holds the
-    /// lock); drop that machine first. An interrupted clone leaves a
-    /// directory to discard, even if it loads.
+    /// disk. Refuses an existing destination. Fails while a machine
+    /// maps the source shared (it holds the lock). An interrupted clone
+    /// leaves a directory to discard, even if it loads.
     pub fn clone_stored(from_dir: &Path, to_dir: &Path) -> Result<()> {
         let from_cstr = path_to_cstring(from_dir)?;
         let to_cstr = path_to_cstring(to_dir)?;

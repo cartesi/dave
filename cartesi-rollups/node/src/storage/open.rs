@@ -18,6 +18,7 @@ use cartesi_machine::{
         runtime::RuntimeConfig,
     },
     machine::Machine,
+    stored::Durable,
     types::Hash,
 };
 use rusqlite::{Connection, OpenFlags, Transaction, TransactionBehavior};
@@ -200,8 +201,8 @@ impl Template {
     }
 }
 
-/// The files of a stored machine that a `SharingMode::All` load (every
-/// runner batch) opens for writing: each range's data and dirty-tree files
+/// The files of a stored machine that a shared open (every runner
+/// batch) maps for writing: each range's data and dirty-tree files
 /// and the hash tree's, except the data of ranges the host maps read-only
 /// (the PMAs and read-only drives), which the emulator itself stores
 /// read-only. The ranges are those the emulator's `machine::clone_stored`
@@ -343,7 +344,7 @@ impl Storage {
         // sparse copy inside the clone. A crash before the clone is
         // published leaves staging, which the next start sweeps; one after
         // it orphans the directory, which the next seed adopts.
-        let working = self.checkout(image.path())?;
+        let working = self.checkout(&Durable::at(image.path()))?;
         self.commit_clone(working, image.hash())?;
 
         self.write(|tx| {
@@ -629,22 +630,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let template = dir.path().join("template");
         store_template(&template, |_| {});
-        // A shared load whose root hash is taken leaves the stored tree
+        // A shared open whose root hash is taken leaves the stored tree
         // exact and every page clean.
         let ram = {
-            let mut machine = Machine::load_with_sharing(
-                &template,
-                &RuntimeConfig::quiet_console(),
-                cartesi_machine::types::SharingMode::All,
-            )
-            .unwrap();
+            let mut machine = cartesi_machine::stored::Volatile::adopt(&template)
+                .open(&RuntimeConfig::quiet_console())
+                .unwrap();
             machine.root_hash().unwrap();
-            machine
+            let ram = machine
                 .initial_config()
                 .unwrap()
                 .ram
                 .backing_store
-                .data_filename
+                .data_filename;
+            let _ = machine.close().unwrap().unwrap().keep();
+            ram
         };
         let file = fs::OpenOptions::new()
             .read(true)

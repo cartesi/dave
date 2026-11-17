@@ -24,9 +24,10 @@ use super::{Input, Settlement, Storage, rollups_machine};
 use crate::engine::Run;
 
 use crate::merkle::Digest;
+use cartesi_machine::stored::{Durable, Stored, Volatile};
 use cartesi_machine::types::Hash;
 use rusqlite::{OptionalExtension, Transaction, params};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// One coherent view of runner readiness. The durable cursor, input
 /// count, seal, and up to one gap of payloads all come from the same
@@ -44,15 +45,28 @@ pub(crate) struct AdvancePlan {
     pub(crate) boundary_hash: Hash,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CheckpointOwnership {
-    Durable,
-    Transient,
+/// The closed state an input reverts to: the batch's durable base, or
+/// the volatile clone the last accepted input left, which goes with the
+/// batch unless it is published.
+#[derive(Debug)]
+enum Checkpoint {
+    Durable(Durable),
+    Transient(Volatile),
+}
+
+impl Stored for Checkpoint {
+    fn path(&self) -> &Path {
+        match self {
+            Self::Durable(stored) => stored.path(),
+            Self::Transient(stored) => stored.path(),
+        }
+    }
 }
 
 /// One publication batch, accumulated in memory and committed
 /// atomically. Dropping it abandons only transient files; the
-/// database never sees a partial batch.
+/// database never sees a partial batch. The working clone is not here:
+/// the machine that mutates it owns it.
 #[derive(Debug)]
 pub struct AdvanceBatch {
     epoch: u64,
@@ -61,38 +75,10 @@ pub struct AdvanceBatch {
     /// inputs rotate it to a transient closed checkpoint.
     boundary_input: u64,
     boundary_hash: Hash,
-    boundary_path: PathBuf,
-    boundary_ownership: CheckpointOwnership,
-    /// The unique SHARING_ALL clone the machine mutates in place.
-    working: PathBuf,
+    checkpoint: Checkpoint,
     /// The pinned root stride the runner samples each window at.
     log2_run_stride: u64,
     records: Vec<AdvanceRecord>,
-}
-
-impl Drop for AdvanceBatch {
-    /// A successfully published checkpoint has its ownership cleared
-    /// before the database transaction, so a failed transaction
-    /// leaves the durable CAS artifact for retry.
-    fn drop(&mut self) {
-        if self.working.exists()
-            && let Err(e) = std::fs::remove_dir_all(&self.working)
-        {
-            log::warn!(
-                "working clone `{}` not removed: {e}",
-                self.working.display()
-            );
-        }
-        if self.boundary_ownership == CheckpointOwnership::Transient
-            && self.boundary_path.exists()
-            && let Err(e) = std::fs::remove_dir_all(&self.boundary_path)
-        {
-            log::warn!(
-                "transient checkpoint `{}` not removed: {e}",
-                self.boundary_path.display()
-            );
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -133,7 +119,7 @@ impl AdvanceBatch {
     /// The closed checkpoint the advance stf reloads on rejection.
     /// It may be transient inside the batch.
     pub fn boundary_path(&self) -> &Path {
-        &self.boundary_path
+        self.checkpoint.path()
     }
 }
 
@@ -295,10 +281,9 @@ impl Storage {
     ) -> Result<(RollupsMachine, AdvanceBatch)> {
         let path = snapshot_path(&self.state_dir, &hash);
         super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
-        // Read before the checkout: nothing fallible may sit between the
-        // clone and its cleanup guard.
         let log2_run_stride = self.sling_config()?.geometry.root_stride();
-        let working = match self.checkout(&path) {
+        let base = Durable::at(&path);
+        let working = match self.checkout(&base) {
             Ok(working) => working,
             Err(error) => {
                 // Promote a source that disappeared during checkout
@@ -307,20 +292,17 @@ impl Storage {
                 return Err(error.into());
             }
         };
-        // Construct the cleanup guard before loading. On a load or
-        // root-verification failure, the machine drops before the
-        // batch removes its working clone.
         let batch = AdvanceBatch {
             epoch,
             boundary_input: input,
             boundary_hash: hash,
-            boundary_path: path.clone(),
-            boundary_ownership: CheckpointOwnership::Durable,
-            working,
+            checkpoint: Checkpoint::Durable(base),
             log2_run_stride,
             records: Vec::new(),
         };
-        let mut machine = match RollupsMachine::load_shared(&batch.working, epoch, input) {
+        // The machine owns its working clone: a failed load, or a failed
+        // root verification below, removes it.
+        let mut machine = match RollupsMachine::load_shared(working, epoch, input) {
             Ok(machine) => machine,
             Err(error) => {
                 super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
@@ -381,29 +363,18 @@ impl Storage {
             batch.boundary_input,
             "records must be contiguous"
         );
-        machine.close();
-
-        let checkpoint = batch.working.clone();
+        let checkpoint = machine
+            .close()
+            .map_err(anyhow::Error::from)?
+            .expect("an accepted input leaves the machine open on its working clone");
         let next_working = self.checkout(&checkpoint)?;
-        if let Err(error) = machine.reopen_shared(&next_working) {
-            let _ = self.discard_clone(&next_working);
-            return Err(anyhow::Error::from(error).into());
-        }
+        machine
+            .reopen_shared(next_working)
+            .map_err(anyhow::Error::from)?;
 
-        let old_checkpoint = batch.boundary_path.clone();
-        let old_ownership = batch.boundary_ownership;
-        batch.working = next_working;
-        batch.boundary_path = checkpoint;
-        batch.boundary_ownership = CheckpointOwnership::Transient;
-        if old_ownership == CheckpointOwnership::Transient
-            && let Err(error) = self.discard_clone(&old_checkpoint)
-        {
-            log::warn!(
-                "superseded transient checkpoint `{}` not removed: {error}",
-                old_checkpoint.display()
-            );
-        }
-
+        // The checkpoint this one supersedes goes with its handle, if it
+        // was transient.
+        batch.checkpoint = Checkpoint::Transient(checkpoint);
         batch.boundary_input = next_input;
         batch.boundary_hash = hash;
         Ok(())
@@ -454,32 +425,30 @@ impl Storage {
             batch.boundary_input,
             "records must be contiguous"
         );
-        machine.close();
-        self.discard_clone(&batch.working)?;
-        let next_working = self.checkout(&batch.boundary_path)?;
-        if let Err(error) = machine.reopen_shared(&next_working) {
-            let _ = self.discard_clone(&next_working);
-            return Err(anyhow::Error::from(error).into());
-        }
-        batch.working = next_working;
+        // Whatever clone the machine still holds is the poisoned one.
+        drop(machine.close().map_err(anyhow::Error::from)?);
+        let next_working = self.checkout(&batch.checkpoint)?;
+        machine
+            .reopen_shared(next_working)
+            .map_err(anyhow::Error::from)?;
         batch.boundary_input = next_input;
         Ok(())
     }
 
     /// Durably publishes only the batch's final boundary, then commits
-    /// that one row and every window root in one transaction.
-    /// Clearing transient ownership immediately after CAS publication
-    /// preserves the artifact across a database failure for retry.
+    /// that one row and every window root in one transaction. A
+    /// published checkpoint is no longer the batch's, so a database
+    /// failure leaves the CAS artifact for retry.
     ///
     /// A recorded window lies entirely left of the input frontier, so
     /// its level-0 subtree root is final: one ordinary cache row per
     /// input, absorbed identically on crash replay like every other
     /// row here.
-    pub fn commit_advances(&mut self, mut batch: AdvanceBatch) -> Result<()> {
+    pub fn commit_advances(&mut self, batch: AdvanceBatch) -> Result<()> {
         if batch.records.is_empty() {
             return Ok(());
         }
-        self.publish_checkpoint(&mut batch)?;
+        self.publish_checkpoint(batch.checkpoint, &batch.boundary_hash)?;
 
         let window_roots: Vec<_> = batch
             .records
@@ -502,14 +471,11 @@ impl Storage {
         })
     }
 
-    /// Durably publishes a transient checkpoint, after which the batch no
-    /// longer owns it: a failed database write leaves the CAS artifact
-    /// for retry.
-    fn publish_checkpoint(&self, batch: &mut AdvanceBatch) -> Result<()> {
-        if batch.boundary_ownership == CheckpointOwnership::Transient {
-            let dest = self.commit_clone(batch.boundary_path.clone(), &batch.boundary_hash)?;
-            batch.boundary_path = dest;
-            batch.boundary_ownership = CheckpointOwnership::Durable;
+    /// Durably publishes a transient checkpoint; a durable one already
+    /// is.
+    fn publish_checkpoint(&self, checkpoint: Checkpoint, hash: &Hash) -> Result<()> {
+        if let Checkpoint::Transient(staged) = checkpoint {
+            self.commit_clone(staged, hash)?;
         }
         Ok(())
     }
@@ -530,9 +496,9 @@ impl Storage {
     /// Publishes and registers a crossing's final boundary, the only one
     /// later dispute actions resume from. No window roots: the epoch is
     /// settled, and its rows are the dispute's.
-    pub(crate) fn publish_crossing(&mut self, mut batch: AdvanceBatch) -> Result<()> {
+    pub(crate) fn publish_crossing(&mut self, batch: AdvanceBatch) -> Result<()> {
         assert!(batch.records.is_empty(), "a crossing records no windows");
-        self.publish_checkpoint(&mut batch)?;
+        self.publish_checkpoint(batch.checkpoint, &batch.boundary_hash)?;
         self.insert_boundary(batch.epoch, batch.boundary_input, &batch.boundary_hash)
     }
 
@@ -1026,15 +992,15 @@ mod tests {
         machine.increment_input();
         s.record_accepted(&mut batch, &mut machine, &flat_window(accepted_0))
             .unwrap();
-        let first_checkpoint = batch.boundary_path.clone();
-        assert_eq!(batch.boundary_ownership, CheckpointOwnership::Transient);
+        let first_checkpoint = batch.boundary_path().to_path_buf();
+        assert!(matches!(batch.checkpoint, Checkpoint::Transient(_)));
 
         let _poisoned = mutate(&mut machine, 1, 0xEE);
         machine.increment_input();
         s.record_reverted(&mut batch, &mut machine, &flat_window(accepted_0))
             .unwrap();
         assert_eq!(Digest::new(machine.state_hash().unwrap()), accepted_0);
-        assert_eq!(batch.boundary_path, first_checkpoint);
+        assert_eq!(batch.boundary_path(), first_checkpoint);
 
         let accepted_2 = mutate(&mut machine, 2, 0x22);
         machine.increment_input();
@@ -1165,8 +1131,8 @@ mod tests {
             )
             .unwrap();
         }
-        assert_eq!(batch.boundary_ownership, CheckpointOwnership::Durable);
-        assert_eq!(batch.boundary_path, start_path);
+        assert!(matches!(batch.checkpoint, Checkpoint::Durable(_)));
+        assert_eq!(batch.boundary_path(), start_path);
 
         drop(machine);
         s.commit_advances(batch).unwrap();
