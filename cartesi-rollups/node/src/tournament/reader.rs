@@ -1,7 +1,7 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! A fused recursive reader for the event-derived dispute tree.
+//! A fused reader for the event-derived dispute tree, one level per read.
 //!
 //! Finalized state is an in-memory prefix, extended before Latest is sampled.
 //! Latest is then rebuilt from a clone of that prefix and discarded by the
@@ -17,7 +17,6 @@ use alloy::{
     sol_types::SolEvent,
 };
 use anyhow::{Context, Result, anyhow, bail, ensure};
-use async_recursion::async_recursion;
 use cartesi_prt_contracts::tournament as bindings;
 
 use crate::{
@@ -202,45 +201,77 @@ struct ReadPhase {
     head: ChainHead,
 }
 
-#[async_recursion]
+/// Extends the tree one level at a time: the tournaments at one depth share
+/// one multi-address read, and each then folds the logs it emitted.
 async fn extend_tournament(
     chain: &Chain,
-    tournament: Tournament,
+    mut root: Tournament,
     validation: &mut HarvestValidation,
 ) -> Result<Tournament> {
     let phase = validation.phase;
     if phase.from > phase.head.number {
-        return Ok(tournament);
+        return Ok(root);
     }
 
-    let address = tournament.address();
-    // On a cold fold that starts at the root's creation, a child created
-    // weeks later would otherwise be read over the whole dispute.
-    let from = validation
-        .created
-        .get(&address)
-        .map_or(phase.from, |&created| created.max(phase.from));
-    let logs = chain.raw_logs(address, from, phase.head.number).await?;
-    let mut tournament = fold_local_logs(tournament, logs, validation)?;
+    let mut level = vec![&mut root];
+    while !level.is_empty() {
+        let addresses: Vec<Address> = level
+            .iter()
+            .map(|tournament| tournament.address())
+            .collect();
+        // A clone emits nothing before its creation, so a level created
+        // within this harvest is read from its earliest creation block. On a
+        // cold fold that starts at the root's creation, a child created
+        // weeks later would otherwise be read over the whole dispute.
+        let from = *addresses
+            .iter()
+            .map(|address| validation.created.get(address).unwrap_or(&phase.from))
+            .min()
+            .expect("the level is not empty");
 
-    // A child resolved within the range was dropped with its match, so its
-    // stream is never fetched.
-    for (match_id_hash, child) in tournament.take_children() {
-        let child = extend_tournament(chain, *child, validation).await?;
-        drop(tournament.restore_child(match_id_hash, Box::new(child)));
+        // Grouping is the address check: a log is kept only under the
+        // requested address that emitted it.
+        let mut emitted: HashMap<Address, Vec<Log>> = addresses
+            .iter()
+            .map(|&address| (address, Vec::new()))
+            .collect();
+        for log in chain
+            .raw_logs_from_any(&addresses, from, phase.head.number)
+            .await?
+        {
+            validation.observe(&log)?;
+            let Some(logs) = emitted.get_mut(&log.address()) else {
+                bail!(
+                    "ranged log belongs to address {}, which was not requested",
+                    log.address()
+                );
+            };
+            logs.push(log);
+        }
+        for tournament in &mut level {
+            let address = tournament.address();
+            let logs = emitted
+                .remove(&address)
+                .ok_or_else(|| anyhow!("tournament {address} is in the tree twice"))?;
+            fold_local_logs(tournament, logs, validation)?;
+        }
+
+        // A child resolved within the range was dropped with its match, so
+        // its stream is never fetched.
+        level = level
+            .into_iter()
+            .flat_map(Tournament::children_mut)
+            .collect();
     }
-    Ok(tournament)
+    Ok(root)
 }
 
 fn fold_local_logs(
-    mut tournament: Tournament,
+    tournament: &mut Tournament,
     mut logs: Vec<Log>,
     validation: &mut HarvestValidation,
-) -> Result<Tournament> {
+) -> Result<()> {
     let address = tournament.address();
-    for log in &logs {
-        validation.observe(log, address)?;
-    }
     sort_logs(&mut logs);
 
     for log in logs {
@@ -259,7 +290,7 @@ fn fold_local_logs(
             )
         })?;
     }
-    Ok(tournament)
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -287,14 +318,11 @@ impl HarvestValidation {
         }
     }
 
-    fn observe(&mut self, log: &Log, expected_address: Address) -> Result<()> {
+    /// Checks one log against the harvest. Its emitter is checked by the
+    /// caller, which knows the addresses it requested.
+    fn observe(&mut self, log: &Log) -> Result<()> {
         let ReadPhase { from, head } = self.phase;
         let to = head.number;
-        ensure!(
-            log.address() == expected_address,
-            "ranged log belongs to address {}, expected {expected_address}",
-            log.address()
-        );
         ensure!(!log.removed, "tournament log is marked removed");
         let block = log
             .block_number
@@ -453,7 +481,10 @@ mod tests {
 
     use super::*;
     use crate::{
-        chain::recording::{Requests, recording_provider},
+        chain::{
+            MAX_FILTER_ADDRESSES,
+            recording::{Requests, log_requests, recording_provider},
+        },
         merkle::Digest,
         tournament::{
             dispute::{CommitmentPosition, Event, MatchStatus},
@@ -712,6 +743,48 @@ mod tests {
         }
     }
 
+    /// Pairs two fresh commitments in `parent` and delegates their match to
+    /// `child`.
+    fn delegate(parent: &mut Tournament, child: TournamentDescriptor) {
+        let index = parent.matches().count() as u64;
+        let commitment = |side: u8| {
+            let mut data = [side; 32];
+            data[..8].copy_from_slice(&index.to_be_bytes());
+            Digest::from(data)
+        };
+        let id = MatchID {
+            commitment_one: commitment(1),
+            commitment_two: commitment(2),
+        };
+        for root in [id.commitment_one, id.commitment_two] {
+            parent.apply(EventKind::CommitmentJoined { root }).unwrap();
+        }
+        parent
+            .apply(EventKind::MatchCreated {
+                id,
+                eliminable_at: 20,
+            })
+            .unwrap();
+        parent
+            .apply(EventKind::NewInnerTournament {
+                match_id_hash: id.hash(),
+                child,
+            })
+            .unwrap();
+    }
+
+    /// A root whose matches are each delegated to a live leaf child.
+    fn root_with_children(children: usize) -> (Tournament, Vec<Address>) {
+        let mut root = Tournament::new(descriptor(address(1), 0, TournamentKind::NonLeaf));
+        let addresses: Vec<Address> = (0..children as u64)
+            .map(|index| Address::left_padding_from(&(0x1000 + index).to_be_bytes()))
+            .collect();
+        for &child in &addresses {
+            delegate(&mut root, descriptor(child, 1, TournamentKind::Leaf));
+        }
+        (root, addresses)
+    }
+
     fn push_call_response<C: SolCall>(asserter: &Asserter, response: &C::Return) {
         asserter.push_success(&Bytes::from(C::abi_encode_returns(response)));
     }
@@ -731,24 +804,18 @@ mod tests {
             head: range_head,
         };
         let mut validation = HarvestValidation::new(phase);
-        validation
-            .observe(&log_at(root, range_head, 2), root)
-            .unwrap();
-        validation
-            .observe(&log_at(child, range_head, 3), child)
-            .unwrap();
+        validation.observe(&log_at(root, range_head, 2)).unwrap();
+        validation.observe(&log_at(child, range_head, 3)).unwrap();
 
         let duplicate = validation
-            .observe(&log_at(child, range_head, 2), child)
+            .observe(&log_at(child, range_head, 2))
             .unwrap_err();
         assert!(duplicate.to_string().contains("returned twice"));
 
         let mut conflicting = HarvestValidation::new(phase);
-        conflicting
-            .observe(&log_at(root, range_head, 1), root)
-            .unwrap();
+        conflicting.observe(&log_at(root, range_head, 1)).unwrap();
         let error = conflicting
-            .observe(&log_at(child, head(12, 0x99), 2), child)
+            .observe(&log_at(child, head(12, 0x99), 2))
             .unwrap_err();
         assert!(error.to_string().contains("conflicting hashes"));
     }
@@ -956,6 +1023,269 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn a_level_costs_one_log_request_per_filter_of_addresses() {
+        for (children, addresses_per_request) in [
+            (3, vec![1, 3]),
+            (MAX_FILTER_ADDRESSES + 1, vec![1, MAX_FILTER_ADDRESSES, 1]),
+        ] {
+            let (root, _) = root_with_children(children);
+            let at = head(20, 0x20);
+            let (chain, asserter, requests) = recording_chain();
+            for _ in &addresses_per_request {
+                asserter.push_success(&Vec::<Log>::new());
+            }
+
+            let phase = ReadPhase {
+                from: at.number,
+                head: at,
+            };
+            let mut validation = HarvestValidation::new(phase);
+            extend_tournament(&chain, root, &mut validation)
+                .await
+                .unwrap();
+
+            // The root, then every child in as few filters as they fit.
+            let expected: Vec<_> = addresses_per_request
+                .into_iter()
+                .map(|addresses| (at.number, at.number, addresses))
+                .collect();
+            assert_eq!(log_requests(&requests), expected);
+            assert!(asserter.read_q().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn grandchildren_of_different_children_are_read_as_one_level() {
+        let mut root = Tournament::new(descriptor(address(1), 0, TournamentKind::NonLeaf));
+        for child in [2, 3] {
+            delegate(
+                &mut root,
+                descriptor(address(child), 1, TournamentKind::NonLeaf),
+            );
+        }
+        let grandchildren = [address(4), address(5)];
+        for (child, grandchild) in root.children_mut().zip(grandchildren) {
+            delegate(child, descriptor(grandchild, 2, TournamentKind::Leaf));
+        }
+        let at = head(20, 0x20);
+        let (chain, asserter, requests) = recording_chain();
+        asserter.push_success(&Vec::<Log>::new());
+        asserter.push_success(&Vec::<Log>::new());
+        // One response carries both grandchildren's logs, interleaved.
+        asserter.push_success(&vec![
+            join_log(grandchildren[1], at, 1, digest(50)),
+            join_log(grandchildren[0], at, 0, digest(40)),
+            join_log(grandchildren[1], at, 2, digest(51)),
+        ]);
+
+        let phase = ReadPhase {
+            from: at.number,
+            head: at,
+        };
+        let mut validation = HarvestValidation::new(phase);
+        let loaded = extend_tournament(&chain, root, &mut validation)
+            .await
+            .unwrap();
+        assert_eq!(
+            log_requests(&requests),
+            [(20, 20, 1), (20, 20, 2), (20, 20, 2)]
+        );
+        assert!(asserter.read_q().is_empty());
+
+        // Each tournament folded the logs it emitted, and only those.
+        let dispute = Dispute::from_root(loaded);
+        let commitments = |tournament: Address| {
+            [40, 50, 51].map(|byte| {
+                dispute
+                    .tournament(&tournament)
+                    .unwrap()
+                    .commitment(&digest(byte))
+                    .is_some()
+            })
+        };
+        assert_eq!(commitments(grandchildren[0]), [true, false, false]);
+        assert_eq!(commitments(grandchildren[1]), [false, true, true]);
+    }
+
+    #[tokio::test]
+    async fn a_level_is_read_from_its_earliest_creation_only_when_the_harvest_created_all_of_it() {
+        let root = address(1);
+        let children = [address(2), address(3), address(4)];
+        let id = |byte| MatchID {
+            commitment_one: digest(byte),
+            commitment_two: digest(byte + 1),
+        };
+        let pairing = |at: ChainHead, id: MatchID| {
+            vec![
+                join_log(root, at, 0, id.commitment_one),
+                join_log(root, at, 1, id.commitment_two),
+                match_created_log(root, at, 2, id, 90),
+            ]
+        };
+        let (chain, asserter, requests) = recording_chain();
+
+        // A cold fold from the root's creation block: both children are
+        // created later, at different blocks.
+        asserter.push_success(
+            &[
+                pairing(head(10, 0x10), id(10)),
+                pairing(head(11, 0x11), id(20)),
+                vec![
+                    new_inner_log(root, head(25, 0x25), 0, id(20), children[1]),
+                    new_inner_log(root, head(20, 0x20), 0, id(10), children[0]),
+                ],
+            ]
+            .concat(),
+        );
+        asserter.push_success(&vec![
+            join_log(children[0], head(21, 0x21), 0, digest(30)),
+            join_log(children[1], head(30, 0x30), 0, digest(31)),
+        ]);
+        let phase = ReadPhase {
+            from: 10,
+            head: head(30, 0x30),
+        };
+        let mut validation = HarvestValidation::new(phase);
+        let cold = extend_tournament(
+            &chain,
+            Tournament::new(descriptor(root, 0, TournamentKind::NonLeaf)),
+            &mut validation,
+        )
+        .await
+        .unwrap();
+
+        // The next harvest creates a third child beside the two it inherits,
+        // whose logs may precede that creation.
+        asserter.push_success(
+            &[
+                pairing(head(31, 0x31), id(40)),
+                vec![new_inner_log(root, head(35, 0x35), 0, id(40), children[2])],
+            ]
+            .concat(),
+        );
+        asserter.push_success(&vec![
+            join_log(children[0], head(32, 0x32), 0, digest(32)),
+            join_log(children[2], head(36, 0x36), 0, digest(33)),
+        ]);
+        let phase = ReadPhase {
+            from: 31,
+            head: head(40, 0x40),
+        };
+        let mut validation = HarvestValidation::new(phase);
+        let warm = extend_tournament(&chain, cold, &mut validation)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            log_requests(&requests),
+            [(10, 30, 1), (20, 30, 2), (31, 40, 1), (31, 40, 3)],
+            "one request per level, never one per creation block"
+        );
+        assert!(asserter.read_q().is_empty());
+        let dispute = Dispute::from_root(warm);
+        for (child, commitments) in [
+            (children[0], vec![30, 32]),
+            (children[1], vec![31]),
+            (children[2], vec![33]),
+        ] {
+            let tournament = dispute.tournament(&child).unwrap();
+            for byte in commitments {
+                assert!(tournament.commitment(&digest(byte)).is_some());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_log_from_an_address_outside_the_level_is_rejected() {
+        let (root, children) = root_with_children(2);
+        let root_address = root.address();
+        let at = head(20, 0x20);
+        let (chain, asserter, _) = recording_chain();
+        asserter.push_success(&Vec::<Log>::new());
+        // The root is a tournament of the tree, but not of this level.
+        asserter.push_success(&vec![
+            join_log(children[0], at, 0, digest(30)),
+            join_log(root_address, at, 1, digest(31)),
+        ]);
+
+        let phase = ReadPhase {
+            from: at.number,
+            head: at,
+        };
+        let mut validation = HarvestValidation::new(phase);
+        let error = extend_tournament(&chain, root, &mut validation)
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("address {root_address}, which was not requested")),
+            "{error:#}"
+        );
+        assert!(asserter.read_q().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_fold_failure_in_one_tournament_of_a_level_fails_the_harvest() {
+        let (root, children) = root_with_children(2);
+        let at = head(20, 0x20);
+        let unknown = MatchID {
+            commitment_one: digest(10),
+            commitment_two: digest(20),
+        };
+        let (chain, asserter, _) = recording_chain();
+        asserter.push_success(&Vec::<Log>::new());
+        asserter.push_success(&vec![
+            join_log(children[0], at, 0, digest(30)),
+            match_advanced_log(children[1], at, 1, unknown, 40),
+        ]);
+
+        let phase = ReadPhase {
+            from: at.number,
+            head: at,
+        };
+        let mut validation = HarvestValidation::new(phase);
+        let error = extend_tournament(&chain, root, &mut validation)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                error.downcast_ref::<DisputeError>(),
+                Some(DisputeError::UnknownMatch { tournament, .. }) if *tournament == children[1]
+            ),
+            "{error:#}"
+        );
+        assert!(asserter.read_q().is_empty());
+    }
+
+    /// The contracts never reuse a clone address; a mixed tail can.
+    #[tokio::test]
+    async fn a_tournament_named_by_two_matches_fails_the_harvest() {
+        let mut root = Tournament::new(descriptor(address(1), 0, TournamentKind::NonLeaf));
+        let child = descriptor(address(2), 1, TournamentKind::Leaf);
+        delegate(&mut root, child);
+        delegate(&mut root, child);
+        let at = head(20, 0x20);
+        let (chain, asserter, _) = recording_chain();
+        asserter.push_success(&Vec::<Log>::new());
+        asserter.push_success(&vec![join_log(child.address(), at, 0, digest(30))]);
+
+        let phase = ReadPhase {
+            from: at.number,
+            head: at,
+        };
+        let mut validation = HarvestValidation::new(phase);
+        let error = extend_tournament(&chain, root, &mut validation)
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("is in the tree twice"),
+            "{error:#}"
+        );
+        assert!(asserter.read_q().is_empty());
     }
 
     #[tokio::test]

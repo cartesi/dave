@@ -81,7 +81,7 @@ async fn a_busy_contracts_logs_over_one_chunk_are_complete() {
     {
         let started = Instant::now();
         let logs = chain
-            .raw_logs(USDC, USDC_RANGE.0, USDC_RANGE.1)
+            .raw_logs_from_any(&[USDC], USDC_RANGE.0, USDC_RANGE.1)
             .await
             .unwrap_or_else(|error| panic!("{name}: {error:#}"));
         let keys: BTreeSet<(u64, u64)> = logs
