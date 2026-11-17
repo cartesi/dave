@@ -306,6 +306,20 @@ the working clone into the checkpoint and checks out a fresh clone; a rejected
 input discards the poisoned clone and checks out a fresh clone of the current
 checkpoint.
 
+The emulator's rule for a directory a machine changes in place has two
+halves: it is a stored machine again only once that machine is destroyed,
+and it survives a stop of the process only once it is synced after that;
+otherwise it is discarded. The node needs both kinds. A rollback checkpoint
+is volatile: closed, never synced, loaded and cloned as it is (destroying a
+machine leaves its whole state in the page cache, and a sync writes
+nothing of its own), and gone with the batch or at the next start's sweep.
+A snapshot is durable, one per gap. The machine wrapper carries the two as
+types (`Volatile`, `Durable`): a shared open takes ownership of a volatile
+directory and only a checked close gives it back, so nothing can clone,
+load or sync a directory a machine still maps, a durable snapshot cannot be
+opened shared, and a volatile directory that is not persisted removes
+itself.
+
 While an epoch is open, a tail shorter than `--snapshot-gap-inputs` remains
 unexecuted until a full batch is available. Once the epoch is sealed, the
 runner executes and publishes its final shorter batch before rolling the
@@ -322,7 +336,7 @@ boundary, which every later action of that dispute resumes from.
 Every input, accepted or rejected, pays a fixed overhead on top of the
 application's work: the close, clone and `SHARING_ALL` reload of the
 rotation, and the removal of the clone it retires. On emulator v0.23 the
-echo image's whole time per input is about 25 ms accepted and 22 ms
+echo image's whole time per input is about 26 ms accepted and 22 ms
 rejected on macOS (measurements/measurements.md): about 15 ms of rotation
 (close 5, clone 3, reload 3, removal 3), and most of the rest the input's
 first touch of its pages, since a fresh clone is a new inode with nothing in
