@@ -181,13 +181,16 @@ impl Machine {
     /// Loads a stored machine with an explicit sharing mode.
     ///
     /// With [`SharingMode::All`] the machine mutates the directory in
-    /// place, and the directory remains a valid stored machine after
-    /// drop without any explicit flush: dirtiness is recorded in the
-    /// persisted dirty-page sidecars and the next `root_hash` rehashes
-    /// exactly the dirty set. Calling [`Machine::root_hash`] before
-    /// drop leaves the on-disk hash tree exact. Note the lifetime
-    /// exclusive lock: the directory cannot be cloned or re-loaded
-    /// shared until this machine is dropped.
+    /// place, on any call, `root_hash` and `proof` included. The directory
+    /// is a valid stored machine again once this machine is dropped:
+    /// dirtiness is recorded in the persisted dirty-page sidecars and the
+    /// next `root_hash` rehashes exactly the dirty set, and calling
+    /// [`Machine::root_hash`] before the drop leaves the on-disk hash tree
+    /// exact. It is durable only after a [`Machine::sync_stored`] that
+    /// follows the drop; a process that stops before the drop leaves a
+    /// directory to discard, even if it loads. Note the lifetime exclusive
+    /// lock: the directory cannot be cloned, synced or re-loaded shared
+    /// until this machine is dropped.
     pub fn load_with_sharing(
         dir: &Path,
         runtime_config: &RuntimeConfig,
@@ -212,13 +215,16 @@ impl Machine {
 
     /// Clones a stored machine directory without loading it: read-only
     /// files hard-link, writable files reflink on CoW filesystems, and
-    /// either falls back to a sparse-aware copy where unsupported - so
-    /// the clone is cheap where the filesystem cooperates. A hard link
-    /// past the filesystem's per-file cap (EMLINK: about 65k on ext4 and
-    /// btrfs) is not in the emulator's fallback, so a clone fails once
-    /// about 65k live clones of one machine exist there. Refuses an existing destination. Fails while the
+    /// either falls back to a sparse-aware copy where the filesystem has
+    /// no such links - so the clone is cheap where the filesystem
+    /// cooperates. A hard link past the filesystem's per-file cap (EMLINK:
+    /// about 65k on ext4 and btrfs) also falls back to a copy, which starts
+    /// its own link count. A filesystem that has reflinks and refuses one
+    /// (EPERM) fails the clone instead: copying every clone could fill the
+    /// disk. Refuses an existing destination. Fails while the
     /// source is loaded with [`SharingMode::All`] (the load holds the
-    /// lock); drop that machine first.
+    /// lock); drop that machine first. An interrupted clone leaves a
+    /// directory to discard, even if it loads.
     pub fn clone_stored(from_dir: &Path, to_dir: &Path) -> Result<()> {
         let from_cstr = path_to_cstring(from_dir)?;
         let to_cstr = path_to_cstring(to_dir)?;
@@ -246,8 +252,9 @@ impl Machine {
     }
 
     /// Flushes every file and directory entry of a stored machine to
-    /// permanent storage. The expected use is after closing the machine that
-    /// was using the stored files.
+    /// permanent storage. Fails while a machine loaded with shared backing
+    /// stores maps the directory: sync after dropping it. A private load
+    /// does not hold it back.
     pub fn sync_stored(dir: &Path) -> Result<()> {
         let dir_cstr = path_to_cstring(dir)?;
         let err_code =
@@ -683,7 +690,8 @@ impl Machine {
         Ok(UarchCycleRootHashes::from_json(&json).expect("malformed uarch collection result"))
     }
 
-    /// Receives a cmio request.
+    /// Receives a cmio request. A data length the guest declares past the
+    /// TX buffer is clamped to the buffer.
     pub fn receive_cmio_request(&mut self) -> Result<CmioRequest> {
         let mut cmd: u8 = 0;
         let mut reason: u16 = 0;
@@ -1639,6 +1647,35 @@ mod tests {
         Ok(())
     }
 
+    /// A machine that maps a directory shared holds it against a sync, as
+    /// against a clone; a private load does not.
+    #[test]
+    fn test_sync_stored_refuses_a_directory_mapped_shared() -> Result<()> {
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let stored = tmp.path().join("stored");
+
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        create_machine(&config)?.store(&stored)?;
+
+        {
+            let _private = Machine::load(&stored, &RuntimeConfig::quiet_console())?;
+            Machine::sync_stored(&stored)?;
+        }
+        {
+            let _shared = Machine::load_with_sharing(
+                &stored,
+                &RuntimeConfig::quiet_console(),
+                SharingMode::All,
+            )?;
+            let error = Machine::sync_stored(&stored)
+                .expect_err("syncing a directory mapped shared must fail");
+            assert!(error.message.contains("unable to sync file"), "{error:?}");
+        }
+        Machine::sync_stored(&stored)?;
+        Ok(())
+    }
+
     /// The default mode removes only what loads as a stored machine and
     /// nothing else, and refuses before it removes anything; the leftovers
     /// of an interrupted store or clone need the forced mode.
@@ -1924,6 +1961,25 @@ mod tests {
             .collect_uarch_cycle_root_hashes(mcycle + 1, 0, Some(&[root, [7; 32]]))
             .unwrap_err();
         assert!(error.message.contains("revert root hash"), "{error:?}");
+        assert_eq!((machine.mcycle()?, machine.root_hash()?), (mcycle, root));
+        Ok(())
+    }
+
+    /// The collector's closing reset restores only the uarch words a cycle
+    /// wrote, so it refuses a uarch that is not the pristine one, which it
+    /// would otherwise reset wrongly, even with the cycle counter at zero.
+    #[test]
+    fn uarch_collection_refuses_a_non_pristine_uarch() -> Result<()> {
+        let mut machine = yield_machine()?;
+        let pc = machine.read_reg(cartesi_machine_sys::CM_REG_UARCH_PC)?;
+        machine.write_reg(cartesi_machine_sys::CM_REG_UARCH_PC, pc + 4)?;
+        assert_eq!(machine.ucycle()?, 0);
+        let (mcycle, root) = (machine.mcycle()?, machine.root_hash()?);
+
+        let error = machine
+            .collect_uarch_cycle_root_hashes(mcycle, 0, None)
+            .unwrap_err();
+        assert!(error.message.contains("not pristine"), "{error:?}");
         assert_eq!((machine.mcycle()?, machine.root_hash()?), (mcycle, root));
         Ok(())
     }

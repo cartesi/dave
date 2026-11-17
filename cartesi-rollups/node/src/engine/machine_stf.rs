@@ -119,10 +119,11 @@ fn runtime_config(hashing: Hashing) -> RuntimeConfig {
 
 /// The pending manual yield's reason, read from the HTIF header as the step
 /// reads it: iflags.Y, then tohost's device, command and reason, never its
-/// data field, whose guest-declared length cm_receive_cmio_request refuses
-/// past the TX buffer. Execution sets Y only on a manual yield; a preset
-/// header with Y and another device or command is a fixed point the step
-/// neither feeds nor reverts, so it reads as a reason that is no input's.
+/// data field, a guest-declared length for which cm_receive_cmio_request
+/// copies up to the whole TX buffer. Execution sets Y only on a manual
+/// yield; a preset header with Y and another device or command is a fixed
+/// point the step neither feeds nor reverts, so it reads as a reason that
+/// is no input's.
 fn manual_yield_reason(machine: &mut Machine) -> Result<Option<u16>> {
     if !machine.iflags_y()? {
         return Ok(None);
@@ -980,7 +981,7 @@ mod tests {
 
     /// A manual yield declaring one byte past the TX buffer, as
     /// a guest that bypasses libcmt can yield it: cm_receive_cmio_request
-    /// refuses that length, while the step reads only the header.
+    /// clamps that length, while the step reads only the header.
     fn oversized(reason: u16) -> u64 {
         manual_yield(reason, (1u32 << TX_LOG2_SIZE) + 1)
     }
@@ -1453,11 +1454,11 @@ mod tests {
         Ok(())
     }
 
-    /// A yield past the TX buffer, which the bindings refuse to read, ends
-    /// window 0 as the step's reset classifies it by the header: the
-    /// runner's collect takes the input, or reverts it to the pre-input
-    /// state when `rejects`. Dense leaves agree bulk and stepped, so the
-    /// emulator's collector classifies it alike.
+    /// A yield past the TX buffer ends window 0 as the step's reset
+    /// classifies it by the header: the runner's collect takes the input,
+    /// or reverts it to the pre-input state when `rejects`. Dense leaves
+    /// agree bulk and stepped, so the emulator's collector classifies it
+    /// alike.
     fn assert_classified_by_header(make: fn() -> Result<Machine>, rejects: bool) -> Result<()> {
         let structure = Structure::PRODUCTION;
         let payload = b"seam".to_vec();
@@ -1507,6 +1508,24 @@ mod tests {
                 .unwrap()
         });
         assert_eq!(bulk, stepped);
+        Ok(())
+    }
+
+    /// The emulator clamps a declared length past the TX buffer to the
+    /// buffer, where v0.22 refused the read. Nothing in the node reads the
+    /// data, so only this pin sees the difference.
+    #[test]
+    fn a_yield_declaring_data_past_the_tx_buffer_reads_back_clamped() -> Result<()> {
+        use cartesi_machine::types::cmio::{CmioRequest, ManualReason};
+
+        let mut machine = oversized_accepted_machine()?;
+        let CmioRequest::Manual(ManualReason::RxAccepted {
+            output_hashes_root_hash: data,
+        }) = machine.receive_cmio_request()?
+        else {
+            panic!("the guest yields RX_ACCEPTED");
+        };
+        assert_eq!(data.len(), 1 << TX_LOG2_SIZE);
         Ok(())
     }
 

@@ -98,7 +98,9 @@ pub(super) fn assert_runner_boundary_root(
 
 impl Storage {
     /// The one durable CAS publication boundary. The staged machine
-    /// is root-verified, synced, and renamed without replacement.
+    /// is root-verified, synced, and renamed without replacement. It
+    /// must be closed: the emulator refuses to sync a directory that a
+    /// machine still maps shared.
     /// Only a destination that won the same CAS race makes a failed
     /// rename benign. Database registration always follows this
     /// function at its caller.
