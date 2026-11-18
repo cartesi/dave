@@ -228,16 +228,16 @@ floor = root bond + 2 x the leaf bond
 
 The recovery is the earlier leaf tournament's bond, the only transaction that
 can follow a leaf proof in its batch: a settlement step waits for the root's
-result. That holds while the recovery scan works: each leaf tournament that
-ends while the scan is failing, which the node logs on every tick, leaves
-another leaf bond locked and another recovery for the batch. Under Glamsterdam
-the leaf proof's limit is about 9.06M and the floor about 3.34 ETH. A slot
-whose estimate fails other than by a revert reserves 15M, 3 ETH at that fee.
-Above the work-price cap an action's refund falls short of its cost, and a
-replaced transaction pays its whole max fee, so a long dispute during a fee
-spike draws the balance down: the per-tick error is the signal to top up.
-These are Ethereum L1 numbers from `Bond.sol`, `Gas.sol` and the deployed
-table; recompute them when any of them changes.
+result. That holds while recoveries keep up: each leaf tournament that ends
+while the scan is failing, which the node logs on every tick, or while an
+earlier recovery is still unmined, leaves another leaf bond locked and another
+recovery for the batch. Under Glamsterdam the leaf proof's limit is about 9.06M
+and the floor about 3.34 ETH. A slot whose estimate fails other than by a
+revert reserves 15M, 3 ETH at that fee. Above the work-price cap an action's
+refund falls short of its cost, and a replaced transaction pays its whole max
+fee, so a long dispute during a fee spike draws the balance down: the per-tick
+error is the signal to top up. These are Ethereum L1 numbers from `Bond.sol`,
+`Gas.sol` and the deployed table; recompute them when any of them changes.
 
 Here are its arguments:
 
