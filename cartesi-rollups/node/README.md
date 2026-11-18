@@ -397,7 +397,12 @@ Options:
   must serve the node's chain (the startup check sees only the one that
   answers it), answer a request for a block it does not have with an error,
   not a short result, and not be served `latest` or `finalized` from a stale
-  cache. Prefer upstreams other validators of the application do not use:
+  cache. Each must also accept an `eth_getLogs` filter of up to 100
+  addresses, which the dispute reads and the bond-recovery scan send; some
+  free shared endpoints cap it at 10. Behind a lower cap the node runs until
+  a dispute has more tournaments open than the cap, and from then the read
+  that names them fails on every tick, its error quoting the provider's
+  refusal. Prefer upstreams other validators of the application do not use:
   honest nodes behind one provider stop together. Keep
   `--blockchain-http-submit-endpoint` out of the proxy.
 - Size the host for the runner and a dispute together, at least two cores,
