@@ -81,9 +81,8 @@ range and response size, latency), and the action latency that results.
   Infura, and Alchemy's free tier caps `eth_getLogs` at 10 blocks. A filter's
   address list is one more cap: the tournament reader and the recovery walk
   send up to 100 addresses per request (geth refuses more than 1,000 by
-  default). A provider that refuses 100 would fail the fold at every range (a
-  lead to check): a live test now sends such a filter, and still has to be
-  run against the providers.
+  default). A provider that refuses 100 fails those reads at every range;
+  which do is measured under "The filter's address cap" below.
 
 Sybils buy read load. On the two-level table each live child tournament
 costs the adversary about two root bonds (about 0.72 ETH at 50 gwei). The
@@ -117,5 +116,55 @@ as for a hundred. An advance costs 86,000 to 106,000 gas in the gas witnesses
 order of a thousand tournament logs (a lead: cheaper shapes are not measured).
 A level's read therefore asks no more of a provider on one block than one
 tournament's read did, and a provider that fails the one would fail the other
-at the same density. What reopens this is a mainstream provider that refuses a
-100-address filter.
+at the same density. A provider that refuses the filter itself fails at every
+range, a different failure, taken up next.
+
+## The filter's address cap
+
+Measured on 2026-11-17 with one block of USDC logs through filters of 1, 10,
+11 and 100 addresses, and with the live test of a 100-address filter:
+
+- Infura and Alchemy (mainnet, keyed): the live test passed, 386 logs alone
+  and among 100 addresses.
+- dRPC, Tenderly's public gateway and MEV Blocker: 100 answered.
+- PublicNode's shared endpoints, mainnet and Sepolia: more than 10 refused
+  ("A maximum of 10 addresses is allowed").
+- BlockRazor's public endpoint: more than 10 refused with geth's own error
+  ("exceed max addresses or topics per search position"), so its geth limit
+  is lowered.
+
+The address count did not move latency: the same 8,389 logs over 100 blocks
+took a median 811 ms through 1 address and 818 ms through 10 (12 samples
+each). What else the capped endpoints refuse:
+
+- PublicNode mainnet: logs older than about 10,000 blocks, some 33 hours, and
+  state older than about 100 blocks, which is where the finalized block sits
+  (head-100 answered once and was refused once). 960 `eth_call` sent sixteen
+  at a time were all answered, median 195 ms.
+- BlockRazor: log ranges over 25 blocks, pruned old blocks, and 233 of 320
+  `eth_call` sent sixteen at a time (429).
+- PublicNode Sepolia: ranges over 50,000 blocks, and state older than 140 to
+  160 blocks (head-140 answered, head-160 refused). One block of logs
+  8,000,000 blocks back answered. A 50,000-block range was once refused as
+  pruned history, which reads like backends that disagree (a lead).
+
+The node keeps 100 addresses per filter (`MAX_FILTER_ADDRESSES`). On mainnet
+the capped endpoints cannot carry a node for reasons the address list has no
+part in: a node ingests from the application's deployment and a restart
+refetches each live tournament from its creation, while those endpoints serve
+a day and a half of logs, or 25-block ranges. A lower cap buys nothing there.
+The one capped endpoint found that otherwise serves a node is a free shared
+testnet endpoint, where the cap binds only in a dispute with more than 10
+tournaments open (at one level for the reader, in all for the recovery walk).
+Against that, a harvest sends, per level, one request per cap of live
+tournaments, in sequence, and the live tournaments are what an adversary pays
+to enlarge. On the two-level table a cap of 10 changes nothing up to 10 live
+children; 100 children then cost 11 requests where they cost 2, and 1,000 cost
+101 where they cost 11. At 0.2 s a round trip that is 1.8 s and 18 s more per
+harvest, beside point reads that do not change (about two per live tournament,
+sixteen at a time: 2.5 s and 25 s).
+
+What reopens this: an endpoint that operators are expected to run a mainnet
+node on and that caps a filter below 100. The levers then are a lower
+constant, or fetching a level's chunks concurrently as the point reads are,
+which removes the sequential cost of a lower cap.

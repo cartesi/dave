@@ -42,7 +42,9 @@ impl ChainHead {
 }
 
 /// Addresses per log filter, well under geth's default
-/// `--rpc.logquerylimit` of 1,000.
+/// `--rpc.logquerylimit` of 1,000. The node README states it as a
+/// requirement on the read endpoint; why it is not lower is argued in
+/// docs/plans/provider-requirements.md.
 pub const MAX_FILTER_ADDRESSES: usize = 100;
 
 #[derive(Debug, Clone)]
