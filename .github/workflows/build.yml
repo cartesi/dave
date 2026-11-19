@@ -222,6 +222,10 @@ jobs:
         run: |
           just test-build-tooling
 
+      - name: Settlement tool unit tests
+        run: |
+          just test-settlement-tools
+
       - name: Rust build
         run: |
           just build-rust-workspace

@@ -136,6 +136,7 @@ check: \
     check-fmt \
     lint-lua \
     test-build-tooling \
+    test-settlement-tools \
     test-lua-client \
     test-smart-contracts \
     clippy-rust-workspace \
@@ -192,6 +193,15 @@ check-fmt-rust-workspace: bind
 # CI and setup prepare the echo/yield images these use; expensive machine
 # differentials, the release corpus and the docker-backed KMS tests stay
 # explicit below.
+# Provider-free observer and operator recovery regression tests.
+test-settlement-tools:
+    python3 script/tests/settlement-watch.py
+    python3 script/tests/settlement-recovery.py
+
+# Read-only settlement observer and chain-backed sender outage drills.
+test-settlement-liveness: bind test-settlement-tools
+    cargo test --locked -p cartesi-sling-node --lib harness::tests::settlement_liveness -- --ignored --nocapture --test-threads 1
+
 # rust workspace tests
 test-rust-workspace: bind
     ./script/machine-image-fingerprint.sh verify echo

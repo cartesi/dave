@@ -50,6 +50,9 @@ PRT contract engineering:
 
 Node operation:
 
+- [runbooks/settlement-liveness.md](runbooks/settlement-liveness.md) - sender outage
+  reproduction, independent phase observation and verified caller replacement.
+
 - [runbooks/submit-relay.md](runbooks/submit-relay.md) - what a submit relay
   must do, the procedure that qualifies one, and its dated results.
 
