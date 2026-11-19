@@ -28,10 +28,11 @@ import {SendCmioResponse} from "step/src/SendCmioResponse.sol";
 import {UArchReset} from "step/src/UArchReset.sol";
 import {UArchStep} from "step/src/UArchStep.sol";
 
+import {DaveContract} from "prt-contracts/DaveContract.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
-import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {ICartesiStateTransition} from "prt-contracts/state-transition/ICartesiStateTransition.sol";
 
-contract CartesiStateTransition is IStateTransition {
+contract CartesiStateTransition is ICartesiStateTransition, DaveContract {
     /// @notice Cartesi Machine architecture ID qualified by this transition.
     /// @dev solidity-step's, generated from the emulator release it targets.
     uint64 public constant CM_MARCHID = EmulatorConstants.CM_MARCHID;

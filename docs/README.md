@@ -53,6 +53,11 @@ Node operation:
 - [runbooks/submit-relay.md](runbooks/submit-relay.md) - what a submit relay
   must do, the procedure that qualifies one, and its dated results.
 
+Releasing:
+
+- [runbooks/release.md](runbooks/release.md) - setting the version the
+  contracts report, tagging it, and naming test pre-releases.
+
 Historical internal reviews live under [reviews/](reviews/README.md). They preserve
 findings and evidence, but they are not current specifications or third-party
 assurance reports. The completed 2026-07 PRT campaign is archived at
