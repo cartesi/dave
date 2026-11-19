@@ -7,12 +7,13 @@ import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {IVersionGetter} from "prt-contracts/IVersionGetter.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
 
-interface IMultiLevelTournamentFactory is ITournamentFactory {
+interface IMultiLevelTournamentFactory is ITournamentFactory, IVersionGetter {
     /// @notice Return the state transition configured for every tournament.
     function stateTransition() external view returns (IStateTransition);
 

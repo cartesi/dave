@@ -7,6 +7,7 @@ import {Clones} from "@openzeppelin-contracts-5.5.0/proxy/Clones.sol";
 import {ERC165} from "@openzeppelin-contracts-5.5.0/utils/introspection/ERC165.sol";
 import {Math} from "@openzeppelin-contracts-5.5.0/utils/math/Math.sol";
 
+import {DaveContract} from "prt-contracts/DaveContract.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {IMultiLevelTournamentFactory} from "prt-contracts/tournament/factories/IMultiLevelTournamentFactory.sol";
@@ -53,7 +54,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 ///   * Non-leaf tournaments:
 ///       - Use `sealInnerMatchAndCreateInnerTournament` and `winInnerTournament`.
 ///       - Can recursively create new inner tournaments via `instantiateInner`.
-contract Tournament is ITournament, ERC165 {
+contract Tournament is ITournament, DaveContract, ERC165 {
     using Clones for address;
     using Machine for Machine.Hash;
     using Tree for Tree.Node;

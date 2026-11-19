@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Contracts
+
+- Every deployed contract, tournament clones included, has a `version()`
+  getter, declared by `IVersionGetter`. It returns the release version, with
+  build metadata `march.<id>` indicating the Cartesi Machine architecture ID
+  whose state transitions the contracts verify.
+
 ## v3.0.0-beta.1
 
 A new deployment generation: every contract is recompiled, the state

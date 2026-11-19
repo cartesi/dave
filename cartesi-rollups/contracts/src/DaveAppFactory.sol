@@ -11,6 +11,7 @@ import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicatio
 import {IApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactory.sol";
 import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 
+import {DaveContract} from "prt-contracts/DaveContract.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {Machine} from "prt-contracts/types/Machine.sol";
 
@@ -18,7 +19,7 @@ import {DaveConsensus} from "./DaveConsensus.sol";
 import {IDaveAppFactory} from "./IDaveAppFactory.sol";
 import {IDaveConsensus} from "./IDaveConsensus.sol";
 
-contract DaveAppFactory is IDaveAppFactory {
+contract DaveAppFactory is IDaveAppFactory, DaveContract {
     IInputBox immutable INPUT_BOX;
     IApplicationFactory immutable APP_FACTORY;
     ITournamentFactory immutable TOURNAMENT_FACTORY;
