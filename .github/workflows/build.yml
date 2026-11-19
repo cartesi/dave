@@ -16,6 +16,36 @@ concurrency:
 permissions:
   contents: read
 jobs:
+  # Runs on every trigger so the jobs that need it are never skipped.
+  check-version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup tools
+        uses: ./.github/actions/setup-tools
+        with:
+          setup-rust: false
+
+      - name: Check that Version.sol is up to date
+        run: |
+          just codegen
+          if ! git diff --exit-code -- prt/contracts/src/Version.sol; then
+            echo "::error::prt/contracts/src/Version.sol is out of sync with the root justfile."
+            echo "Regenerate it locally and commit the result: just codegen"
+            exit 1
+          fi
+
+      - name: Check that the tag matches the version
+        if: github.ref_type == 'tag'
+        run: |
+          expected_tag="v$(just print-version)"
+          if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the contracts' version, $expected_tag."
+            echo "Fix the version in the root justfile, run just codegen, commit, and force-push the tag."
+            exit 1
+          fi
+
   prt-contracts:
     runs-on: ubuntu-24.04
     steps:
@@ -224,6 +254,7 @@ jobs:
           just test-node-harness
 
   build-release-node:
+    needs: [check-version]
     strategy:
       matrix:
         include:
@@ -339,6 +370,7 @@ jobs:
           TAG: ${{ github.ref_name }}
 
   release-contracts:
+    needs: [check-version]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
