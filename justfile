@@ -23,6 +23,7 @@ set positional-arguments
 
 FOUNDRY_VERSION := "1.5.1"
 
+# The release version; see docs/runbooks/release.md before changing it.
 MAJOR_VERSION := "3"
 MINOR_VERSION := "0"
 PATCH_VERSION := "0"
