@@ -5,12 +5,15 @@ pragma solidity ^0.8.17;
 
 import {ArbitrationConstants} from "./ArbitrationConstants.sol";
 import {ClockBudgets} from "./ClockBudgets.sol";
+import {ICanonicalTournamentParametersProvider} from "./ICanonicalTournamentParametersProvider.sol";
 import {ITournamentParametersProvider} from "./ITournamentParametersProvider.sol";
+import {DaveContract} from "prt-contracts/DaveContract.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
 import {TournamentParameters} from "prt-contracts/types/TournamentParameters.sol";
 
 contract CanonicalTournamentParametersProvider is
-    ITournamentParametersProvider
+    ICanonicalTournamentParametersProvider,
+    DaveContract
 {
     /// @notice The maximum allowance must span at least one block.
     error MaxAllowanceCannotBeZero();

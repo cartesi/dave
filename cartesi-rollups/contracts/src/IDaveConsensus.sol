@@ -13,6 +13,7 @@ import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.so
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
+import {IVersionGetter} from "prt-contracts/IVersionGetter.sol";
 
 import {Machine} from "prt-contracts/types/Machine.sol";
 import {Tree} from "prt-contracts/types/Tree.sol";
@@ -57,7 +58,8 @@ interface IDaveConsensus is
     IApplicationChecker,
     BinaryMerkleTreeErrors,
     MachineValidationErrors,
-    ISentryErrors
+    ISentryErrors,
+    IVersionGetter
 {
     /// @notice Consensus contract was created
     /// @param inputBox the input box contract

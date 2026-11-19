@@ -20,6 +20,10 @@ past the span.
   still occupy one through the shared ApplicationFactory, which makes
   `newDaveApp` revert: do not send value to a predicted address before
   `DaveAppCreated`.
+- Every deployed contract, tournament clones included, has a `version()`
+  getter, declared by `IVersionGetter`. It returns the release version, with
+  build metadata `march.<id>` indicating the Cartesi Machine architecture ID
+  whose state transitions the contracts verify.
 
 ### Node
 
