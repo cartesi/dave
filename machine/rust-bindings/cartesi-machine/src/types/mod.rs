@@ -12,29 +12,22 @@ pub type Register = cartesi_machine_sys::cm_reg;
 pub type BreakReason = cartesi_machine_sys::cm_break_reason;
 pub type UArchBreakReason = cartesi_machine_sys::cm_uarch_break_reason;
 
-/// Backing-store sharing mode (`cm_sharing_mode`): where a loaded
-/// machine's mutations live.
+/// What `remove_stored` accepts in the directory it removes
+/// (`cm_remove_mode`). Either way it must hold regular files only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SharingMode {
-    /// Fully in-memory: files are mapped privately, mutations are
-    /// discarded on destroy.
-    None,
-    /// Per-range `shared` flags from the stored config (the emulator
-    /// default; typically everything private).
-    Config,
-    /// Fully on-disk: every file is mapped shared, mutations land in
-    /// the loaded directory as they happen. The machine holds an
-    /// exclusive advisory lock on the directory's writable files for
-    /// its lifetime.
-    All,
+pub enum RemoveMode {
+    /// An empty directory, or one whose config loads and that holds no
+    /// file the config does not name. Named files may be missing.
+    Stored,
+    /// Any regular files, such as what an interrupted store or clone left.
+    Forced,
 }
 
-impl From<SharingMode> for cartesi_machine_sys::cm_sharing_mode {
-    fn from(mode: SharingMode) -> Self {
+impl From<RemoveMode> for cartesi_machine_sys::cm_remove_mode {
+    fn from(mode: RemoveMode) -> Self {
         match mode {
-            SharingMode::None => cartesi_machine_sys::CM_SHARING_NONE,
-            SharingMode::Config => cartesi_machine_sys::CM_SHARING_CONFIG,
-            SharingMode::All => cartesi_machine_sys::CM_SHARING_ALL,
+            RemoveMode::Stored => cartesi_machine_sys::CM_REMOVE_STORED,
+            RemoveMode::Forced => cartesi_machine_sys::CM_REMOVE_FORCED,
         }
     }
 }

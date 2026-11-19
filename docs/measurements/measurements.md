@@ -18,18 +18,18 @@ per epoch (logged node-side at roll).
 
 | runs | fold time |
 |---:|---:|
-| 1000 | 686 us |
-| 10000 | 4.7 ms |
-| 100000 | 34.0 ms |
-| 1000000 | 218.9 ms |
+| 1000 | 505 us |
+| 10000 | 2.9 ms |
+| 100000 | 29.2 ms |
+| 1000000 | 186.8 ms |
 
 ## Snapshot store and load
 
 | operation | time |
 |---|---:|
-| load template | 5.9 ms |
-| store | 218.7 ms |
-| resume from store | 3.0 ms |
+| load template | 6.9 ms |
+| store | 275.2 ms |
+| resume from store | 2.0 ms |
 | stored size | 543.4 MB |
 
 ## The boundary clone loop
@@ -42,28 +42,40 @@ Template clone: 2.5 ms.
 
 | input | clone | load | advance | root_hash | destroy | boundary cost |
 |---:|---:|---:|---:|---:|---:|---:|
-| 0 | 10.0 ms | 178.1 ms | 12.5 ms | 1.9 ms | 2.1 ms | 3.4 MB |
-| 1 | 2.5 ms | 131.2 ms | 10.5 ms | 770 us | 2.1 ms | 1.6 MB |
+| 0 | 3.8 ms | 3.4 ms | 13.0 ms | 1.7 ms | 4.1 ms | 3.5 MB |
+| 1 | 2.3 ms | 2.3 ms | 10.1 ms | 1.1 ms | 4.6 ms | 1.5 MB |
 
 | hash-hot pairs (uarch step + root_hash) | rate |
 |---|---:|
-| private mapping (CONFIG) | 47874/s |
-| shared mapping (ALL) | 49343/s |
+| private mapping | 48558/s |
+| shared mapping | 49378/s |
+
+## The runner per input
+
+`MachineRunner::process_rollup` over 256 inputs of one kind at the
+default gap of 64, on the canonical two-level table (window roots at
+stride 2^38): the whole time per input, the application's work and one
+publication per gap included.
+
+| inputs | time per input | rate |
+|---|---:|---:|
+| accepted | 24.2 ms | 41.4/s |
+| rejected | 21.1 ms | 47.5/s |
 
 ## Machine atoms
 
 | atom | rate |
 |---|---:|
-| idle big cycles (churn + ureset) | 38482/s (43.0 usteps/cycle) |
-| input feed | 224.4 ms |
-| active usteps | 17.11 M/s |
-| ustep + state_hash pair | 84694/s |
+| idle big cycles (churn + ureset) | 38092/s (43.0 usteps/cycle) |
+| input feed | 282.0 ms |
+| active usteps | 16.43 M/s |
+| ustep + state_hash pair | 81875/s |
 
 ## Span replays (get_or_compute, two-input echo epoch)
 
 | span | quartet | miss | cache hit |
 |---|---|---:|---:|
-| uarch span | r0 h20 | 25.6 ms | 7 us |
-| mid stride | r27 h10 | 40.0 ms | 9 us |
-| coarse | r44 h4 | 25.4 ms | 7 us |
-| dense 2^27 usteps | r0 h27 | 1.29 s | 22 us |
+| uarch span | r0 h20 | 11.0 ms | 15 us |
+| mid stride | r27 h10 | 21.3 ms | 13 us |
+| coarse | r44 h4 | 5.4 ms | 18 us |
+| dense 2^27 usteps | r0 h27 | 1.30 s | 33 us |

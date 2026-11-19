@@ -119,10 +119,11 @@ fn runtime_config(hashing: Hashing) -> RuntimeConfig {
 
 /// The pending manual yield's reason, read from the HTIF header as the step
 /// reads it: iflags.Y, then tohost's device, command and reason, never its
-/// data field, whose guest-declared length cm_receive_cmio_request refuses
-/// past the TX buffer. Execution sets Y only on a manual yield; a preset
-/// header with Y and another device or command is a fixed point the step
-/// neither feeds nor reverts, so it reads as a reason that is no input's.
+/// data field, a guest-declared length for which cm_receive_cmio_request
+/// copies up to the whole TX buffer. Execution sets Y only on a manual
+/// yield; a preset header with Y and another device or command is a fixed
+/// point the step neither feeds nor reverts, so it reads as a reason that
+/// is no input's.
 fn manual_yield_reason(machine: &mut Machine) -> Result<Option<u16>> {
     if !machine.iflags_y()? {
         return Ok(None);
@@ -308,6 +309,8 @@ impl MachineStf {
             .checkpoint
             .clone()
             .expect("revert requires a fed checkpoint");
+        // The poisoned machine goes here, and with it the working clone
+        // it owned, if it was opened shared.
         self.machine = Machine::load(&checkpoint, &runtime_config(self.hashing))
             .context("reload checkpoint")?;
         // Publication verifies a content-addressed snapshot, but a feed
@@ -487,7 +490,11 @@ impl Stf for MachineStf {
         let end = add_and_clamp(start, big_cycles);
         let mut roots = vec![];
         let mut mcycle = start;
-        while mcycle < end {
+        // A counter saturated at 2^64 - 1 leaves no cycle to run, but an
+        // input fed there makes an overflow fixed point, whose opening
+        // period the collector still returns.
+        let saturated = big_cycles > 0 && end == start && self.fixed()?;
+        while mcycle < end || (saturated && roots.is_empty()) {
             let tail = self
                 .revert_tail
                 .as_deref()
@@ -505,8 +512,9 @@ impl Stf for MachineStf {
                 |period: &[Hash]| Digest::from(*period.last().expect("a period ends at reset"));
             if reached == mcycle {
                 // Fed into a fixed point (a template preset halted with an
-                // input yield pending): the opening cycle is that fixed
-                // point's period, and the machine stays put.
+                // input yield pending, or a saturated counter): the opening
+                // cycle is that fixed point's period, and the machine stays
+                // put.
                 ensure!(
                     self.fixed()? && collected.periods().count() == 1,
                     "the uarch collector made no progress"
@@ -881,9 +889,8 @@ mod tests {
         overflow_config.uarch.processor.registers.cycle = UARCH_MASK_TO_BARCH;
         overflow_config.uarch.processor.registers.halt = 0;
 
-        // This is the closing source state of the computation-hash
-        // corpus's uarch-overflow-tail case: the counter is maxed but halt
-        // is clear.
+        // A uarch cycle overflow: the counter is maxed but halt is clear.
+        // The step reads the counter, then the halt flag.
         let mut oracle = Machine::create(&overflow_config, &RuntimeConfig::quiet_console())?;
         assert_eq!(oracle.ucycle()?, UARCH_MASK_TO_BARCH);
         assert!(!oracle.uarch_halt_flag()?);
@@ -896,7 +903,7 @@ mod tests {
         assert_eq!(Digest::from(oracle.root_hash()?), canonical_post);
         let step_proof = MachineStf::encode_access_log(&step);
         let reset_proof = MachineStf::encode_access_log(&reset);
-        assert_eq!(step_proof.len(), 1_920);
+        assert_eq!(step_proof.len(), 3_840);
         assert_eq!(reset_proof.len(), 5_216);
         let expected_proof = [step_proof, reset_proof].concat();
 
@@ -961,6 +968,18 @@ mod tests {
         Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
     }
 
+    /// Awaiting input with the cycle counter saturated at 2^64 - 1, as only
+    /// a template can preset it: the delivery cannot renew the budget, so
+    /// the fed machine is an overflow fixed point.
+    fn saturated_yield_machine() -> Result<Machine> {
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        config.processor.registers.mcycle = u64::MAX;
+        config.processor.registers.iflags.y = 1;
+        config.processor.registers.htif.tohost = manual_yield(RX_ACCEPTED, 0);
+        Ok(Machine::create(&config, &RuntimeConfig::quiet_console())?)
+    }
+
     /// iflags.Y set over a preset tohost, which execution never produces.
     fn preset_yield_machine(tohost: u64) -> Result<Machine> {
         let mut config = Machine::default_config()?;
@@ -981,7 +1000,7 @@ mod tests {
 
     /// A manual yield declaring one byte past the TX buffer, as
     /// a guest that bypasses libcmt can yield it: cm_receive_cmio_request
-    /// refuses that length, while the step reads only the header.
+    /// clamps that length, while the step reads only the header.
     fn oversized(reason: u16) -> u64 {
         manual_yield(reason, (1u32 << TX_LOG2_SIZE) + 1)
     }
@@ -1147,6 +1166,11 @@ mod tests {
         assert_opening_delivers(halted_yield_machine)
     }
 
+    #[test]
+    fn opening_at_a_saturated_counter_delivers_the_input() -> Result<()> {
+        assert_opening_delivers(saturated_yield_machine)
+    }
+
     /// The input budget's seams and the terminal openings as chain witnesses
     /// for the Solidity step, which NodeWitnessesTest (cartesi-rollups/contracts)
     /// replays: RX_ACCEPTED openings on the budget's last cycle and on a
@@ -1257,13 +1281,17 @@ mod tests {
     /// Dense leaves through the ruler, bulk against stepped, on the seam
     /// openings: on the budget's last cycle (the delivery renews the
     /// budget and the guest yields within the first chunk), and on a
-    /// halted machine with a yield pending, which the delivery leaves at a
-    /// fixed point.
+    /// halted machine with a yield pending or a saturated counter, which
+    /// the delivery leaves at a fixed point.
     #[test]
     fn bulk_and_stepped_dense_leaves_agree_at_the_seam_openings() -> Result<()> {
         let structure = Structure::PRODUCTION;
         let to = U256::from(4) << structure.log2_uarch_span;
-        let openings: [fn() -> Result<Machine>; 2] = [budget_seam_machine, halted_yield_machine];
+        let openings: [fn() -> Result<Machine>; 3] = [
+            budget_seam_machine,
+            halted_yield_machine,
+            saturated_yield_machine,
+        ];
         for make in openings {
             let [bulk, stepped] = [Collector::Bulk, Collector::Stepped].map(|collector| {
                 let work = tempfile::tempdir().unwrap();
@@ -1454,11 +1482,11 @@ mod tests {
         Ok(())
     }
 
-    /// A yield past the TX buffer, which the bindings refuse to read, ends
-    /// window 0 as the step's reset classifies it by the header: the
-    /// runner's collect takes the input, or reverts it to the pre-input
-    /// state when `rejects`. Dense leaves agree bulk and stepped, so the
-    /// emulator's collector classifies it alike.
+    /// A yield past the TX buffer ends window 0 as the step's reset
+    /// classifies it by the header: the runner's collect takes the input,
+    /// or reverts it to the pre-input state when `rejects`. Dense leaves
+    /// agree bulk and stepped, so the emulator's collector classifies it
+    /// alike.
     fn assert_classified_by_header(make: fn() -> Result<Machine>, rejects: bool) -> Result<()> {
         let structure = Structure::PRODUCTION;
         let payload = b"seam".to_vec();
@@ -1468,10 +1496,6 @@ mod tests {
         oracle.send_cmio_response(CmioResponseReason::Advance, &payload, Some(&pre))?;
         oracle.run(u64::MAX)?;
         assert!(oracle.iflags_y()?);
-        assert!(
-            oracle.receive_cmio_request().is_err(),
-            "premise: the bindings refuse the yield"
-        );
         // The step's verdict: its reset reverts a rejection to the revert
         // root and leaves an accepted yield as it is.
         let yielded = oracle.root_hash()?;
@@ -1512,6 +1536,24 @@ mod tests {
                 .unwrap()
         });
         assert_eq!(bulk, stepped);
+        Ok(())
+    }
+
+    /// The emulator clamps a declared length past the TX buffer to the
+    /// buffer, where v0.22 refused the read. Nothing in the node reads the
+    /// data, so only this pin sees the difference.
+    #[test]
+    fn a_yield_declaring_data_past_the_tx_buffer_reads_back_clamped() -> Result<()> {
+        use cartesi_machine::types::cmio::{CmioRequest, ManualReason};
+
+        let mut machine = oversized_accepted_machine()?;
+        let CmioRequest::Manual(ManualReason::RxAccepted {
+            output_hashes_root_hash: data,
+        }) = machine.receive_cmio_request()?
+        else {
+            panic!("the guest yields RX_ACCEPTED");
+        };
+        assert_eq!(data.len(), 1 << TX_LOG2_SIZE);
         Ok(())
     }
 

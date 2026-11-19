@@ -257,7 +257,14 @@ archive and manifest digests), and the per-image producers under
 also live in the safe Rust wrapper, node configuration, and computation-corpus gate. An emulator bump
 must update every matching guard and artifact together with both machine
 submodules and regenerated program images; search for the current version
-rather than treating the acquisition list as exhaustive. The settlement
+rather than treating the acquisition list as exhaustive. A machine generation
+also moves pins no version search finds: the `CM_MARCHID` literal in
+`prt/contracts/test/StateTransition.t.sol`, the yield image's hash in the gas
+script (`cartesi-rollups/contracts/script/measure-prt-gas.sh`), the reference
+CLI's version line and the corpus shape in the node's
+`tests/engine_machine.rs`, the proof lengths the Rust and Lua step tests pin,
+the read order the Solidity step models build, and the store identity in
+`storage/sql/schema.rs`. The settlement
 proof's register addresses are the exception: DaveConsensus takes them from
 the solidity-step copy bundled in its cartesi-rollups-contracts dependency,
 not from `machine/step`, so moving them needs a rollups-contracts release.

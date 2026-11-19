@@ -178,12 +178,12 @@ contract StfStatusDiscardTest is Test {
         assertEq(stf.transitionState(pre, PLAIN, log_, PROVIDER), post);
     }
 
-    /// The halting ECALL as the 2^20 - 1st instruction: overflow takes
-    /// precedence in the status, the halt write stays in the root. Off the
-    /// honest path with the pristine ROM (the heaviest instruction measured
-    /// on v0.21, sfence.vma, takes 17,595 usteps); pinned because the release
-    /// CLI throws here (computation-hash.md).
-    function testRefutedHaltAtCycleMaxReportsOverflowAndChangesRoot() public {
+    /// The halting ECALL as the 2^20 - 1st instruction: the halt takes
+    /// precedence in the status, as below the limit, and the halt write
+    /// stays in the root. Off the honest path with the pristine ROM (the
+    /// heaviest instruction measured on v0.21, sfence.vma, takes 17,595
+    /// usteps).
+    function testRefutedHaltAtCycleMaxReportsHaltedAndChangesRoot() public {
         _uarch(0, MAX - 1, UARCH_RAM);
         _setInsn(UARCH_RAM, ECALL);
         _setWord(_x(17), EmulatorConstants.UARCH_ECALL_FN_HALT);
@@ -195,11 +195,12 @@ contract StfStatusDiscardTest is Test {
         _read(_x(17));
         _write(HALT, 1);
         _write(CYCLE, MAX);
+        // At the limit too, a halting ECALL re-reads the halt flag.
+        _read(HALT);
         bytes32 post = _root();
 
         assertEq(
-            uint8(_status(pre)),
-            uint8(UArchStep.UArchStepStatus.UArchCycleOverflow)
+            uint8(_status(pre)), uint8(UArchStep.UArchStepStatus.UArchHalted)
         );
         assertNotEq(post, pre);
         assertEq(stf.transitionState(pre, NEAR_CLOSE, log_, PROVIDER), post);
@@ -233,9 +234,11 @@ contract StfStatusDiscardTest is Test {
         );
         assertEq(stf.transitionState(pre, NEAR_CLOSE, log_, PROVIDER), stepped);
 
-        // Closing: the overflow fixed point reads the cycle only, then reset.
+        // Closing: the overflow fixed point reads the cycle and the halt
+        // flag, then reset.
         delete log_;
         _read(CYCLE);
+        _read(HALT);
         _writeRegion(
             UARCH_LEVEL,
             UARCH_INDEX,
@@ -255,6 +258,7 @@ contract StfStatusDiscardTest is Test {
         _setWord(IFLAGS_Y, 0);
         bytes32 pre = _root();
         _read(CYCLE);
+        _read(HALT);
         _writeRegion(
             UARCH_LEVEL,
             UARCH_INDEX,
@@ -350,9 +354,7 @@ contract StfStatusDiscardTest is Test {
         _setLeaf(REVERT_SLOT >> Memory.LOG2_LEAF, recorded);
         bytes32 pre = _root();
         _read(CYCLE);
-        if (cycle < MAX) {
-            _read(HALT);
-        }
+        _read(HALT);
         _writeRegion(
             UARCH_LEVEL,
             UARCH_INDEX,

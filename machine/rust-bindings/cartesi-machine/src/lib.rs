@@ -7,6 +7,7 @@ pub mod config;
 pub mod constants;
 pub mod error;
 pub mod machine;
+pub mod stored;
 pub mod types;
 
 pub use machine::Machine;
@@ -22,7 +23,7 @@ pub use cartesi_machine_sys;
 /// `libcartesi` reports this exact version. Bumping the emulator requires
 /// bumping this constant and re-running the config round-trip tests; any
 /// schema drift will surface there.
-pub const EXPECTED_EMULATOR_VERSION: u64 = 22_000; // 0.22.0
+pub const EXPECTED_EMULATOR_VERSION: u64 = 23_000; // 0.23.0
 
 /// Formats an emulator version u64 (as returned by `cm_get_version`) as
 /// `"major.minor.patch"`.

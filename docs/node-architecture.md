@@ -51,11 +51,12 @@ log search, and an image stays current for at least a root allowance. Any
 other image is refused with exit 30, naming `snapshots/0x<hash>`, where every
 node working on epoch k keeps the state to take; a state settled after the
 sampled head is refused until its settlement finalizes, since the
-finalized-only reader could not execute its epoch anyway. The root hash comes
-from the image's stored hash tree, which the node cannot check against the
-contents until an emulator release supports hash-tree verification (todo.md
-tracks it), so until then a seed image is trusted like the template: take it
-from a store you trust. A matching image paused elsewhere is still refused:
+finalized-only reader could not execute its epoch anyway. The root hash is
+the contents': the node discards the image's stored hash tree, which a load
+would otherwise believe for every page it marks clean, and rebuilds it,
+once to inspect the image and once on the clone it seeds, so a corrupt or
+forged image has another root and is refused like any other.
+A matching image paused elsewhere is still refused:
 the engine starts every epoch from a state awaiting input, so the node could
 not defend any of its epochs (for a settled state this cannot happen, since
 staging requires the same yield). Only then does it take the data-directory
@@ -306,6 +307,20 @@ the working clone into the checkpoint and checks out a fresh clone; a rejected
 input discards the poisoned clone and checks out a fresh clone of the current
 checkpoint.
 
+The emulator's rule for a directory a machine changes in place has two
+halves: it is a stored machine again only once that machine is destroyed,
+and it survives a stop of the process only once it is synced after that;
+otherwise it is discarded. The node needs both kinds. A rollback checkpoint
+is volatile: closed, never synced, loaded and cloned as it is (destroying a
+machine leaves its whole state in the page cache, and a sync writes
+nothing of its own), and gone with the batch or at the next start's sweep.
+A snapshot is durable, one per gap. The machine wrapper carries the two as
+types (`Volatile`, `Durable`): a shared open takes ownership of a volatile
+directory and only a checked close gives it back, so nothing can clone,
+load or sync a directory a machine still maps, a durable snapshot cannot be
+opened shared, and a volatile directory that is not persisted removes
+itself.
+
 While an epoch is open, a tail shorter than `--snapshot-gap-inputs` remains
 unexecuted until a full batch is available. Once the epoch is sealed, the
 runner executes and publishes its final shorter batch before rolling the
@@ -321,16 +336,18 @@ boundary, which every later action of that dispute resumes from.
 
 Every input, accepted or rejected, pays a fixed overhead on top of the
 application's work: the close, clone and `SHARING_ALL` reload of the
-rotation, about 140-200 ms per input measured on macOS
-(measurements/measurements.md). Nearly all of it is the reload reading the
-clone's 50 MB page hash-tree cache (`hash_tree.phtc`): the emulator walks it
-one dependent page at a time, and a fresh clone is a new inode with nothing
-in the page cache, so a warm reload of the same directory takes about 2 ms
-whatever the sharing mode. The next emulator release fixes the cold read
-(about 2.5 ms per input in a preliminary implementation; todo.md, Upstream).
-On v0.22.0 the overhead caps the runner near a handful of inputs per second
-whatever the application does, and a crossing costs it once per crossed input. That is
-why the gap stays a fixed input count. A policy that keeps a bounded number
+rotation, and the removal of the clone it retires. On emulator v0.23 the
+echo image's whole time per input is about 26 ms accepted and 22 ms
+rejected on macOS (measurements/measurements.md): about 15 ms of rotation
+(close 5, clone 3, reload 3, removal 3), and most of the rest the input's
+first touch of its pages, since a fresh clone is a new inode with nothing in
+the page cache (a warm input runs in about 2 ms). On v0.22.0 the reload
+alone took about 130 ms: it walked the clone's 50 MB page hash-tree cache
+(`hash_tree.phtc`) one dependent page at a time, a layout v0.23 changed.
+The overhead still caps the runner, near 40 inputs per second there
+whatever the application does, and a crossing costs it once per crossed
+input. That is why the gap stays a fixed input count. A policy that keeps a
+bounded number
 of boundaries and widens their spacing as the epoch grows (the emulator's
 prt recipe keeps eight) spaces them about n/K inputs apart for an n the
 adversary chooses, so a crossing's overhead grows with the input count even

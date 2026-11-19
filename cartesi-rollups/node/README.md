@@ -149,7 +149,7 @@ code, or an image built by another emulator) or whose hash tree is not
 Keccak-256. It also refuses an image with a file the node maps for writing
 (all but `config.json` and the data of the PMAs and read-only drives) that
 lacks the owner write bit: the copy the node seeds keeps each file's mode,
-so every advance batch would fail. Make such an image writable
+so the seed and every advance batch would fail. Make such an image writable
 (`chmod -R u+w`).
 
 One node process owns a data directory: startup locks its `node.lock` and
@@ -179,12 +179,13 @@ XFS. Elsewhere:
 
 - ext4 has no reflinks, so every clone is a sparse copy: each input pays a
   copy of the machine, and each kept snapshot costs the machine's allocated
-  size. Like btrfs it caps a file at about 65k links, so about 65k live
-  snapshots. Development and small applications only (many cloud volumes
-  default to it).
+  size. Like btrfs it caps a file at about 65k links; past that count the
+  emulator copies the machine's read-only files instead of linking them.
+  Development and small applications only (many cloud volumes default to
+  it).
 - btrfs is for development only: it caps a file at 65,535 links, every kept
-  snapshot links the machine's read-only files, and at that count clones
-  fail and the node stops computing.
+  snapshot links the machine's read-only files, and past that count each
+  clone copies them.
 - ZFS is untested; APFS (macOS) is for development; tmpfs does not survive a
   reboot.
 
@@ -306,14 +307,16 @@ Options:
   epochs complete, as in the side-by-side upgrade below. Until it has
   replayed the seeded epoch, it logs that it waits for the machine runner, at
   ERROR after 5 minutes, since that epoch's clock runs: seed early in an
-  epoch, between disputes. Across an emulator archive change (v0.22 refuses archive 7) an
+  epoch, between disputes. Across an emulator archive change (v0.23 refuses archive 8) an
   older release's snapshot does not load: the first node of the new release
   replays from a template stored by that release, and the others seed from
-  it. The node takes the image's root from its stored hash tree and cannot
-  check that tree against the contents until an emulator release supports
-  hash-tree verification ([todo.md](../../docs/todo.md)), so until then take
-  the image from a source you trust like the template, such as your own
-  node's store.
+  it. The node rebuilds the image's hash tree from its contents before it
+  compares the root with the chain's, so an image from any source either
+  is that state when the node seeds from it or is refused. The seeded
+  copy still shares the image's read-only files with it (hard links, where
+  the filesystem makes them), so never modify a template or snapshot
+  directory in place once a node was seeded from it; removing it and
+  storing it again makes new files and is safe.
 - To upgrade across a change that requires a fresh data directory, start the
   new node on a new directory with its own funded signer, let it catch up,
   then stop the old one; never wipe the only node's directory in place. The
@@ -409,6 +412,14 @@ Options:
   since an adversary can time input load into a dispute. A host outage, a
   restart loop or an unanswered page draws on the same censorship budget as a
   provider outage.
+- Under a CPU quota below the host's core count (a container limit), set
+  `OMP_NUM_THREADS` to that quota, rounded up, in the node's environment.
+  The Cartesi Machine sizes its hash-tree threads from the cores it sees,
+  not from the quota: at 1.5 CPUs on a 24-core host, QA measured the runner
+  about 15 times slower on emulator v0.22, and that setting recovered it.
+  Set `OMP_WAIT_POLICY=passive` there as well: on Linux the machine's idle
+  hash-tree threads spin unless it is in the environment when the process
+  starts. The machine's own CLI defaults it; the node's process does not.
 - Alert on every ERROR line, including an input that makes the application
   terminal (paged after its batch commits; ask the guardian to foreclose), on
   restart loops, on free space on the data directory's filesystem (the node

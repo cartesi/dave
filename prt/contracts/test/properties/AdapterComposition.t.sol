@@ -1399,10 +1399,13 @@ contract AdapterCompositionTest is TournamentDriver {
             bytes32(0),
             wordOffset
         );
-        proof = abi.encodePacked(
+        // The step reads the cycle, then the halt flag: two words of one
+        // leaf, so the same read is logged twice.
+        bytes memory read = abi.encodePacked(
             leafWord, new bytes(uint256(Memory.LOG2_MAX_SIZE) * 32)
         );
-        Buffer.Context memory siblings = Buffer.Context(proof, 32);
+        proof = bytes.concat(read, read);
+        Buffer.Context memory siblings = Buffer.Context(read, 32);
         machineState = siblings.getRoot(
             Memory.regionFromLeafAddress(leafAddress),
             keccak256(abi.encodePacked(leafWord))

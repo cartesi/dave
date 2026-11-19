@@ -67,7 +67,7 @@ contract StateTransitionTest is Util {
 
     function testCmMarchIdIsTheStepConstant() public view {
         assertEq(STATE_TRANSITION.CM_MARCHID(), EmulatorConstants.CM_MARCHID);
-        assertEq(STATE_TRANSITION.CM_MARCHID(), 22);
+        assertEq(STATE_TRANSITION.CM_MARCHID(), 23);
     }
 
     function testUarchPristineStateHashIsTheResetConstant() public view {
@@ -599,17 +599,21 @@ contract StateTransitionTest is Util {
             wordOffset
         );
 
-        proof = abi.encodePacked(
+        // The step reads the cycle, then the halt flag: two words of one
+        // leaf, so the same read is logged twice.
+        bytes memory read = abi.encodePacked(
             leaf, new bytes(uint256(Memory.LOG2_MAX_SIZE) * 32)
         );
-        Buffer.Context memory siblings = Buffer.Context(proof, 32);
+        proof = bytes.concat(read, read);
+        Buffer.Context memory siblings = Buffer.Context(read, 32);
         machineState = siblings.getRoot(
             Memory.regionFromLeafAddress(leafAddress),
             keccak256(abi.encodePacked(leaf))
         );
     }
 
-    /// A closing over an overflowed uarch: the step's cycle read, the reset's
+    /// A closing over an overflowed uarch: the step's cycle and halt reads
+    /// (one leaf, logged twice), the reset's
     /// uarch-region write, and its read of a zero IFLAGS.Y word. Every
     /// sibling is zero except where the two paths meet: the uarch region
     /// (stride one at its level) and the subtree holding IFLAGS.Y (stride
@@ -661,6 +665,7 @@ contract StateTransitionTest is Util {
             aboveRegion
         );
         proof = abi.encodePacked(
+            cycleRead,
             cycleRead,
             abi.encodePacked(uarchRegion, iflagsSubtree, aboveRegion),
             iflagsRead

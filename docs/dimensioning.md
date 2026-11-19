@@ -74,9 +74,11 @@ and bonds do not. The testnets, with `C` of 8 hours and free gas, have no such
 price. An attack that fills a resource (disk, links, memory, provider quota)
 for less than that is a wall to close; one that costs more, or is out of
 model, is a door, and a guard against it is not worth its code. These figures
-use emulator v0.22.0 on one macOS machine and stay provisional until the Linux
-measurement, with the runner and a dispute sharing cores and the disk under
-pressure (todo.md).
+use emulator v0.22.0 on one macOS machine. On v0.23 that machine measures 22
+to 26 ms per input (measurements/measurements.md), under the threshold
+below, so the price is due its re-derivation, on the Linux measurement with
+the runner and a dispute sharing cores and the disk under pressure
+(todo.md).
 
 The input cap bounds what one seal owes the runner: at most `2^24 x t`, where
 `t` is the runner's whole time per input, the node's overhead plus the
@@ -86,10 +88,11 @@ outrun the root join, provided the snapshot disk keeps up (a full epoch keeps
 2^24 / gap boundaries, 262,144 at the default gap). That closes the loss
 bought with gas alone, not the drain: a full epoch still draws up to
 `2^24 x t` from that epoch's `C`, less the time the chain takes to carry it,
-and the ledger counts that drain like any other delay. At the cold-load fix's
-preliminary 2.5 ms the drain is at most about 11.7 hours (7% of a week);
-Ethereum carries at most about 165 such inputs a second, so a runner that fast
-keeps up as they land there (a lead: gas limits move). Below the threshold the
+and the ledger counts that drain like any other delay. At the 22 to 26 ms
+measured on macOS with emulator v0.23 the drain is at most about 4.3 to 5.0
+days (61% to 72% of a week), and the runner executes 38 to 47 such inputs a
+second where Ethereum carries at most about 165, so it does not keep up as
+they land there (a lead: gas limits move). Below the threshold the
 reference price must be re-derived from the next wall, the drain combined with
 other delays or the snapshot disk, not re-measured (todo.md).
 
@@ -273,9 +276,10 @@ contract, by design: it meters effort per input and prices it, with prices
 that rise as the epoch's effort is consumed, so that underpriced inputs are
 dismissed cheaply. Inputs that execute nearly instantly do not make it slack:
 the node pays its fixed per-input overhead on every input, accepted or
-rejected, so on emulator v0.22.0 the runner tops out near a handful of inputs
-per second whatever the application does, and an app's pricing can dismiss an
-input but not that overhead. The contract therefore binds for every
+rejected, so the runner tops out near 40 inputs per second on macOS with
+emulator v0.23 (a handful on v0.22.0) whatever the application does, and an
+app's pricing can dismiss an input but not that overhead. The contract
+therefore binds for every
 application, at the reference price above, while t exceeds the threshold (One
 reference price, above); below it the cap bounds each epoch's work and its
 drain on C. Sealing gives no minimum notice either way.

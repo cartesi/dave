@@ -111,7 +111,7 @@ struct Args {
 
     /// Leaf-tournament height for --node-vs-emulator: 38 is the
     /// canonical two-level leaf; lower it for a quick run.
-    #[arg(long, default_value_t = 38)]
+    #[arg(long, default_value_t = CANONICAL_LEAF_HEIGHT)]
     leaf_height: u64,
 
     /// Internal: runs one --node-vs-emulator row in this process, so its
@@ -151,6 +151,9 @@ fn main() -> Result<()> {
     bench_level0_fold(&mut report)?;
     bench_snapshot(&mut report, &image, &scratch_root)?;
     bench_clone_loop(&mut report, &image, &scratch_root)?;
+    if args.profile == BaselineProfile::Echo {
+        bench_runner(&mut report, &image, &scratch_root)?;
+    }
     bench_atoms(&mut report, &image, &scratch_root)?;
     bench_quartets(&mut report, &image, &scratch_root, args.full)?;
 
@@ -258,7 +261,7 @@ fn bench_snapshot(report: &mut String, image: &Path, scratch_root: &Path) -> Res
 }
 
 /// The CoW clone loop: the per-input cost
-/// of clone -> load SHARING_ALL -> advance -> root_hash -> destroy,
+/// of clone -> shared open -> advance -> root_hash -> close,
 /// the physical cost of each kept boundary, and the mapping-mode A/B
 /// for the hash-hot sampling loop. Boundary cost is a free-space
 /// delta: order of magnitude only (any concurrent writer moves it),
@@ -267,12 +270,14 @@ fn bench_snapshot(report: &mut String, image: &Path, scratch_root: &Path) -> Res
 /// degrades to sparse copies and these rows price exactly that.
 fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     use cartesi_machine::config::runtime::RuntimeConfig;
-    use cartesi_machine::machine::Machine;
-    use cartesi_machine::types::SharingMode;
+    use cartesi_machine::stored::{Durable, Stored};
 
+    let quiet = RuntimeConfig::quiet_console();
     let chain_root = scratch(scratch_root, "clone-chain")?;
-    let boundary = |k: u64| chain_root.join(format!("boundary-{k}"));
-    let (_, template_clone) = timed(|| Ok(Machine::clone_stored(image, &boundary(0))?))?;
+    let (first, template_clone) =
+        timed(|| Ok(Durable::at(image).clone_to(&chain_root.join("boundary-0"))?))?;
+    // Every boundary stays until the loop ends, as a kept one would.
+    let mut boundaries = vec![first];
 
     writeln!(report, "## The boundary clone loop")?;
     writeln!(report)?;
@@ -296,25 +301,16 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     // yield takes no further input until the node reverts it.
     const INPUTS: u64 = 2;
     for k in 0..INPUTS {
-        let working = chain_root.join("working");
+        let working = chain_root.join(format!("boundary-{}", k + 1));
         let free_before = free_space_kb(&chain_root)?;
-        let (_, clone) = timed(|| Ok(Machine::clone_stored(&boundary(k), &working)?))?;
-        let (machine, load) = timed(|| {
-            Ok(Machine::load_with_sharing(
-                &working,
-                &RuntimeConfig::quiet_console(),
-                SharingMode::All,
-            )?)
-        })?;
-        let mut machine = machine;
+        let last = boundaries.last().expect("the template's clone");
+        let (working, clone) = timed(|| Ok(last.clone_to(&working)?))?;
+        let (mut machine, load) = timed(|| Ok(working.open(&quiet)?))?;
         let input = evm_advance_input(k, b"measure");
         let (_, advance) = timed(|| advance_one_input(&mut machine, &input))?;
         let (_, hash) = timed(|| Ok(machine.root_hash()?))?;
-        let (_, destroy) = timed(|| {
-            drop(machine);
-            Ok(())
-        })?;
-        fs::rename(&working, boundary(k + 1))?;
+        let (closed, destroy) = timed(|| Ok(machine.close()?))?;
+        boundaries.push(closed.expect("a shared open owns its directory"));
         let free_after = free_space_kb(&chain_root)?;
         let churn_mb = (free_before as i64 - free_after as i64) as f64 / 1024.0;
 
@@ -330,19 +326,23 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     }
     writeln!(report)?;
 
-    // The hash-hot sampling loop under each mapping mode: does
-    // MAP_SHARED slow the ustep + root_hash pair the leaf level's
-    // collect lives in? A fresh clone per mode (ALL locks and mutates
+    // The hash-hot sampling loop under each mapping: does MAP_SHARED
+    // slow the ustep + root_hash pair the leaf level's collect lives
+    // in? A fresh clone per mapping (a shared open locks and mutates
     // its directory).
     writeln!(report, "| hash-hot pairs (uarch step + root_hash) | rate |")?;
     writeln!(report, "|---|---:|")?;
-    for (tag, label, mode) in [
-        ("private", "private mapping (CONFIG)", SharingMode::Config),
-        ("shared", "shared mapping (ALL)", SharingMode::All),
+    let last = boundaries.last().expect("the template's clone");
+    for (tag, label, shared) in [
+        ("private", "private mapping", false),
+        ("shared", "shared mapping", true),
     ] {
-        let dir = chain_root.join(format!("pairs-{tag}"));
-        Machine::clone_stored(&boundary(INPUTS), &dir)?;
-        let mut machine = Machine::load_with_sharing(&dir, &RuntimeConfig::quiet_console(), mode)?;
+        let clone = last.clone_to(&chain_root.join(format!("pairs-{tag}")))?;
+        let mut machine = if shared {
+            clone.open(&quiet)?
+        } else {
+            clone.load(&quiet)?
+        };
         let pairs = 500u64;
         let start = Instant::now();
         for _ in 0..pairs {
@@ -363,6 +363,93 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     }
     writeln!(report)?;
 
+    Ok(())
+}
+
+/// The runner's whole time per input on its production path
+/// (`MachineRunner::process_rollup`: the plan, the window collect at the
+/// root stride, the clone rotation and one publication per gap), over
+/// full batches of the default gap. The window roots make the root stride
+/// part of the figure, so this runs on the canonical table, not on
+/// `bench_geometry`'s coarser one. The echo fixture rejects by the
+/// input's index field (build-echo.sh), so a batch carrying that index is
+/// a batch of rejections.
+fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
+    use cartesi_sling_node::machine_runner::MachineRunner;
+    use cartesi_sling_node::sync::ShutdownSignal;
+
+    const BATCHES: u64 = 4;
+    const REJECTED_INDEX: u64 = 2;
+    let count = BATCHES * DEFAULT_SNAPSHOT_GAP_INPUTS;
+
+    writeln!(report, "## The runner per input")?;
+    writeln!(report)?;
+    writeln!(
+        report,
+        "`MachineRunner::process_rollup` over {count} inputs of one kind at the\n\
+         default gap of {DEFAULT_SNAPSHOT_GAP_INPUTS}, on the canonical two-level table \
+         (window roots at\n\
+         stride 2^{CANONICAL_LEAF_HEIGHT}): the whole time per input, the application's \
+         work and one\n\
+         publication per gap included."
+    )?;
+    writeln!(report)?;
+    writeln!(report, "| inputs | time per input | rate |")?;
+    writeln!(report, "|---|---:|---:|")?;
+
+    for (label, rejected) in [("accepted", false), ("rejected", true)] {
+        let state_dir = scratch(scratch_root, &format!("runner-{label}"))?;
+        let geometry = two_level_geometry(CANONICAL_LEAF_HEIGHT)?;
+        let mut storage = seeded_storage(&state_dir, image, geometry)?;
+        let rows: Vec<StorageInput> = (0..count)
+            .map(|k| {
+                let index = match (rejected, k) {
+                    (true, _) => REJECTED_INDEX,
+                    (false, k) if k >= REJECTED_INDEX => k + 1,
+                    (false, k) => k,
+                };
+                StorageInput {
+                    id: InputId {
+                        epoch_number: 0,
+                        input_index_in_epoch: k,
+                    },
+                    data: evm_advance_input(index, b"measure"),
+                }
+            })
+            .collect();
+        storage.insert_consensus_data(0, rows.iter(), std::iter::empty())?;
+        let boundary = *storage
+            .snapshot_hash(0, 0)?
+            .as_ref()
+            .expect("the seed registers the epoch start");
+
+        let mut runner = MachineRunner::new(
+            Storage::new(&state_dir)?,
+            DEFAULT_SNAPSHOT_GAP_INPUTS,
+            Duration::ZERO,
+            ShutdownSignal::default(),
+        )?;
+        let (_, elapsed) = timed(|| runner.process_rollup())?;
+        let published = storage.snapshot_hash(0, count)?;
+        anyhow::ensure!(published.is_some(), "the runner left inputs unpublished");
+        // A rejection restores the pre-input state, so a batch of them
+        // ends where it started.
+        anyhow::ensure!(
+            (published == Some(boundary)) == rejected,
+            "the workload did not take the {label} inputs as such"
+        );
+
+        let per_input = elapsed / count as u32;
+        writeln!(
+            report,
+            "| {label} | {} | {:.1}/s |",
+            fmt_duration(per_input),
+            1.0 / per_input.as_secs_f64(),
+        )?;
+        drop(runner);
+        let _ = fs::remove_dir_all(&state_dir);
+    }
+    writeln!(report)?;
     Ok(())
 }
 
@@ -684,6 +771,26 @@ fn bench_geometry() -> Result<TournamentGeometry> {
         })
         .collect();
     TournamentGeometry::new(levels, &Structure::PRODUCTION)
+}
+
+/// The leaf height of the canonical two-level table [38, 0] / [54, 38]
+/// (docs/dimensioning.md).
+const CANONICAL_LEAF_HEIGHT: u64 = 38;
+
+/// The two-level table whose root stride is its leaf's height.
+fn two_level_geometry(leaf_height: u64) -> Result<TournamentGeometry> {
+    let structure = Structure::PRODUCTION;
+    let levels = vec![
+        Level {
+            log2_stride: leaf_height,
+            height: structure.log2_ruler_span() - leaf_height,
+        },
+        Level {
+            log2_stride: 0,
+            height: leaf_height,
+        },
+    ];
+    TournamentGeometry::new(levels, &structure)
 }
 
 /// Big cycles per timed leaf-build sample, and the samples whose median
@@ -1126,19 +1233,7 @@ mod versus {
         let input = args.gap_inputs - 1;
 
         let state = scratch(scratch_root, "state")?;
-        let geometry = TournamentGeometry::new(
-            vec![
-                Level {
-                    log2_stride: height,
-                    height: structure.log2_ruler_span() - height,
-                },
-                Level {
-                    log2_stride: 0,
-                    height,
-                },
-            ],
-            &structure,
-        )?;
+        let geometry = two_level_geometry(height)?;
         let mut storage = seeded_storage(&state, image, geometry)?;
         let rows: Vec<StorageInput> = (0..args.gap_inputs)
             .map(|i| StorageInput {
