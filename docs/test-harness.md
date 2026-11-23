@@ -248,7 +248,9 @@ transition shape are checked against the contracts in Foundry
 state runs there too (`harness/settled_start.rs`): a node seeded from
 another node's snapshot of a sealed epoch's start settles that epoch and
 never takes an earlier one, an unsettled state seeds nothing, and a restart
-reads no image.
+reads no image. A second node, on another key and a fresh directory, settles
+an epoch whose root the first node won and then left: it stages and accepts
+without joining, after the staging period when one is set.
 
 The foreclosure tests pin continued defense and paid bond recovery before
 terminal exit, including a foreclosure during a live match and a restart.
