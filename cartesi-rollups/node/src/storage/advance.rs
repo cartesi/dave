@@ -123,9 +123,14 @@ impl AdvanceBatch {
     }
 }
 
+/// The epoch's input count, as one past its highest index: an index seek
+/// where a count walks the whole epoch. Exact because ingest admits an
+/// epoch's inputs densely from zero and nothing deletes one; the plan's
+/// contiguity asserts catch a prefix that is not.
 fn input_count_in(tx: &Transaction, epoch: u64) -> Result<u64> {
     let count: i64 = tx.query_row(
-        "SELECT COUNT(*) FROM inputs WHERE epoch_number = ?1",
+        "SELECT COALESCE(MAX(input_index_in_epoch) + 1, 0)
+             FROM inputs WHERE epoch_number = ?1",
         [u64_to_i64(epoch)],
         |row| row.get(0),
     )?;
@@ -1441,6 +1446,42 @@ mod tests {
             snapshot_path(s.state_dir(), &start).exists(),
             "(3, 0) still names the seed image's directory"
         );
+    }
+
+    /// A hole only a write around ingest can make: the inputs after
+    /// `first` are skipped up to `resume`.
+    fn append_inputs_with_a_hole(s: &mut Storage, first: u64, resume: u64, count: u64) {
+        append_inputs(s, 0, first);
+        s.write(|tx| {
+            for index in resume..resume + count {
+                tx.execute(
+                    "INSERT INTO inputs (epoch_number, input_index_in_epoch, input)
+                     VALUES (0, ?1, x'00')",
+                    [u64_to_i64(index)],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// The plan takes an epoch's input count from its highest index, which
+    /// rests on a dense prefix. A hole at the end of a batch leaves it short.
+    #[test]
+    #[should_panic(expected = "input prefix is not contiguous from boundary 0")]
+    fn a_hole_that_leaves_the_batch_short_stops_the_plan() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs_with_a_hole(&mut s, 2, 3, 1);
+        let _ = s.advance_plan(4);
+    }
+
+    /// A hole inside a batch is filled from past it, at the wrong indexes.
+    #[test]
+    #[should_panic(expected = "input prefix has a hole")]
+    fn a_hole_inside_the_batch_stops_the_plan() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs_with_a_hole(&mut s, 2, 3, 2);
+        let _ = s.advance_plan(3);
     }
 
     #[test]
