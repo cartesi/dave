@@ -73,6 +73,10 @@ past the span.
 - `--polling-interval` accepts 1 to 60 seconds, and any other value is a
   usage error (exit 2): at 0 the workers never waited, and a very large
   value left the node up and silent.
+- The ERROR for a step planned without landing names the verdict `Outbid`,
+  formerly `Underpriced`, when a pending transaction at that nonce outbids
+  the node's send: a wait behind that transaction, not a fee to raise. The
+  relay runbook lists the verdicts.
 
 ### For developers
 
