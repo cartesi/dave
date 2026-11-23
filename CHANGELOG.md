@@ -70,6 +70,9 @@ past the span.
   application.
 - Read each level of the dispute tree with one multi-address `eth_getLogs`
   per 100 tournaments instead of one request per tournament.
+- `--polling-interval` accepts 1 to 60 seconds, and any other value is a
+  usage error (exit 2): at 0 the workers never waited, and a very large
+  value left the node up and silent.
 
 ### For developers
 

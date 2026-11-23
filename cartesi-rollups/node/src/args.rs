@@ -250,9 +250,15 @@ pub struct PRTArgs {
     #[clap(subcommand)]
     pub signer: SignerArgs,
 
-    /// polling interval in seconds; a due response can wait one interval
-    /// before the node sees it, out of a 5-minute response window
-    #[arg(long, env = "CARTESI_SLING_POLLING_INTERVAL", default_value_t = POLLING_INTERVAL)]
+    /// polling interval in seconds, 1 to 60; a due response can wait one
+    /// interval before the node sees it, out of a 5-minute response window,
+    /// and the node's reads from its provider scale inversely with it
+    #[arg(
+        long,
+        env = "CARTESI_SLING_POLLING_INTERVAL",
+        default_value_t = POLLING_INTERVAL,
+        value_parser = clap::value_parser!(u64).range(1..=60)
+    )]
     pub polling_interval: u64,
 
     /// execute and durably publish open-epoch inputs in batches of N;
@@ -686,6 +692,32 @@ mod tests {
             .expect("zero snapshot gap should fail argument parsing");
         assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
         assert!(error.to_string().contains("--snapshot-gap-inputs"));
+    }
+
+    /// At 0 the workers never wait, and past a minute a due response waits
+    /// too much of its window on the node alone.
+    #[test]
+    fn the_polling_interval_is_one_to_sixty_seconds() {
+        let with_interval = |seconds: &str| {
+            parse(&[
+                "--polling-interval",
+                seconds,
+                "pk",
+                "--auth-private-key-file",
+                "/tmp/unread-by-the-parser",
+            ])
+        };
+        for accepted in [1, 60] {
+            let args = with_interval(&accepted.to_string()).unwrap();
+            assert_eq!(args.polling_interval, accepted);
+        }
+        for refused in ["0", "61"] {
+            let error = with_interval(refused)
+                .err()
+                .unwrap_or_else(|| panic!("a polling interval of {refused} must not parse"));
+            assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+            assert!(error.to_string().contains("--polling-interval"), "{error}");
+        }
     }
 
     #[test]

@@ -267,7 +267,7 @@ Options:
       --blockchain-id <BLOCKCHAIN_ID>
           blockchain chain id [env: CARTESI_SLING_BLOCKCHAIN_ID]
       --polling-interval <POLLING_INTERVAL>
-          polling interval in seconds; a due response can wait one interval before the node sees it, out of a 5-minute response window [env: CARTESI_SLING_POLLING_INTERVAL] [default: 30]
+          polling interval in seconds, 1 to 60; a due response can wait one interval before the node sees it, out of a 5-minute response window, and the node's reads from its provider scale inversely with it [env: CARTESI_SLING_POLLING_INTERVAL] [default: 30]
       --snapshot-gap-inputs <SNAPSHOT_GAP_INPUTS>
           execute and durably publish open-epoch inputs in batches of N; 1 processes each input immediately, and sealing flushes a shorter final batch [env: CARTESI_SLING_SNAPSHOT_GAP_INPUTS] [default: 64]
       --data-dir <DATA_DIR>
