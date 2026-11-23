@@ -417,9 +417,13 @@ Options:
   provider outage.
 - Under a CPU quota below the host's core count (a container limit), set
   `OMP_NUM_THREADS` to that quota, rounded up, in the node's environment.
-  The Cartesi Machine sizes its hash-tree threads from the cores it sees,
-  not from the quota: at 1.5 CPUs on a 24-core host, QA measured the runner
-  about 15 times slower on emulator v0.22, and that setting recovered it.
+  A quota limits CPU time, not the cores a process sees, and the Cartesi
+  Machine starts a hash-tree thread per visible core for a large update,
+  spending the quota early in each period: at 1.5 CPUs on a 24-core host,
+  QA measured the runner about 15 times slower on emulator v0.22, and that
+  setting recovered it. The variable caps the machine's own thread setting
+  (`concurrency.update_hash_tree` in its runtime config), which the node
+  leaves at its default and has no flag for.
   Set `OMP_WAIT_POLICY=passive` there as well: on Linux the machine's idle
   hash-tree threads spin unless it is in the environment when the process
   starts. The machine's own CLI defaults it; the node's process does not.
