@@ -210,9 +210,24 @@ transaction got no answer from the submit endpoint means the relay is
 unreachable, and its ERROR "failed to submit" carries the relay's rejection.
 The page names the newest send at the stuck nonce, a call that still
 succeeds at latest; the held transaction is an earlier send at that nonce,
-often a step whose effect has since landed some other way. A hold looks like
-the latest nonce staying at the named one while the named hash is UNKNOWN,
-or PENDING without a simError, on the relay's status page
+often a step whose effect has since landed some other way. Its verdict is
+the endpoint's answer to that newest send (`SendVerdict` in
+`cartesi-rollups/node/src/provider.rs`):
+
+- `Submitted`: accepted.
+- `AlreadyKnown`: the identical transaction is already pending.
+- `Outbid`: a pending transaction at that nonce outbids the send, its
+  retry at the max tip included, so the send waits behind it. The pending
+  one may be the transaction the relay holds; the node's fees are not the
+  remedy.
+- `Stale`: the nonce is already used; the next tick replans.
+- `Unanswered`: no JSON-RPC answer; the WARN above was logged.
+- `Failed`: refused for another reason; the ERROR "failed to submit" has
+  the endpoint's text, and a bare "transaction underpriced" there is a
+  full pool or a minimum tip, another condition than `Outbid`.
+
+A hold looks like the latest nonce staying at the named one while the named
+hash is UNKNOWN, or PENDING without a simError, on the relay's status page
 (`https://protect.flashbots.net/tx/<hash>` for Flashbots,
 `https://protect-sepolia.flashbots.net/tx/<hash>` on Sepolia). The held
 transaction's own hash is logged only at DEBUG ("submitted <label>

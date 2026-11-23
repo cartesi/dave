@@ -720,7 +720,11 @@ pub struct SendReport {
 pub enum SendVerdict {
     Submitted,
     AlreadyKnown,
-    Underpriced,
+    /// A pending transaction at this nonce outbids the send, its max-tip
+    /// retry included: the send waits behind it. Not a fee for the
+    /// operator to raise: behind a relay the pending one may be a send the
+    /// relay holds.
+    Outbid,
     Stale,
     /// Not sent: the call reverts at latest. The report has a zero hash,
     /// and its nonce went to the next request.
@@ -775,7 +779,7 @@ fn judge(
                 "{label} at nonce {nonce} waits behind a pending transaction \
                  that outbids the quote's max fee"
             );
-            SendVerdict::Underpriced
+            SendVerdict::Outbid
         }
         SubmissionErrorKind::NonceTooLow => {
             trace!(
@@ -1321,7 +1325,7 @@ mod tests {
         let replacement = "replacement transaction underpriced";
         let cases = [
             (replacement, None, SendVerdict::Submitted),
-            (replacement, Some(replacement), SendVerdict::Underpriced),
+            (replacement, Some(replacement), SendVerdict::Outbid),
             (
                 replacement,
                 Some("already known"),
@@ -1372,7 +1376,7 @@ mod tests {
         let report = lane
             .submit_wave(vec![("act".to_string(), payment(0x11))])
             .await?;
-        assert_eq!(report[0].verdict, SendVerdict::Underpriced);
+        assert_eq!(report[0].verdict, SendVerdict::Outbid);
         assert!(reads.read_q().is_empty() && sends.read_q().is_empty());
         Ok(())
     }
@@ -1582,10 +1586,7 @@ mod tests {
             .await?;
         assert_eq!(
             verdicts(&changed),
-            vec![
-                (0, SendVerdict::Underpriced),
-                (1, SendVerdict::AlreadyKnown)
-            ]
+            vec![(0, SendVerdict::Outbid), (1, SendVerdict::AlreadyKnown)]
         );
         assert_eq!(nonces(&provider, signer).await?, (0, 2));
 
@@ -1708,7 +1709,7 @@ mod tests {
         assert_eq!(resubmitted.tx_hash, original.tx_hash);
 
         let changed = restarted.submit("changed-intent", payment(0x22)).await?;
-        assert_eq!(changed.verdict, SendVerdict::Underpriced);
+        assert_eq!(changed.verdict, SendVerdict::Outbid);
         assert_eq!(
             nonces(&provider, signer).await?,
             (0, 1),
