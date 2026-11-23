@@ -494,6 +494,15 @@ shape in `stf_revert`. CI keeps chaos at seed 1; explore other seeds by hand.
 Diagnosis disciplines the incidents taught (details in the frozen
 record):
 
+- A test process that spawns children must not hold machines on other
+  threads. Since emulator v0.23 a machine locks its backing files, a child
+  inherits every open file until its exec (close-on-exec only ends the
+  window), and a lock lives as long as any copy of its descriptor. A store
+  or a close on one thread, then the next lock of the same file, was
+  refused ("unable to lock backing file ...: Resource temporarily
+  unavailable") when another test spawned anvil in between: three of five
+  harness runs on one tree. `just test-node-harness` therefore runs one
+  test at a time. The node itself spawns nothing.
 - When independent processes freeze and resume in lockstep, check
   `pmset -g log` before blaming software: an unattended macOS run dies of
   idle sleep, not bugs. The e2e scenario recipe holds the machine awake on

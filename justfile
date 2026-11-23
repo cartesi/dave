@@ -214,11 +214,13 @@ test-engine-machine: bind
 
 # the node's workers against a deterministic anvil (see
 # cartesi-rollups/node/src/harness/mod.rs; needs the devnet bundle), with
-# every other test that spawns anvil
+# every other test that spawns anvil. One test at a time: a child spawned
+# from one thread inherits, until its exec, the open files of machines the
+# other threads hold, and with them their locks (docs/test-harness.md)
 test-node-harness: bind
     ./script/machine-image-fingerprint.sh verify echo
     ./script/devnet-fingerprint.sh verify
-    cargo test -p cartesi-sling-node --lib -- --ignored \
+    cargo test -p cartesi-sling-node --lib -- --ignored --test-threads 1 \
       harness:: blockchain_reader:: provider:: args::
 
 # eth_getLogs splitting against live providers, outside check and CI: export
