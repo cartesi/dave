@@ -75,3 +75,9 @@ with, and some of those name nothing on main.
   with no defect, the leaf handover executed and priced, the compiler pin
   against a newly disclosed optimizer bug, and a first read and a stateful
   model of the rollups consensus contracts, whose phase is still open.
+- [`2026-11-23-sling-node-architecture/`](2026-11-23-sling-node-architecture/)
+  - architecture review of the sling node as it ships in v3.0.0-alpha.8: the
+  node in one model and where the code departs from it, proposals with their
+  refutation results, defended mechanisms, the storage schema map, the
+  per-input cycle and what to measure on Linux, a sketch of an independent
+  detector, and the seams between the node and the repository.
