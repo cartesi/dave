@@ -653,12 +653,7 @@ mod tests {
         let parent_descriptor = root_descriptor(TournamentKind::NonLeaf);
         let parent_commitment = digest(1);
         let parent_match = match_id();
-        let parent_link = ParentLink::new(
-            parent_descriptor.address(),
-            parent_match,
-            parent_commitment,
-            MatchSide::One,
-        );
+        let parent_link = ParentLink::new(parent_descriptor.address(), parent_commitment);
         let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
         let child = SemanticSnapshot::new(
             child_descriptor,
@@ -705,10 +700,8 @@ mod tests {
 
     #[test]
     fn inner_result_propagates_ours_or_terminates_when_it_maps_to_other_parent() {
-        let parent_match = match_id();
         let parent_commitment = digest(1);
-        let parent_link =
-            ParentLink::new(address(10), parent_match, parent_commitment, MatchSide::One);
+        let parent_link = ParentLink::new(address(10), parent_commitment);
         let child_descriptor = descriptor(address(20), 1, TournamentKind::Leaf, digest(20), 24);
         let child_winner = digest(40);
 
@@ -747,7 +740,7 @@ mod tests {
 
     #[test]
     fn child_elimination_never_becomes_a_hero_action() {
-        let parent_link = ParentLink::new(address(10), match_id(), digest(1), MatchSide::One);
+        let parent_link = ParentLink::new(address(10), digest(1));
         for (reason, local, local_standing) in [
             (
                 InnerEliminationReason::NoCandidate,

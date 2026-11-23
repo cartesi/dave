@@ -799,7 +799,7 @@ mod tests {
         let child_descriptor = descriptor(CHILD, 1, LEAF, root_initial, U256::ZERO, 0, 3);
         let child_coords = LevelCoords::new(0, U256::ZERO, 0, 3);
         let child_winner = source.node(&child_coords.root()).unwrap();
-        let parent_link = ParentLink::new(ROOT, parent_match, parent_commitment, side);
+        let parent_link = ParentLink::new(ROOT, parent_commitment);
         let child_snapshot = SemanticSnapshot::new(
             child_descriptor,
             TournamentStanding::InnerWinner(InnerWinner::new(parent_commitment, child_winner)),
