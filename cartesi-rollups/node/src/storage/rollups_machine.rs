@@ -293,7 +293,9 @@ impl RollupsMachine {
         }
     }
 
-    /// Reopens on a new working clone after close.
+    /// Reopens after close: on the directory just closed after an
+    /// accepted input, on a fresh clone of the checkpoint after a
+    /// rejected one.
     pub(super) fn reopen_shared(&mut self, working: Volatile) -> MachineResult<()> {
         assert!(self.machine.is_none(), "reopen requires a closed machine");
         self.machine = Some(working.open(&RuntimeConfig::quiet_console())?);
@@ -303,7 +305,7 @@ impl RollupsMachine {
     fn inner(&mut self) -> &mut Machine {
         self.machine
             .as_mut()
-            .expect("machine open (closed only inside the clone swap)")
+            .expect("machine open (closed only inside the rotation)")
     }
 
     pub fn epoch(&self) -> u64 {

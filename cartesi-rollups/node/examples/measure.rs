@@ -374,8 +374,9 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
 /// `bench_geometry`'s coarser one. The echo fixture rejects by the
 /// input's index field (build-echo.sh), so a batch carrying that index is
 /// a batch of rejections. Three streams: all accepted, all rejected, and
-/// alternating, a rejection before each accepted input, where every
-/// input runs on a clone made after the other kind.
+/// alternating, a rejection before each accepted input: there every
+/// accepted input runs on a fresh clone, and every rejected one reloads
+/// a checkpoint nothing has read.
 fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     use cartesi_sling_node::machine_runner::MachineRunner;
     use cartesi_sling_node::sync::ShutdownSignal;

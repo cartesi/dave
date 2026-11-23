@@ -306,24 +306,32 @@ Committed snapshots are immutable and load with explicit `SHARING_NONE`,
 which gives them private file-backed mappings and OS copy-on-write behavior.
 The advance path checks out one unique clone and opens only that clone with
 `SHARING_ALL`. Within a batch it owns at most one closed, immutable transient
-rollback checkpoint plus one mutable working clone. An accepted input rotates
-the working clone into the checkpoint and checks out a fresh clone; a rejected
-input discards the poisoned clone and checks out a fresh clone of the current
-checkpoint.
+rollback checkpoint plus one mutable working clone. An accepted input closes
+the working clone, clones it into the next checkpoint and reopens it, so the
+machine stays on the directory it wrote; a rejected input discards the
+poisoned clone and checks out a fresh clone of the current checkpoint.
 
 The emulator's rule for a directory a machine changes in place separates
 valid from durable: once that machine is destroyed, readers on the same
 host see a stored machine again, and only a sync after that makes it
 survive a stop of the system; otherwise it is discarded. The node needs
-both kinds. A rollback checkpoint is volatile: closed, never synced, loaded
-and cloned as it is, and gone with the batch or at the next start's sweep.
-Loading it is sound on any filesystem: destroying a machine leaves its
-whole state in the page cache, and a sync writes nothing of its own.
-Cloning it is sound where the filesystem clones changes not yet written to
-disk. XFS guarantees that: a reflink first writes the source's dirty pages
-back, and a failed writeback fails the clone. Without reflinks the emulator
-copies, which reads through the cache. APFS includes them today, on no
-documented promise, one more reason it is for development only. A destroy
+both kinds. The working clone an accepted input closes is volatile: never
+synced, cloned as it is into the rollback checkpoint, and reopened. The
+checkpoint is volatile too, and gone with the batch or at the next start's
+sweep unless the batch publishes it. Reopening or loading a closed directory
+is sound on any filesystem: destroying a machine leaves its whole state in
+the page cache, and a sync writes nothing of its own. Cloning it is sound
+where the filesystem clones changes not yet written to disk. XFS guarantees
+that: a reflink first writes the source's dirty pages back, and a failed
+writeback fails the clone. Without reflinks the emulator copies, which reads
+through the cache. APFS includes them today, on no documented promise, one
+more reason it is for development only. Every clone's contents rest on that
+alone. Publication reloads a checkpoint and checks its root, and so does a
+rejected input before it reverts to it, but a root taken on a load checks the
+stored hash tree and dirty marks, not the data under pages the tree marks
+clean: it catches a torn or stale tree, not a stale page under a current one.
+Since the machine stays on its own directory, what a batch publishes is a
+clone, where it used to be a directory the machine itself wrote. A destroy
 that fails (the emulator could not save its pending dirty-page marks, which
 only a bug of its own causes) leaves files not to be trusted: the working
 clone is discarded with the batch, and a restart replays from the last
@@ -348,21 +356,23 @@ boundary on the same clone chain and publishes only the disputed input's
 boundary, which every later action of that dispute resumes from.
 
 Every input, accepted or rejected, pays a fixed overhead on top of the
-application's work: the close, clone and `SHARING_ALL` reload of the
-rotation, and the removal of the clone it retires. A rejected input also
-loads its checkpoint privately and checks its root hash before the rotation
-closes that machine and clones the checkpoint again. On emulator v0.23 the
-echo image's whole time per input is about 26 ms accepted and 22 ms
-rejected on macOS (measurements/measurements.md): about 15 ms of rotation
-(close 5, clone 3, reload 3, removal 3), and most of the rest the input's
-first touch of its pages, since a fresh clone is a new inode with nothing in
-the page cache (a warm input runs in about 2 ms). On v0.22.0 the reload
-alone took about 130 ms: it walked the clone's 50 MB page hash-tree cache
-(`hash_tree.phtc`) one dependent page at a time, a layout v0.23 changed.
-The overhead still caps the runner, near 40 inputs per second there
-whatever the application does, and a crossing costs it once per crossed
-input. That is why the gap stays a fixed input count. A policy that keeps a
-bounded number
+application's work: the close, clone and `SHARING_ALL` reopen of the
+rotation, and the removal of the checkpoint or clone it retires. A rejected
+input also loads its checkpoint privately and checks its root hash before
+the rotation closes that machine and clones the checkpoint again. On
+emulator v0.23 the echo image's whole time per input is about 18 ms accepted
+and 22 ms rejected on macOS (measurements/measurements.md), most of it the
+rotation's four steps at 3 to 5 ms each. An accepted input leaves the
+machine on the directory it wrote, whose pages are in the page cache. An
+input that follows a rejection runs on a fresh clone, a new inode with
+nothing cached, and pays about 8 ms for the first touch of its pages (a warm
+input runs in about 2 ms); a stream that alternates the two takes about
+21 ms. On v0.22.0 the reload alone took about 130 ms: it walked the clone's
+50 MB page hash-tree cache (`hash_tree.phtc`) one dependent page at a time,
+a layout v0.23 changed. The overhead still caps the runner, near 45 inputs
+per second there on its slowest stream whatever the application does, and a
+crossing costs it once per crossed input. That is why the gap stays a fixed
+input count. A policy that keeps a bounded number
 of boundaries and widens their spacing as the epoch grows (the emulator's
 prt recipe keeps eight) spaces them about n/K inputs apart for an n the
 adversary chooses, so a crossing's overhead grows with the input count even
