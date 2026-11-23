@@ -84,6 +84,9 @@ docs/                The knowledge base. Start at docs/README.md.
   the worst-vs-average dimensioning rule with its reasoning. Read before
   touching clocks, spans, timeouts, or tournament constants.
 - `docs/epoch-lifecycle.md` - inputs, epochs, sealing, disputes, settlement.
+- `docs/detection.md` - what a detector outside the node must see when the
+  tournament's assumptions fail: conditions, deadlines, what to compare the
+  chain with, and the sentry rule.
 - `docs/node-architecture.md` - the Rust node's workers, database boundary,
   dispute engine, and known technical debts.
 - `docs/test-harness.md` - how the Lua e2e orchestration works and how to add
