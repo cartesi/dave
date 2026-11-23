@@ -5,18 +5,24 @@
 //! with them.
 //!
 //! A machine opened on a directory with shared backing stores changes the
-//! directory in place. The emulator's rule (cm.h, `cm_load` and
-//! `cm_sync_stored`) has two halves: the directory is a stored machine
-//! again only once that machine is destroyed, and it survives a stop of the
-//! process (a crash, a kill, a power loss) only once it is synced after
-//! that. Otherwise it must be discarded, even if it loads.
+//! directory in place. The emulator's rule (cm.h, `cm_load`) separates
+//! valid from durable: once that machine is destroyed, readers on the same
+//! host see a stored machine again, and only a sync after that makes it
+//! survive a stop of the system (a crash, a power loss). A directory whose
+//! machine was not destroyed, or that a system stop caught unsynced, must
+//! be discarded, even if it loads.
 //!
 //! - [`Volatile`] is closed and not synced. Destroying a machine leaves all
 //!   of its state in the files' page cache, and a sync only makes it
-//!   permanent, so this process can load, clone and reopen the directory
-//!   as it is. It owns the directory and removes it when dropped: the
-//!   discard rule, applied to every path that does not reach
-//!   [`Volatile::persist`]. After a stop, the caller discards what is left.
+//!   permanent, so this host can load and reopen the directory as it is. A
+//!   clone of it is exact where the filesystem clones changes not yet
+//!   written to disk: XFS guarantees it (a reflink writes the source's
+//!   dirty pages back first, and fails if that fails), the emulator's
+//!   copy fallback reads through the cache, and APFS does it today on no
+//!   documented promise. It owns the directory and removes it when
+//!   dropped: the discard rule, applied to every path that does not reach
+//!   [`Volatile::persist`]. After a stop of the process, the caller
+//!   discards what is left: nothing records which directories were closed.
 //! - [`Durable`] was synced after its last writer closed. It is never
 //!   opened shared, and nothing here removes it.
 //!
