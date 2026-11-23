@@ -234,9 +234,11 @@ impl Machine {
     /// Destroys the machine instance, checked: a drop cannot report a
     /// failed destroy (`cm_delete` fails silently). Returns the directory a
     /// shared open changed in place, closed and a stored machine again for
-    /// this process, though not synced. On failure that directory is
-    /// discarded. A local machine's destroy does not report a failed unmap;
-    /// an I/O error surfaces at the sync.
+    /// this host, though not synced. A destroy fails when it cannot save
+    /// the pending dirty-page marks, which only an emulator bug causes: the
+    /// instance is gone all the same, its files are not to be trusted, and
+    /// the directory is discarded. A failed unmap is not reported; an I/O
+    /// error surfaces at the sync.
     pub fn close(mut self) -> Result<Option<Volatile>> {
         let err_code = unsafe { cartesi_machine_sys::cm_destroy(self.machine) };
         check_err!(err_code)?;

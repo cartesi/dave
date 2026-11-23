@@ -307,19 +307,28 @@ the working clone into the checkpoint and checks out a fresh clone; a rejected
 input discards the poisoned clone and checks out a fresh clone of the current
 checkpoint.
 
-The emulator's rule for a directory a machine changes in place has two
-halves: it is a stored machine again only once that machine is destroyed,
-and it survives a stop of the process only once it is synced after that;
-otherwise it is discarded. The node needs both kinds. A rollback checkpoint
-is volatile: closed, never synced, loaded and cloned as it is (destroying a
-machine leaves its whole state in the page cache, and a sync writes
-nothing of its own), and gone with the batch or at the next start's sweep.
-A snapshot is durable, one per gap. The machine wrapper carries the two as
-types (`Volatile`, `Durable`): a shared open takes ownership of a volatile
-directory and only a checked close gives it back, so nothing can clone,
-load or sync a directory a machine still maps, a durable snapshot cannot be
-opened shared, and a volatile directory that is not persisted removes
-itself.
+The emulator's rule for a directory a machine changes in place separates
+valid from durable: once that machine is destroyed, readers on the same
+host see a stored machine again, and only a sync after that makes it
+survive a stop of the system; otherwise it is discarded. The node needs
+both kinds. A rollback checkpoint is volatile: closed, never synced, loaded
+and cloned as it is, and gone with the batch or at the next start's sweep.
+Loading it is sound on any filesystem: destroying a machine leaves its
+whole state in the page cache, and a sync writes nothing of its own.
+Cloning it is sound where the filesystem clones changes not yet written to
+disk. XFS guarantees that: a reflink first writes the source's dirty pages
+back, and a failed writeback fails the clone. Without reflinks the emulator
+copies, which reads through the cache. APFS includes them today, on no
+documented promise, one more reason it is for development only. A destroy
+that fails (the emulator could not save its pending dirty-page marks, which
+only a bug of its own causes) leaves files not to be trusted: the working
+clone is discarded with the batch, and a restart replays from the last
+snapshot. A snapshot is durable, one per gap. The machine wrapper carries
+the two as types (`Volatile`, `Durable`): a shared open takes ownership of
+a volatile directory and only a checked close gives it back, so nothing can
+clone, load or sync a directory a machine still maps, a durable snapshot
+cannot be opened shared, and a volatile directory that is not persisted
+removes itself.
 
 While an epoch is open, a tail shorter than `--snapshot-gap-inputs` remains
 unexecuted until a full batch is available. Once the epoch is sealed, the

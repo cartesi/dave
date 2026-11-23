@@ -172,8 +172,10 @@ Put `--data-dir` on XFS with reflinks (`reflink=1`, the mkfs.xfs default
 since xfsprogs 5.1; check with `xfs_info <mountpoint> | grep reflink=1`), on
 a volume or bind mount, not a container's writable layer or a network
 filesystem. That is the one production filesystem: every input clones the
-stored machine, XFS shares the unchanged extents, and its per-file
-link limit is far above any epoch's snapshot count. The startup line names
+stored machine, XFS shares the unchanged extents, its clone is guaranteed
+to include what the machine just closed left unwritten (the node clones a
+checkpoint it never syncs), and its per-file link limit is far above any
+epoch's snapshot count. The startup line names
 the data directory's filesystem, and on Linux the node warns when it is not
 XFS. Elsewhere:
 
@@ -186,8 +188,9 @@ XFS. Elsewhere:
 - btrfs is for development only: it caps a file at 65,535 links, every kept
   snapshot links the machine's read-only files, and past that count each
   clone copies them.
-- ZFS is untested; APFS (macOS) is for development; tmpfs does not survive a
-  reboot.
+- ZFS is untested; APFS (macOS) is for development: its clones include
+  unwritten changes today, on no documented promise; tmpfs does not survive
+  a reboot.
 
 Performance is the operator's to size. The node aims to add no work
 over the emulator's own (work-count tests guard the algorithms; a comparison
