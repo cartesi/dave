@@ -834,23 +834,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state_dir = dir.path().join("state");
         let snapshots = snapshots_path(&state_dir);
-        let leftovers = [
-            snapshots.join(format!(".work-{}-0", std::process::id())),
-            snapshots.join(".part-0xdead"),
-        ];
-        for leftover in &leftovers {
-            fs::create_dir_all(leftover).unwrap();
-            fs::write(leftover.join("config.json"), b"torn").unwrap();
-        }
+        let leftover = snapshots.join(format!(".work-{}-0", std::process::id()));
+        fs::create_dir_all(&leftover).unwrap();
+        fs::write(leftover.join("config.json"), b"torn").unwrap();
 
         let template = dir.path().join("template");
         store_template(&template, |_| {});
         let mut storage = initialize_at(&state_dir, &template, 0, Address::ZERO, 1).unwrap();
         assert!(storage.snapshot_dir(0, 0).unwrap().unwrap().is_dir());
         assert!(Storage::is_seeded(&state_dir).unwrap());
-        for leftover in &leftovers {
-            assert!(!leftover.exists(), "`{}` survived", leftover.display());
-        }
+        assert!(!leftover.exists(), "`{}` survived", leftover.display());
     }
 
     /// A seeded directory never reads its image again (COMP-3).

@@ -159,11 +159,10 @@ impl Storage {
         self.publish_staged(working, state_hash)
     }
 
-    /// Startup ritual: removes staging leftovers a crash orphaned -
-    /// working clones (.work-*), and the partial stores (.part-*) of
-    /// versions that still stored dispute boundaries. Runs at
-    /// open, under the directory lock and before seeding, so no clone is
-    /// held yet; never touches committed directories.
+    /// Startup ritual: removes the working clones (.work-*) a crash
+    /// orphaned. Runs at open, under the directory lock and before
+    /// seeding, so no clone is held yet; never touches committed
+    /// directories.
     pub fn sweep_stale_staging(&self) -> Result<()> {
         let snapshots = snapshots_path(self.state_dir());
         let entries = match std::fs::read_dir(&snapshots) {
@@ -174,7 +173,7 @@ impl Storage {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let Some(name) = name.to_str() else { continue };
-            if (name.starts_with(".part-") || name.starts_with(".work-"))
+            if name.starts_with(".work-")
                 && let Err(e) = std::fs::remove_dir_all(entry.path())
                 && e.kind() != std::io::ErrorKind::NotFound
             {

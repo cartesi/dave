@@ -18,7 +18,6 @@ pub mod sync;
 // Shared primitives, folded in from the old common-rs crates: the
 // node is their only consumer, and if it ever extracts to its own
 // repo they travel inside it.
-pub mod arithmetic;
 mod kms;
 pub mod merkle;
 
