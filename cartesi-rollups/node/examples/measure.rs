@@ -373,7 +373,9 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
 /// part of the figure, so this runs on the canonical table, not on
 /// `bench_geometry`'s coarser one. The echo fixture rejects by the
 /// input's index field (build-echo.sh), so a batch carrying that index is
-/// a batch of rejections.
+/// a batch of rejections. Three streams: all accepted, all rejected, and
+/// alternating, a rejection before each accepted input, where every
+/// input runs on a clone made after the other kind.
 fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Result<()> {
     use cartesi_sling_node::machine_runner::MachineRunner;
     use cartesi_sling_node::sync::ShutdownSignal;
@@ -386,27 +388,35 @@ fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Resul
     writeln!(report)?;
     writeln!(
         report,
-        "`MachineRunner::process_rollup` over {count} inputs of one kind at the\n\
+        "`MachineRunner::process_rollup` over {count} inputs per stream at the\n\
          default gap of {DEFAULT_SNAPSHOT_GAP_INPUTS}, on the canonical two-level table \
          (window roots at\n\
          stride 2^{CANONICAL_LEAF_HEIGHT}): the whole time per input, the application's \
          work and one\n\
-         publication per gap included."
+         publication per gap included. The alternating stream rejects an input\n\
+         before each one it accepts."
     )?;
     writeln!(report)?;
     writeln!(report, "| inputs | time per input | rate |")?;
     writeln!(report, "|---|---:|---:|")?;
 
-    for (label, rejected) in [("accepted", false), ("rejected", true)] {
+    // The index field of the `j`th accepted input: any but the rejected.
+    let accepted = |j: u64| if j >= REJECTED_INDEX { j + 1 } else { j };
+    // Where the accepted stream stood half way. The alternating stream
+    // takes the same inputs, a rejection before each, so it ends there.
+    let mut accepted_half_way = None;
+
+    for label in ["accepted", "rejected", "alternating"] {
         let state_dir = scratch(scratch_root, &format!("runner-{label}"))?;
         let geometry = two_level_geometry(CANONICAL_LEAF_HEIGHT)?;
         let mut storage = seeded_storage(&state_dir, image, geometry)?;
         let rows: Vec<StorageInput> = (0..count)
             .map(|k| {
-                let index = match (rejected, k) {
-                    (true, _) => REJECTED_INDEX,
-                    (false, k) if k >= REJECTED_INDEX => k + 1,
-                    (false, k) => k,
+                let index = match label {
+                    "accepted" => accepted(k),
+                    "rejected" => REJECTED_INDEX,
+                    _ if k % 2 == 0 => REJECTED_INDEX,
+                    _ => accepted(k / 2),
                 };
                 StorageInput {
                     id: InputId {
@@ -433,9 +443,18 @@ fn bench_runner(report: &mut String, image: &Path, scratch_root: &Path) -> Resul
         let published = storage.snapshot_hash(0, count)?;
         anyhow::ensure!(published.is_some(), "the runner left inputs unpublished");
         // A rejection restores the pre-input state, so a batch of them
-        // ends where it started.
+        // ends where it started, and one between two accepted inputs
+        // leaves no trace.
+        let taken_as_such = match label {
+            "accepted" => {
+                accepted_half_way = storage.snapshot_hash(0, count / 2)?;
+                published != Some(boundary)
+            }
+            "rejected" => published == Some(boundary),
+            _ => published == accepted_half_way,
+        };
         anyhow::ensure!(
-            (published == Some(boundary)) == rejected,
+            taken_as_such,
             "the workload did not take the {label} inputs as such"
         );
 
