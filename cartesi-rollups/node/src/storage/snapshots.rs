@@ -134,10 +134,10 @@ impl Storage {
         }
     }
 
-    /// A working clone of a closed stored machine, in the store's
-    /// staging namespace: volatile until committed, invisible to rows,
-    /// removed with its handle, and swept at startup if a crash
-    /// orphaned it. Cheap where the filesystem reflinks; a sparse copy
+    /// A clone of a closed stored machine in the store's staging
+    /// namespace, a working clone or a rollback checkpoint: volatile
+    /// until committed, invisible to rows, removed with its handle, and
+    /// swept at startup if a crash orphaned it. Cheap where the filesystem reflinks; a sparse copy
     /// elsewhere.
     pub(super) fn checkout(&self, from: &impl Stored) -> anyhow::Result<Volatile> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -149,7 +149,7 @@ impl Storage {
         Ok(from.clone_to(&working)?)
     }
 
-    /// Durably publishes a closed working clone. The staged machine
+    /// Durably publishes a closed staged clone. The staged machine
     /// derives and verifies its CAS key inside the shared publisher;
     /// row registration remains separate, as everywhere.
     pub(super) fn commit_clone(

@@ -71,8 +71,9 @@ impl Stored for Checkpoint {
 pub struct AdvanceBatch {
     epoch: u64,
     /// The state the machine currently sits on and the next input's
-    /// revert point. It starts as the durable batch base; accepted
-    /// inputs rotate it to a transient closed checkpoint.
+    /// revert point. It starts as the durable batch base; each accepted
+    /// input replaces it with a transient clone of the working
+    /// directory, taken closed.
     boundary_input: u64,
     boundary_hash: Hash,
     checkpoint: Checkpoint,
@@ -320,9 +321,9 @@ impl Storage {
     }
 
     /// Records an accepted input: close the mutated working clone,
-    /// make it the batch's transient rollback checkpoint, and
-    /// continue on a fresh SHARING_ALL clone. No CAS path or database
-    /// row is created until the batch boundary is published.
+    /// clone it into the batch's transient rollback checkpoint, and
+    /// reopen it. No CAS path or database row is created until the
+    /// batch boundary is published.
     pub fn record_accepted(
         &mut self,
         batch: &mut AdvanceBatch,
@@ -350,11 +351,17 @@ impl Storage {
         Ok(())
     }
 
-    /// The accepted half of the clone swap, shared by the runner and
+    /// The accepted half of the rotation, shared by the runner and
     /// dispute crossing: the mutated working clone, at `hash` (its
-    /// sidecars made exact by hashing it), becomes the transient
-    /// rollback checkpoint, and the machine continues on a fresh
-    /// SHARING_ALL clone of it.
+    /// sidecars made exact by hashing it), is closed and cloned. The
+    /// clone is the transient rollback checkpoint, and the machine
+    /// reopens the directory it wrote, whose pages are still in memory
+    /// where a fresh clone's are not. The clone's contents rest on the
+    /// filesystem cloning a closed, unsynced directory exactly
+    /// (`cartesi_machine::stored`). The root taken where a checkpoint is
+    /// used, at publication and at a rejected input's reload, checks its
+    /// stored hash tree and dirty marks, not the data under pages the
+    /// tree marks clean.
     pub(crate) fn rotate_accepted(
         &self,
         batch: &mut AdvanceBatch,
@@ -368,13 +375,13 @@ impl Storage {
             batch.boundary_input,
             "records must be contiguous"
         );
-        let checkpoint = machine
+        let working = machine
             .close()
             .map_err(anyhow::Error::from)?
             .expect("an accepted input leaves the machine open on its working clone");
-        let next_working = self.checkout(&checkpoint)?;
+        let checkpoint = self.checkout(&working)?;
         machine
-            .reopen_shared(next_working)
+            .reopen_shared(working)
             .map_err(anyhow::Error::from)?;
 
         // The checkpoint this one supersedes goes with its handle, if it
@@ -414,7 +421,7 @@ impl Storage {
         Ok(())
     }
 
-    /// The rejected half of the clone swap, shared by the runner and
+    /// The rejected half of the rotation, shared by the runner and
     /// dispute crossing: the working clone holds the poisoned
     /// post-input state, so it is discarded and the machine continues
     /// on a fresh clone of the checkpoint, the canonical pre-input state.
