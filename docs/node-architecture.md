@@ -83,13 +83,15 @@ each endpoint its chain, once, and one that does not answer fails the start
 without asking again. The initial hash comes from epoch 0's `EpochSealed` in
 the consensus's deployment block, which the consensus records as
 `block.number`: where that is not the log block coordinate (Arbitrum reports
-the parent chain's), the node cannot locate genesis and does not start. Table
-stability is a trust assumption of the parameters provider, so before planning
-any action the Hero checks the descriptor of every tournament on its own path
-against the pinned row for its level, and the root tournament's initial hash
-against the node's epoch-start snapshot. Both are invariant violations and
-panic. Cleanup of other branches takes no local commitment and skips these
-checks.
+the parent chain's), the node cannot locate genesis and fails at startup
+(exit 1, which a supervisor retries). Table stability is a trust assumption
+of the parameters provider, so before planning any action the Hero checks
+the descriptor of every tournament on its own path against the pinned row
+for its level: a mismatch is an invariant violation and panics. It also
+checks the root tournament's initial hash against the node's epoch-start
+snapshot: a mismatch means the chain settled a state this node did not
+compute, and the node stops (exit 30). Cleanup of other branches takes no
+local commitment and skips the table check.
 
 Shutdown is a `ShutdownSignal` (`src/sync.rs`): async workers race it
 in a biased select against their tick sleep; the blocking worker
@@ -174,13 +176,14 @@ Chain-reported coordinates reach the engine only through validators that
 accept everything the contracts produce. The observer checks each match
 against its tournament's descriptor (height, position, alignment, cycle); a
 bisecting match must stand above height 1, since advancing opens the children
-of the node below the contested one; a level's base cycle must be aligned to
-its span, and a delegated child must sit one level below its parent, on one of
-the parent's leaves; and every level's stride and height must match the pinned
-table, which tiles the machine coordinate. Nothing checks that the root's base
-cycle is 0; the trusted factory sets it. The observer's standing decoder
-likewise fronts its own `expect` on parent-match data. The engine's asserts
-behind them (`LevelCoords`, `Quartet`, the ruler) are tripwires for node bugs,
+of the node below the contested one; and a delegated child must sit one
+level below its parent, on one of the parent's leaves. Context assembly then
+requires a level's base cycle to be aligned to its span, and every level's
+stride and height to match the pinned table, which tiles the machine
+coordinate. Nothing checks that the root's base cycle is 0; the trusted
+factory sets it. The observer's standing decoder likewise fronts its own
+`expect` on parent-match data. The engine's asserts behind them
+(`LevelCoords`, `Quartet`, the ruler) are tripwires for node bugs,
 so a prune must keep these validators or first turn the asserts they front
 into errors. The settle asserts compare the local result with one block's
 views after the node's own win (epoch-lifecycle.md, settlement invariant), so
@@ -289,9 +292,10 @@ The storage module follows the sequencer's shape: `open.rs` owns connections
 helpers (Deferred vs
 Immediate); writer roles live in per-role files - `ingest.rs`
 (blockchain-reader), `advance.rs` (machine-runner), `dispute.rs` (player), and
-`completion.rs` (epoch-manager) - `snapshots.rs` is the boundary store (every
-machine store, load, and clean), and `queries.rs`
-is the role-free read surface. Every public operation is one
+`completion.rs` (epoch-manager) - `snapshots.rs` is the boundary store
+(naming, publication, clone checkout and collection of stored machines; the
+engine loads the paths it answers), and `queries.rs` is the role-free read
+surface. Every public operation is one
 transaction closure. One node process owns a data directory: startup takes
 an exclusive lock on its `node.lock` before the first write and refuses a
 directory another process holds, or one whose filesystem cannot lock; SQLite
@@ -345,7 +349,9 @@ boundary, which every later action of that dispute resumes from.
 
 Every input, accepted or rejected, pays a fixed overhead on top of the
 application's work: the close, clone and `SHARING_ALL` reload of the
-rotation, and the removal of the clone it retires. On emulator v0.23 the
+rotation, and the removal of the clone it retires. A rejected input also
+loads its checkpoint privately and checks its root hash before the rotation
+closes that machine and clones the checkpoint again. On emulator v0.23 the
 echo image's whole time per input is about 26 ms accepted and 22 ms
 rejected on macOS (measurements/measurements.md): about 15 ms of rotation
 (close 5, clone 3, reload 3, removal 3), and most of the rest the input's
@@ -421,8 +427,9 @@ Main schema (`storage/sql/schema.sql`):
 
 Every table belongs to one of four mutation classes - append-only
 log, write-once cell (equal rewrites absorbed, disagreements fatal),
-monotonic watermark, prunable derived store - and its writer in
-`storage/` keeps the class: the logs check their sequence and return
+monotonic watermark, prunable derived store - and its writer keeps the
+class (in `storage/`, except the engine config's insert-only writer in
+`engine/config.rs`): the logs check their sequence and return
 typed errors; the write-once rows written while the node runs
 (settlements, boundaries, quartet nodes) compare with the stored row and
 panic on a disagreement, so nondeterminism reaches the loud exit instead
@@ -430,7 +437,8 @@ of a retry loop; the identity rows (`node_metadata` and the engine
 config) are written once at seeding and checked at startup, which refuses
 a mismatch with exit status 30 or 40; the watermark only rises; only
 collection removes rows.
-`sql/discipline.rs` pins where in-place writes and deletes may appear.
+`sql/discipline.rs` pins where in-place writes and deletes may appear among
+the top-level `storage/` sources.
 GC releases boundary rows and, in the same transaction, finds the states no
 remaining row names; their directories are removed only AFTER that
 transaction commits: a crash may orphan a directory, never dangle a row. An
@@ -477,9 +485,9 @@ One schema note to know about:
 
 - The dispute tables (`sling_config`, `sling_nodes`) live in the main
   database. The quartet cache is restartable state, and `Hero` opens its own
-  connection to the same file (shared file, disjoint tables, private
-  connections). Dispute positioning publishes boundaries into the shared
-  content-addressed store.
+  connections to the same file, two held plus one per positioned ruler
+  (shared file, disjoint tables, private connections). Dispute positioning
+  publishes boundaries into the shared content-addressed store.
   Hero construction materializes nothing: `DisputeSource::on_store` reads the
   input count, the window-root quartet rows prepaid by the machine runner, and
   the final boundary hash. Below window granularity, disputes replay the
@@ -572,7 +580,7 @@ stays above the watermark; with no application or consensus log before the
 deployment, a lower start only adds empty blocks to the first log query. The
 initial hash is read at the consensus's deployment block (Process layout).
 Both are `block.number` values, read as RPC block numbers, which is why the
-node does not start on Arbitrum. Ingestion starts at genesis whatever the
+node fails at startup on Arbitrum. Ingestion starts at genesis whatever the
 seed: a directory seeded at epoch k still stores every earlier epoch and
 input, since the node numbers inputs from the application's first, and
 never executes them.
@@ -609,7 +617,10 @@ long dispute behind a provider that caps log ranges, and a bad finalized
 prefix (a provider fault or a mixed fork) does not survive it. A finalized
 event that does not fold onto Solid (an omitted log surfacing at the match's
 next event) drops Solid in process, and the next tick takes the same cold
-path; transport, harvest and decode failures keep it and retry the range. A
+path; transport, harvest and decode failures keep it and retry the range. An
+omission that first surfaces in the latest tail fails every tick and keeps
+Solid until that event finalizes and takes the path above: up to a finality
+lag with no Hero action. A
 missed seal or delegation of an engaged match on the Hero's path still folds,
 but its pinned phase read contradicts the match's folded status and fails the
 Hero's tick, which then drops Solid the same way; a lagging or mixed Foam

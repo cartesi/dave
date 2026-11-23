@@ -260,8 +260,9 @@ could succeed and cannot be repaired by a later retry.
      meta-cycle (`Ruler::prove_transition`, `engine/ruler.rs`) and call
      `winLeafMatch`.
    - Opponent out of time: win by timeout.
-3. When the tick selected no Hero action and the root is still running, propose
-   at most one garbage-collection intent (`hero/gc_planner.rs`). Match cleanup
+3. When the Hero waits and the root is still running (not when it acts or
+   reports a terminal result, such as a lost child), propose at most one
+   garbage-collection intent (`hero/gc_planner.rs`). Match cleanup
    compares event schedules with the sampled latest block number; child
    cleanup consumes the tournament standing overlay. Deeper work wins, and a
    cleanup is selected only when that tick has no Hero response. Cleanup

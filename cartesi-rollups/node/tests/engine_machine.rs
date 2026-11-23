@@ -89,9 +89,11 @@ fn check_fixture(name: &str, computed: serde_json::Value) {
         computed,
         read_fixture(&path),
         "{name} diverged; if the emulator or an image changed \
-         intentionally, regenerate with UPDATE_FIXTURES=1; if commitment \
-         construction changed, also bump COMMITMENT_SEMANTICS \
-         (src/storage/sql/schema.rs, docs/computation-hash.md)"
+         intentionally, regenerate with UPDATE_FIXTURES=1. A change that \
+         moves the leaves of stored commitments, an emulator re-pin as \
+         much as a change to their construction, must also bump \
+         COMMITMENT_SEMANTICS (src/storage/sql/schema.rs, \
+         docs/computation-hash.md)"
     );
 }
 

@@ -92,7 +92,9 @@ and the ledger counts that drain like any other delay. At the 22 to 26 ms
 measured on macOS with emulator v0.23 the drain is at most about 4.3 to 5.0
 days (61% to 72% of a week), and the runner executes 38 to 47 such inputs a
 second where Ethereum carries at most about 165, so it does not keep up as
-they land there (a lead: gas limits move). Below the threshold the
+they land there (a lead: gas limits move). A lead points the other way on
+Linux: the emulator team's XFS figures put an input on a fresh reflinked
+clone near 40 ms, over the threshold (todo.md). Below the threshold the
 reference price must be re-derived from the next wall, the drain combined with
 other delays or the snapshot disk, not re-measured (todo.md).
 
@@ -241,8 +243,9 @@ the contract is near 2^35.3 big cycles per input at a gap of 1
 (150 s / 3.5 ns), and near 2^30.9 at the default gap of 64 (63 replayed
 inputs and one sampled: 150 s / (63 x 1.1 + 3.5) ns), where the prefix
 replay dominates. Each replayed input also pays the node's fixed overhead
-(about 0.14-0.2 s on macOS), about 9-13 s of the 150 s at the default gap,
-and that overhead alone caps any gap near `G / (2 x overhead)`. The gap also
+(22 to 26 ms of whole time per input on macOS with emulator v0.23; its Linux
+re-measurement is due), about 1.4-1.6 s of the 150 s at the default gap, and
+that overhead alone caps any gap near `G / (2 x overhead)`. The gap also
 bounds the open tail a seal leaves unexecuted, which the root join waits for.
 These are estimates on one workload; a re-measurement on validator-grade
 hardware confirms or replaces them. Heavy applications lower the gap, which

@@ -21,10 +21,12 @@
 //! - [`cache::get_or_compute`]: quartet computation and fanout over
 //!   the node's storage.
 //! - [`dispute::DisputeSource`]: the hero-facing face. Tournament
-//!   coordinates map onto quartets ([`dispute::LevelCoords`]), level 0
-//!   is served from the persisted regime-1 material (window-root rows
-//!   plus lazy interior folds). It supplies Merkle proofs by sibling
-//!   descent and transition witnesses checked against pre/post states.
+//!   coordinates map onto quartets ([`dispute::LevelCoords`]). Level 0
+//!   at and above window granularity is served from the persisted
+//!   regime-1 window-root rows, folded on demand; below it, like any
+//!   level, from the quartet cache or the machine. It supplies Merkle
+//!   proofs by sibling descent and transition witnesses checked against
+//!   pre/post states.
 //!
 //! The spec tests compare stepping and sampling against a literal
 //! leaf sequence. Cache and proof tests also use trees built from those

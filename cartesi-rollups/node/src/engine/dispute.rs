@@ -7,10 +7,9 @@
 //! A tournament level's commitment tree lives at a [`LevelCoords`]:
 //! its root, the node a match contests, bisection children, and
 //! leaf-proof siblings are all quartets under it. The source serves
-//! them from three places, in order: the level-0 tiers (the leaf
-//! runs regime 1 recorded while the epoch was open, served through
-//! the persisted window-root rows plus lazy interior folds), the
-//! quartet cache, and machine execution through
+//! them from three places, in order: the window-root rows regime 1
+//! persisted while the epoch was open, folded on demand at and above
+//! window granularity, the quartet cache, and machine execution through
 //! [`compute_and_store`]'s fanout.
 //!
 //! Proofs are descents: `prove_leaf` walks root to leaf collecting the
@@ -88,8 +87,8 @@ impl LevelCoords {
 /// to exactly 2^log2_leaves. Run-compressed - cost is bounded by
 /// distinct runs, not leaves. The one level-0 fold both regimes
 /// share: the runner folds each closed window's runs into its root
-/// row, the facade folds window interiors on demand, and the epoch
-/// roll folds window roots into the settlement root.
+/// row, and [`level0_tree`] folds window roots into the settlement
+/// root and the facade's frontier.
 pub fn fold_runs(
     runs: impl IntoIterator<Item = (Digest, u64)>,
     log2_leaves: u64,
