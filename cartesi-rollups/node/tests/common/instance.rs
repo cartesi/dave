@@ -7,7 +7,6 @@ use cartesi_machine::{
     types::access_proof::{AccessLog, AccessType},
     types::{LogType, cmio::CmioResponseReason},
 };
-use cartesi_sling_node::arithmetic;
 use cartesi_sling_node::engine::constants::{
     BARCH_MASK_TO_INPUT, INPUT_MASK_TO_EPOCH, LOG2_INPUT_WINDOW_SPAN, UARCH_MASK_TO_BARCH,
 };
@@ -249,8 +248,7 @@ impl MachineInstance {
     pub fn run(&mut self, cycle: u64) -> Result<MachineState> {
         assert!(self.cycle <= cycle);
 
-        let target_physical_cycle =
-            arithmetic::add_and_clamp(self.physical_cycle()?, cycle - self.cycle);
+        let target_physical_cycle = self.physical_cycle()?.saturating_add(cycle - self.cycle);
 
         loop {
             self.machine.run(target_physical_cycle)?;

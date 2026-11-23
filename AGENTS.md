@@ -45,7 +45,7 @@ cartesi-rollups/
                      synchronize through the database and storage transaction
                      boundary; the dispute engine lives in the
                      engine/hero/tournament modules, and the shared
-                     primitives (merkle, arithmetic, kms) are folded-in
+                     primitives (merkle, kms) are folded-in
                      modules, not separate crates.
 machine/             Cartesi Machine: emulator + solidity-step submodules and
                      the Rust bindings that link against the emulator. A

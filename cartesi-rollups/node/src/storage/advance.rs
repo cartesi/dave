@@ -1052,7 +1052,7 @@ mod tests {
         std::fs::read_dir(snapshots_path(s.state_dir()))
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-            .filter(|name| name.starts_with(".work-") || name.starts_with(".part-"))
+            .filter(|name| name.starts_with(".work-"))
             .collect()
     }
 

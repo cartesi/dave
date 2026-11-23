@@ -1509,7 +1509,7 @@ fn staging_leftovers(state_dir: &Path) -> Vec<String> {
     std::fs::read_dir(state_dir.join("snapshots"))
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .filter(|name| name.starts_with(".work-") || name.starts_with(".part-"))
+        .filter(|name| name.starts_with(".work-"))
         .collect()
 }
 

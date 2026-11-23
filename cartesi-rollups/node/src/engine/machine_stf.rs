@@ -15,7 +15,6 @@ use super::dispute::DisputeSource;
 use super::ruler::{Hashing, Ruler, RulerFactory};
 use super::stf::Stf;
 use super::structure::Structure;
-use crate::arithmetic::add_and_clamp;
 use crate::merkle::Digest;
 use crate::storage::{InputId, Storage};
 use crate::sync::ShutdownSignal;
@@ -468,7 +467,7 @@ impl Stf for MachineStf {
             return Ok(0);
         }
         let start = self.machine.mcycle()?;
-        let target = add_and_clamp(start, big_cycles);
+        let target = start.saturating_add(big_cycles);
         loop {
             let reason = self.machine.run(target)?;
             if self.machine.iflags_h()?
@@ -496,7 +495,7 @@ impl Stf for MachineStf {
             "bulk collection starts at a big-cycle boundary"
         );
         let start = self.machine.mcycle()?;
-        let end = add_and_clamp(start, big_cycles);
+        let end = start.saturating_add(big_cycles);
         let mut roots = vec![];
         let mut mcycle = start;
         // A counter saturated at 2^64 - 1 leaves no cycle to run, but an
@@ -509,7 +508,7 @@ impl Stf for MachineStf {
                 .as_deref()
                 .expect("a fed input carries its revert tail");
             let collected = self.machine.collect_uarch_cycle_root_hashes(
-                end.min(add_and_clamp(mcycle, BULK_CHUNK)),
+                end.min(mcycle.saturating_add(BULK_CHUNK)),
                 LOG2_MAX_UARCH_CYCLES_PER_MCYCLE as u32,
                 Some(tail),
             )?;

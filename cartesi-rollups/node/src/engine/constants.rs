@@ -4,17 +4,23 @@
 //! authority, plus the named checkpoint address and the uarch state's node
 //! used by Dave.
 
-use crate::arithmetic;
 use cartesi_machine::constants::rollup::{
     LOG2_MAX_ADVANCE_STATES_PER_EPOCH, LOG2_MAX_MCYCLES_PER_ADVANCE_STATE,
     LOG2_MAX_UARCH_CYCLES_PER_MCYCLE,
 };
 
-pub const UARCH_MASK_TO_BARCH: u64 = arithmetic::max_uint(LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
+/// The mask of the low `k` bits, for `k` below 64. At 64, which the
+/// assert admits, the shift wraps and the answer is 0, not all ones.
+pub const fn max_uint(k: u64) -> u64 {
+    assert!(k <= u64::BITS as u64);
+    (1u64.wrapping_shl(k as u32)).wrapping_sub(1)
+}
 
-pub const BARCH_MASK_TO_INPUT: u64 = arithmetic::max_uint(LOG2_MAX_MCYCLES_PER_ADVANCE_STATE);
+pub const UARCH_MASK_TO_BARCH: u64 = max_uint(LOG2_MAX_UARCH_CYCLES_PER_MCYCLE);
 
-pub const INPUT_MASK_TO_EPOCH: u64 = arithmetic::max_uint(LOG2_MAX_ADVANCE_STATES_PER_EPOCH);
+pub const BARCH_MASK_TO_INPUT: u64 = max_uint(LOG2_MAX_MCYCLES_PER_ADVANCE_STATE);
+
+pub const INPUT_MASK_TO_EPOCH: u64 = max_uint(LOG2_MAX_ADVANCE_STATES_PER_EPOCH);
 
 /// Meta-cycles in one input window: log2.
 pub const LOG2_INPUT_WINDOW_SPAN: u64 =
