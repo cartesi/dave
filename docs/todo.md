@@ -69,8 +69,13 @@ carry no backlog (reviews/README.md).
   application, hold the node out past join closure, let a fabricated claim
   win, and have the guardian foreclose inside the claim staging period. Then
   tell integrators that the staging period must exceed the guardian's
-  reaction time, run two or more nodes on independent providers as sentries,
-  and route their ERROR and restart alerts to the guardian. (epoch-lifecycle.md)
+  reaction time, to run two or more nodes on independent providers, to keep
+  the sentry set from being all nodes, and to route the nodes' ERROR and
+  restart alerts to the guardian. (epoch-lifecycle.md, detection.md)
+- Build the detector: chain-only checks and an independent replay of each
+  epoch to its final state and outputs root, one tick per scheduled run,
+  sharing no code with the node, whose own signals are blind to a defect
+  every node shares. (detection.md)
 
 ## Upstream (Cartesi Machine, arm's length: nothing waits on it)
 
