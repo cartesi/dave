@@ -24,7 +24,13 @@ carry no backlog (reviews/README.md).
   dirty source, the runner's sustained inputs per second for accepted,
   rejected and alternating inputs (a fixture that rejects by payload), and
   the disk per snapshot at the default gap. The default gap and the
-  aggregate-throughput price follow from them.
+  aggregate-throughput price follow from them. A lead to verify there, the
+  emulator team's figures on their host and echo image, not ours: on XFS
+  with v0.23 a load takes 2.2 ms, the first root hash 3.0 ms, the root hash
+  after the input 10.0 ms, and the input itself about 40 ms on a fresh
+  reflinked clone against about 10 ms once the clone is in memory (a
+  reflink shares disk blocks with its source, not cached pages). If ours
+  agree, a Linux input is over the 36 ms threshold.
   (measurements/constants.md, dimensioning.md)
 - On the release candidate's staging, the first on two levels, stop and
   restart the node mid leaf build: three-level releases never took the
@@ -40,9 +46,10 @@ carry no backlog (reviews/README.md).
   (computation-hash.md, dispute-game.md)
 - Re-derive the reference price on the Linux figures. On v0.23 the runner's
   whole time per input is under the 36 ms threshold on macOS, so inputs
-  alone no longer outrun the root join there, and the price follows from
-  the next wall: the drain (up to 2^24 inputs' time, 4.3 to 5.0 days of a
-  week at those figures) combined with other delays, or the snapshot disk.
+  alone no longer outrun the root join there (the lead above says Linux
+  may differ), and the price follows from the next wall: the drain (up to
+  2^24 inputs' time, 4.3 to 5.0 days of a week at those figures) combined
+  with other delays, or the snapshot disk.
   (dimensioning.md, One reference price)
 - Have someone who did not write them review the commitment and proof paths
   (engine/ruler.rs, engine/machine_stf.rs, engine/dispute.rs,
