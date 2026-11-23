@@ -288,9 +288,10 @@ Options:
   cost about a thousand times less while bonds do not, so a flood of inputs
   that outruns the node costs about 0.1-1.3 ETH instead of 90-1,300
   ([dimensioning.md](../../docs/dimensioning.md), the reference price). On
-  Arbitrum the node stops at startup: contracts there measure clocks in the
-  parent chain's block numbers, while logs and the node's heads use Arbitrum's
-  own.
+  Arbitrum the node fails at startup (exit 1, which the supervisor below
+  retries forever): it cannot find epoch 0's seal, since contracts there
+  record the parent chain's block numbers, while logs and the node's heads use
+  Arbitrum's own.
 - A fresh data directory seeded from the template replays every input since
   the application's deployment. To skip that replay, seed it from the
   application's last settled state instead: read its hash with

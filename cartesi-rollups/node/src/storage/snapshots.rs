@@ -1,8 +1,9 @@
 // (c) Cartesi and individual authors (see AUTHORS)
 // SPDX-License-Identifier: Apache-2.0 (see LICENSE)
 
-//! The boundary store: the one component every machine store, load,
-//! and clean in the node goes through.
+//! The boundary store: it names, publishes, checks out and collects the
+//! node's stored machines. The engine loads the paths it answers, and a
+//! volatile clone removes itself when dropped.
 //!
 //! Identity is the input boundary - "the machine before input k",
 //! yielded with a pristine uarch - because the window-opening
