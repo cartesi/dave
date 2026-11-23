@@ -108,7 +108,7 @@ node's runner, leaves and the release corpus are compared with it
 (`cartesi-rollups/node/tests/engine_machine.rs`, `just
 test-reference-cli-goldens`). Those tests identify the CLI by its
 `--version` line, which cannot tell a release from its pre-releases (the
-v0.23.0-test3 tag reports 0.23.0-test2, and v0.22.0's pre-releases, some
+v0.23.0-test3 tag reported 0.23.0-test2, and v0.22.0's pre-releases, some
 with another uarch, reported the release's) or from an unreleased
 upstream build, so they need its package digest (todo.md).
 Where the CLI disagrees with the step it is no reference (computation-hash.md,

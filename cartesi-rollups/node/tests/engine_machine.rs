@@ -334,9 +334,8 @@ fn corpus_cli() -> String {
     std::env::var("CARTESI_MACHINE_CLI").unwrap_or_else(|_| "cartesi-machine".into())
 }
 
-/// The pinned release's `--version` line. The v0.23.0-test3 tag still
-/// carries the label of its predecessor.
-const REFERENCE_CLI_VERSION: &str = "cartesi-machine 0.23.0-test2";
+/// The pinned release's `--version` line.
+const REFERENCE_CLI_VERSION: &str = "cartesi-machine 0.23.0-test4";
 
 fn assert_corpus_cli_version(cli: &str) {
     let version = Command::new(cli).arg("--version").output().unwrap();

@@ -8,7 +8,7 @@ inputs:
   suffix-version:
     description: 'Suffix of Cartesi Machine to install'
     required: false
-    default: '-test3'
+    default: '-test4'
   arch:
     description: 'Architecture of Cartesi Machine to install'
     required: false
@@ -16,7 +16,7 @@ inputs:
   archive-sha256:
     description: 'SHA-256 of the Cartesi Machine Debian package; override with version, suffix, or arch'
     required: false
-    default: '75f791753c6724839641a3f1fd7f976fd5631f213485e445a986558ae0ae9dc9'
+    default: '010001dfc23a3ddb3ce32e024b78b0537d94284175e8f29c1b8cc2c46c71bba2'
   xgenext2fs-version:
     description: 'Version of xgenext2fs to install'
     required: false
