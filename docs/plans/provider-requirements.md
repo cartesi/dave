@@ -84,6 +84,44 @@ range and response size, latency), and the action latency that results.
   default). A provider that refuses 100 fails those reads at every range;
   which do is measured under "The filter's address cap" below.
 
+The baseline to check a measurement against, counted from the code: requests
+per polling interval, on any chain but anvil (where the reader's two age
+probes are off).
+
+- Idle, with one sealed epoch whose root holds only the node's commitment: 9.
+  Six block fetches (the reader's finalized head and its two age probes, the
+  epoch manager's finalized head, and the tournament reader's finalized and
+  latest heads), two calls (`tournamentStanding` at latest, `bondRecovery` at
+  finalized) and one log query (the root's latest tail).
+- On a tick where the finalized head advanced: 13. Two more calls (the
+  reader's on-chain totals) and two more log queries (the finalized fold and
+  the recovery walk). On Ethereum at the default interval that is about one
+  tick in thirteen.
+- In a dispute, with `N` live tournaments at latest, `L` levels of them and
+  `R` open tournaments in the recovery tree: 6 block fetches; `L` log
+  queries, one per 100 tournaments of a level, and `L` plus the recovery
+  tree's generations more when the finalized head advanced; `N + R` calls,
+  plus 2 when the node's path ends in a clocked or sealed leaf match, and 2
+  when the finalized head advanced. A tick that did machine work observes
+  again (2 block fetches, `L` log queries, and the standing and match
+  calls), and a join, a recovery with candidates, a root result and each
+  sent transaction add reads of their own.
+
+A fleet of three idle nodes, watched for a few days, showed block, call and
+log requests in close to the idle proportions, with somewhat more calls and
+log queries (reported to this plan, not measured for it).
+
+Two trims were priced and deferred, as leads:
+
+- Skip the `bondRecovery` scan while the finalized hash is the one last
+  scanned and that scan found no candidate. On Ethereum the answer repeats on
+  about twelve ticks in thirteen, so this saves about one call per open
+  tournament on those ticks: the one saving that grows with the tournaments
+  in a dispute. Its risk is a completion flag cached wrong, which would
+  retire an epoch early or hold it open.
+- The reader's finalized age probe fetches again the block its tick just
+  fetched: one block fetch per tick.
+
 Sybils buy read load. On the two-level table each live child tournament
 costs the adversary about two root bonds (about 0.72 ETH at 50 gwei). The
 log reads grow with the live tournaments a hundred times slower than they
