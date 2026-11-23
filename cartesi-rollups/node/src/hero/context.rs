@@ -124,12 +124,11 @@ impl HeroContext {
                     let next = match match_.status() {
                         // The next level is this match's delegated child, the
                         // one read_match returned as AwaitingChild, and its
-                        // link names this level's match and commitment. The
-                        // planner and preparation rely on that pairing (a
+                        // link names this level's tournament and commitment.
+                        // The planner and preparation rely on that pairing (a
                         // propagation's parent and child) without checking it.
                         MatchStatus::Inner { child } => {
-                            let link =
-                                ParentLink::new(address, match_.id(), local_commitment, side);
+                            let link = ParentLink::new(address, local_commitment);
                             Some((child.as_ref(), link))
                         }
                         MatchStatus::Clocked { .. } | MatchStatus::Leaf { .. } => None,
@@ -370,7 +369,7 @@ mod tests {
             commitment_one: digest(3),
             commitment_two: digest(4),
         };
-        let parent = ParentLink::new(ROOT, parent_match, digest(3), MatchSide::One);
+        let parent = ParentLink::new(ROOT, digest(3));
         let engagement = Engagement::new(
             parent_match,
             MatchSide::One,

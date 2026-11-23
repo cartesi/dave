@@ -398,23 +398,14 @@ impl TournamentStanding {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ParentLink {
     parent_tournament: Address,
-    parent_match: MatchID,
     parent_commitment: Digest,
-    parent_side: MatchSide,
 }
 
 impl ParentLink {
-    pub const fn new(
-        parent_tournament: Address,
-        parent_match: MatchID,
-        parent_commitment: Digest,
-        parent_side: MatchSide,
-    ) -> Self {
+    pub const fn new(parent_tournament: Address, parent_commitment: Digest) -> Self {
         Self {
             parent_tournament,
-            parent_match,
             parent_commitment,
-            parent_side,
         }
     }
 
