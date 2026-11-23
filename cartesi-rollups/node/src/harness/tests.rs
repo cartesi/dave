@@ -402,6 +402,95 @@ async fn acceptance_waits_out_the_staging_period_without_unanimity() -> Result<(
     Ok(())
 }
 
+/// A root is won by a commitment, not by a signer. The first node joins
+/// epoch 1's root and stops once the root closes, before staging. A second
+/// node, on another key and a fresh directory, computes the same commitment,
+/// finds it the winner, and stages and accepts the result without joining.
+/// Without sentries only the staging period opens acceptance.
+async fn second_node_settles(period: u64) -> Result<()> {
+    const SECOND: usize = 8;
+    let rounds = ROUNDS + period as usize;
+    let mut world = World::spawn(&[], period).await?;
+    let mut first = world.honest_node().await?;
+    world.add_input(vec![1]).await?;
+    join_and_close(&mut first, &mut world).await?;
+    first
+        .run_until(&mut world, rounds, |_, storage| completed(storage, 0))
+        .await?;
+    join_and_close(&mut first, &mut world).await?;
+
+    let commitment = Storage::new(first.state_dir.path())?
+        .settlement_info(1)?
+        .unwrap()
+        .computation_hash;
+    drop(first);
+    world.drop_pending().await?;
+    let won = world.consensus().canStageTournamentResult().call().await?;
+    assert_eq!(won.epochNumber, U256::ONE);
+    assert!(won.isFinished && !won.isTournamentFailed && !won.isTournamentResultStaged);
+    assert_eq!(
+        won.winnerCommitment,
+        alloy::primitives::B256::from(commitment.data())
+    );
+    // Epoch 0's settlement is all the first key ever sends to the consensus.
+    let first_key = |world: &World| [STAGE, ACCEPT].map(|call| world.honest_calls(call).len());
+    assert_eq!(first_key(&world), [1, 1]);
+    let left_at = world.latest().await?;
+
+    let mut second = world.node(SECOND).await?;
+    second
+        .run_until(&mut world, rounds, |_, storage| completed(storage, 1))
+        .await?;
+
+    // World::mine checks only the first key's receipts.
+    let sent: Vec<_> = world
+        .mined
+        .iter()
+        .filter(|mined| mined.from == world.address(SECOND))
+        .collect();
+    assert!(sent.iter().all(|mined| mined.success), "{sent:?}");
+    assert_eq!(
+        sent.iter().map(|mined| mined.selector).collect::<Vec<_>>(),
+        [Some(STAGE), Some(ACCEPT)],
+        "the second key stages and accepts, and neither joins nor recovers"
+    );
+    assert!(sent[0].block > left_at);
+    assert!(
+        sent[1].block >= sent[0].block + period,
+        "accepted at block {} with the result staged at block {}",
+        sent[1].block,
+        sent[0].block
+    );
+    assert_eq!(first_key(&world), [1, 1]);
+    let sealed = world.sealed_epochs().await?;
+    assert_eq!(
+        sealed.len(),
+        3,
+        "the second node's acceptance sealed epoch 2"
+    );
+    // The first key's bond stays in epoch 1's root: the second node recovers
+    // only its own.
+    assert!(
+        world
+            .bonds_recovered(sealed[1].tournament)
+            .await?
+            .is_empty()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_second_node_settles_the_epoch_the_first_won_and_left() -> Result<()> {
+    second_node_settles(0).await
+}
+
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_second_node_waits_out_the_staging_period_of_the_epoch_the_first_won() -> Result<()> {
+    second_node_settles(30).await
+}
+
 // Disputes. Epoch 0 is empty, so every transition past the deployment is
 // idle and every build only captures idle cycles; the adversaries diverge at
 // the first transition of the second root leaf.
