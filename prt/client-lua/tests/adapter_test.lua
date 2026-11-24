@@ -727,12 +727,38 @@ return {
                 }),
             },
         }
-        Test.error_like("candidate disagrees", function()
+        local observe = function()
             Adapter.observe_fold(
                 mock_transport(responses),
                 fold,
                 head()
             )
+        end
+        Test.error_like("candidate disagrees", observe)
+        -- The failure names both candidates, the tournament and the head
+        -- the views were pinned to, after the message it always had.
+        Test.error_like(string.format(
+            "standing candidate disagrees with fold candidate:"
+                .. " standing %s, fold %s (tournament %s,"
+                .. " observed at head 12 %s)",
+            tostring(digest(72)),
+            tostring(candidate),
+            root,
+            head().hash
+        ), observe)
+    end),
+
+    Test.case("any observation contradiction names its tournament and head", function()
+        local root = address(1)
+        local fold = live_fold(root)
+        local responses = live_responses(root, descriptor(), 0)
+        Test.error_like(string.format(
+            "fold sees live match but observer reports it absent"
+                .. " (tournament %s, observed at head 12 %s)",
+            root,
+            head().hash
+        ), function()
+            Adapter.observe_fold(mock_transport(responses), fold, head())
         end)
     end),
 
