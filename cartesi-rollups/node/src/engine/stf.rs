@@ -75,12 +75,16 @@ pub trait Stf {
         false
     }
 
-    /// Bulk collection from a big-cycle boundary of a running machine:
-    /// up to `big_cycles` whole cycles, each reduced to the root of its
-    /// transition leaves (the ruler's leaf layout), ending early after the
-    /// cycle that reaches a fixed point, with a rejection already restored.
-    /// It may decline the next cycle by returning no roots; the ruler then
-    /// steps that cycle.
+    /// Bulk collection from a big-cycle boundary the ruler found active
+    /// or has just fed: up to `big_cycles` whole cycles, each reduced to
+    /// the root of its transition leaves (the ruler's leaf layout), ending
+    /// early after the cycle that reaches a fixed point, with a rejection
+    /// already restored. Right after a feed it returns at least the
+    /// opening cycle, even when the input lands on a fixed point: the
+    /// ruler cannot step that cycle without feeding the input again, and
+    /// asserts it. On any other cycle an implementation may decline by
+    /// returning no roots, and the ruler steps that cycle; the machine's
+    /// never does, and the toy does to exercise the path.
     fn big_cycle_roots(&mut self, big_cycles: u64) -> Result<Vec<Digest>> {
         unreachable!("asked {big_cycles} big-cycle roots of a stepping-only stf")
     }
