@@ -99,11 +99,16 @@ clone near 40 ms, over the threshold (todo.md). Below the threshold the
 reference price must be re-derived from the next wall, the drain combined with
 other delays or the snapshot disk, not re-measured (todo.md).
 
-Inputs past the cap wait in order for later epochs. The runner reaches a spill
-epoch only after finishing the one before, and each seal comes at least a root
-allowance after the last, so below the threshold a spill epoch's backlog at
-its seal is never more than the first's, and none below about 18 ms per input
-where `C` is a week (half the root allowance over 2^24). The wait itself holds
+Inputs past the cap wait in order for later epochs. How far behind the runner
+is when a spill epoch seals is bounded by an argument, not by a measurement.
+Its premises: a root tournament gives no result before its allowance has run,
+so each seal comes at least a root allowance after the last; and the runner
+starts a spill epoch only once the one before is both finished and sealed (it
+idles on a full open epoch and rolls at the seal). Then below the threshold a
+spill epoch's backlog at its seal is never more than the first's, and none
+below about 18 ms per input where `C` is a week (half the root allowance over
+2^24). Which side of either figure a deployment's `t` falls on waits for the
+Linux measurement (todo.md). The wait itself holds
 no honest action past its `G`, so it draws nothing from `C`: it is application
 latency, which the model does not bound. Each full epoch ahead of an input
 delays its settlement by at least a root allowance (a week plus 140 minutes

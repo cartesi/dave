@@ -35,10 +35,18 @@ This node requires a capped consensus. Earlier uncapped deployments are
 unsupported: the node stalls at the first seal past the span.
 The reader also splits full pending epochs at this boundary before their
 seals arrive, so eager execution cannot assign an unrepresentable input
-index to the open epoch. Every later seal is compared with the stored split;
-a disagreement fails ingestion and names the capped-consensus requirement.
-The runner waits for a seal before rolling to the next epoch. The Lua client
-selects inputs directly from each sealed epoch's lower and upper bounds.
+index to the open epoch. Every later seal is compared with the stored split:
+its number and lower bound with the previous seal's, and its upper bound
+with the inputs the node numbered into the epoch. A disagreement fails
+ingestion before anything is stored, and says whose it is. A gap in the seal
+numbers, or a seal whose inputs did not all arrive, is reported as incomplete
+logs from the provider. A seal that ends below the inputs already numbered,
+or spans more than 2^24 of them, names the capped-consensus requirement, and
+one that does not start at the previous seal's end names the contiguity
+requirement. The runner waits for a seal before rolling to the next epoch,
+and rolls only if the seal's bounds cover exactly the epoch's stored inputs.
+The Lua client selects inputs directly from each sealed epoch's lower and
+upper bounds.
 
 DaveAppFactory's application address is a function of the template, withdrawal
 configuration and full consensus settings. Use its calculator to predict

@@ -70,7 +70,8 @@ pub struct MachineRunner {
 /// The free space a batch without a clock needs before it starts. Working
 /// clones are mapped shared, so a full filesystem kills the node by SIGBUS
 /// mid-batch with nothing logged (exit 135). An open epoch's batch runs beside
-/// the previous epoch's live dispute and can wait, and a settled epoch's
+/// the previous epoch's live dispute and has no clock yet (under a backlog it
+/// is still what the next root join will wait on), and a settled epoch's
 /// replay has no clock, so below the floor they stop first, with an error the
 /// paging rule reports, and leave the space to the work that carries a clock:
 /// the newest sealed epoch's batches, which its root join waits on while
