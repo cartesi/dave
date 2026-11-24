@@ -2,25 +2,15 @@
 
 ## Unreleased
 
-A new deployment generation: the consensus and application-factory bytecode
-changes and the state transition moves to Cartesi Machine v0.23, moving
-deterministic deployment addresses and every machine hash. This node requires a
-DaveConsensus that caps each epoch at the Machine's input span; earlier
-uncapped deployments are unsupported: the node stalls at the first seal
-past the span.
+A new deployment generation: every contract is recompiled and the state
+transition moves to Cartesi Machine v0.23, moving deterministic deployment
+addresses and every machine hash.
 
 ### Contracts
 
 - Compile every contract with solc 0.8.38 instead of 0.8.30, which was
   inside the range of a Yul optimizer bug fixed in 0.8.38. No source
   changes; all bytecode, and so every deterministic address, moves.
-- DaveConsensus seals at most 2^24 pending inputs, retaining excess inputs
-  for later epochs. Only processed, accepted inputs become finalized.
-- DaveAppFactory binds application addresses to the full consensus settings,
-  so other settings cannot occupy a predicted application address. Anyone can
-  still occupy one through the shared ApplicationFactory, which makes
-  `newDaveApp` revert: do not send value to a predicted address before
-  `DaveAppCreated`.
 - `CartesiStateTransition` qualifies Cartesi Machine v0.23 through
   solidity-step v0.17: `CM_MARCHID()` is 23 and every uarch reset restores
   v0.23's pristine uarch hash. The step reports a halt before a cycle
@@ -49,16 +39,6 @@ past the span.
 - A leaf build takes an input delivered with the machine's cycle counter
   saturated, which only a template can preset, where it used to stop the
   node.
-- Once the dispute has a result, skip sentry claims, staging and acceptance
-  while foreclosure is visible. Dispute moves and bond recovery continue;
-  exit 30 only after recovery completes and foreclosure is finalized.
-  A restart resumes the same work.
-- Page when an input makes the application terminal, after its batch commits,
-  while continuing to defend the true state.
-- Split full pending epochs at the input span, check every later seal against
-  those boundaries, and stall at the first seal past the span.
-- Check a candidate against the already-read standing before waiting under
-  active matches; a contradiction discards and refolds the event cache.
 - The least gas headroom over an estimate rises from 150,000 to 650,000.
   Under Glamsterdam's state-gas pricing (EIP-8037, live on Sepolia) a join
   that pairs on inclusion needs 489,365 more than its estimate, so the old
@@ -91,11 +71,47 @@ past the span.
 - Rebuild the devnet bundle with `just rollups-contracts::build-devnet` after
   the contract changes, and the test machine images with
   `just programs::build-programs`: v0.23 does not load v0.22 images.
-- Fetch pinned just assets directly and verify their checksums instead of
-  relying on release-list discovery.
 - On Linux arm64 the pinned Foundry cannot download solc 0.8.38. `just setup`
   now installs Solidity's official build where Foundry finds it
   (`just install-solc`), and `just doctor` reports a miss.
+
+## v3.0.0-alpha.7
+
+A new deployment generation: the consensus and application-factory bytecode
+changes, moving deterministic deployment addresses. This node requires a
+DaveConsensus that caps each epoch at the Machine's input span; earlier
+uncapped deployments are unsupported: the node stalls at the first seal
+past the span.
+
+### Contracts
+
+- DaveConsensus seals at most 2^24 pending inputs, retaining excess inputs
+  for later epochs. Only processed, accepted inputs become finalized.
+- DaveAppFactory binds application addresses to the full consensus settings,
+  so other settings cannot occupy a predicted application address. Anyone can
+  still occupy one through the shared ApplicationFactory, which makes
+  `newDaveApp` revert: do not send value to a predicted address before
+  `DaveAppCreated`.
+
+### Node
+
+- Once the dispute has a result, skip sentry claims, staging and acceptance
+  while foreclosure is visible. Dispute moves and bond recovery continue;
+  exit 30 only after recovery completes and foreclosure is finalized.
+  A restart resumes the same work.
+- Page when an input makes the application terminal, after its batch commits,
+  while continuing to defend the true state.
+- Split full pending epochs at the input span, check every later seal against
+  those boundaries, and stall at the first seal past the span.
+- Check a candidate against the already-read standing before waiting under
+  active matches; a contradiction discards and refolds the event cache.
+
+### For developers
+
+- Rebuild the devnet bundle with `just rollups-contracts::build-devnet` after
+  the contract changes.
+- Fetch pinned just assets directly and verify their checksums instead of
+  relying on release-list discovery.
 
 ## v3.0.0-alpha.6
 
