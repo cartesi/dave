@@ -360,6 +360,70 @@ return {
         assert(ok, failure)
     end),
 
+    Test.case("a full epoch ends on its last input, with no padding window", function()
+        local original = cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH
+        local scratches = {}
+        local function lineage(physical)
+            local scratch = os.tmpname()
+            os.remove(scratch)
+            assert(os.execute("mkdir -p " .. scratch))
+            scratches[#scratches + 1] = scratch
+            return setmetatable({
+                machine = physical,
+                input_count = 0,
+                cycle = 0,
+                ucycle = 0,
+                snapshot_dir = scratch,
+            }, Machine)
+        end
+        local function inputs(count)
+            local list = {}
+            for i = 1, count do
+                list[i] = "0x01"
+            end
+            return list
+        end
+        local stepwise_physical <close> = budget_seam_machine()
+        local full_physical <close> = budget_seam_machine()
+        local short_physical <close> = budget_seam_machine()
+
+        local ok, failure = xpcall(function()
+            -- The expectation, one window at a time: epochs of one input
+            -- give each input's window, and the state before the eighth
+            -- input is what an epoch one input short pads its last window
+            -- with.
+            cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH = 0
+            local stepwise = lineage(stepwise_physical)
+            local windows, padding = {}, nil
+            for i = 1, 8 do
+                if i == 8 then
+                    padding = stepwise:state().root_hash
+                        :iterated_merkle(Constants.log2_window_span - 44)
+                end
+                local _, window = stepwise:rollup_commitment(44, { "0x01" })
+                windows[i] = window.root_hash
+            end
+            local function epoch_root(last)
+                local w = windows
+                return w[1]:join(w[2]):join(w[3]:join(w[4]))
+                    :join(w[5]:join(w[6]):join(w[7]:join(last)))
+            end
+            Test.truthy(windows[8] ~= padding)
+
+            cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH = 3
+            local _, full, bigs = lineage(full_physical):rollup_commitment(44, inputs(8))
+            Test.equal(#bigs, 8)
+            Test.equal(full.root_hash, epoch_root(windows[8]))
+            local _, short = lineage(short_physical):rollup_commitment(44, inputs(7))
+            Test.equal(short.root_hash, epoch_root(padding))
+        end, debug.traceback)
+        cartesi.ROLLUP_LOG2_MAX_ADVANCE_STATES_PER_EPOCH = original
+        for _, scratch in ipairs(scratches) do
+            os.execute("rm -rf " .. scratch)
+        end
+        assert(ok, failure)
+    end),
+
     Test.case("a terminal epoch is one fixed point", function()
         local machine = wrapped_machine { halted = true }
 
