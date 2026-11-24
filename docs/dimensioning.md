@@ -291,9 +291,10 @@ contract, by design: it meters effort per input and prices it, with prices
 that rise as the epoch's effort is consumed, so that underpriced inputs are
 dismissed cheaply. Inputs that execute nearly instantly do not make it slack:
 the node pays its fixed per-input overhead on every input, accepted or
-rejected, so the runner tops out near 45 inputs per second on macOS with
-emulator v0.23 (a handful on v0.22.0) whatever the application does, and an
-app's pricing can dismiss an input but not that overhead. The contract
+rejected. On macOS with emulator v0.23 the runner tops out near 67 inputs per
+second on an accepted echo stream and near 45 on a rejected one (a handful on
+v0.22.0), and the adversary picks the slower, whatever the application does.
+An app's pricing can dismiss an input but not that overhead. The contract
 therefore binds for every
 application, at the reference price above, while t exceeds the threshold (One
 reference price, above); below it the cap bounds each epoch's work and its

@@ -285,8 +285,11 @@ Options:
 - Supported chains are Ethereum mainnet and Sepolia. OP Mainnet, Base and
   their Sepolia testnets have experimental deployments: the node runs there
   but is not validated, and refunds leave out the L1 data fee. Inputs there
-  cost about a thousand times less while bonds do not, so a flood of inputs
-  that outruns the node costs about 0.1-1.3 ETH instead of 90-1,300
+  cost about a thousand times less while bonds do not, so whatever a flood
+  of inputs buys on Ethereum it buys there for about a thousandth. The
+  reference price of a flood that outruns the node, about 0.1-1.3 ETH there
+  against 90-1,300 on Ethereum, was argued on emulator v0.22; under v0.23
+  and the cap on an epoch's inputs it is due its re-derivation
   ([dimensioning.md](../../docs/dimensioning.md), the reference price). On
   Arbitrum the node fails at startup (exit 1, which the supervisor below
   retries forever): it cannot find epoch 0's seal, since contracts there
