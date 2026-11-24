@@ -34,12 +34,18 @@ all. Without sentries only the period opens acceptance.
 Each condition is named by the assumption that broke, with its fallback and
 its deadline.
 
-- A, a wrong result is winning. A state claimed on chain differs from the
-  true post-epoch state, or the true state cannot settle: no commitment
-  carries it when the root closes to joins, the root finishes without a
-  winner, or the epoch ends terminal (defended, never stageable). Fallback:
-  foreclosure. Deadline: acceptance for a wrong claim; the other cases hold
-  the application until the guardian acts.
+- A, a wrong result can settle, or the true one cannot. A claimed state that
+  differs from the reference is not yet this. A false commitment joining the
+  root is the ordinary dispute, which a validator wins: it is first that
+  validator's alarm (B) and, where the reference is the replay, the moment
+  corroboration starts. It becomes the guardian's when a wrong result can
+  settle or the true one can no longer win. Fallback: foreclosure. Deadline:
+  acceptance, for a root whose winner ends in a wrong state, for a wrong
+  staged result, and for a root that closes to joins holding no commitment
+  with the true state and one with a wrong state a validity proof accepts,
+  which then wins. The other cases hold the application until the guardian
+  acts: no commitment joined at all, the root finishes without a winner, or
+  the epoch ends terminal (defended, never stageable).
 - B, the honest side is losing time. No commitment has joined while the join
   window runs; a second commitment has joined, so a dispute exists; a clock
   runs unanswered. Fallback: a validator online. Deadline: that clock, after
