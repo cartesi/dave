@@ -153,30 +153,6 @@ jobs:
             liblua5.4-dev lua5.4 lua-check \
             xxd jq sqlite3 libc6 clang
 
-      # The from-source emulator build dominates this job. Cache both the
-      # prepared tree and its verified preparation state so a hit preserves
-      # Make's incremental inputs instead of republishing generated sources.
-      - name: Emulator cache key
-        id: emulator-key
-        run: |
-          echo "emulator=$(git rev-parse HEAD:machine/emulator)" >> "$GITHUB_OUTPUT"
-          lifecycle=$(
-            git hash-object \
-              .github/workflows/build.yml \
-              machine/justfile \
-              machine/script/cartesi-machine-source.sh |
-              sha256sum | cut -d ' ' -f 1
-          )
-          echo "lifecycle=$lifecycle" >> "$GITHUB_OUTPUT"
-
-      - name: Cache emulator build
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            machine/emulator
-            target/machine-source/prepared-generated-sources
-          key: emulator-build-${{ runner.os }}-${{ steps.emulator-key.outputs.emulator }}-${{ steps.emulator-key.outputs.lifecycle }}
-
       # Source acquisition and verification belong to the machine lifecycle;
       # CI only installs the resulting native build. The upstream prefix is
       # /usr, matching the paths shipped by the release package.
@@ -273,15 +249,8 @@ jobs:
           apt-get install -y --no-install-recommends \
           build-essential git curl \
           liblua5.4-dev lua5.4 \
-          libslirp-dev libboost1.83-dev \
           libclang-dev \
           xxd jq sqlite3
-
-      - name: Install dependency for ARM
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          apt-get install -y --no-install-recommends \
-            g++-aarch64-linux-gnu
 
       - name: Setup tools
         uses: ./.github/actions/setup-tools
