@@ -27,8 +27,12 @@
 //!   opened shared, and nothing here removes it.
 //!
 //! [`Volatile::open`] moves the directory into the machine and only
-//! [`Machine::close`] gives it back, so no code can load, clone or sync a
-//! directory while a machine maps it for writing.
+//! [`Machine::close`] gives it back, so no code on this typed path can
+//! load, clone or sync a directory while a machine maps it for writing.
+//! The types do not close the other paths: the functions of [`Machine`]
+//! that take a raw path are public, and [`Volatile::adopt`] and
+//! [`Durable::at`] will each make a handle for a directory another handle
+//! already names.
 
 use std::path::{Path, PathBuf};
 
@@ -68,7 +72,10 @@ pub struct Volatile {
 
 impl Volatile {
     /// Takes over `dir`, trusting that no machine maps it for writing: what
-    /// [`Machine::store`] just wrote, for one.
+    /// [`Machine::store`] just wrote, for one. Nothing checks that `dir`
+    /// is a stored machine, and the handle removes the whole tree at that
+    /// path when dropped: adopting the working directory, a parent or a
+    /// durable snapshot deletes it.
     pub fn adopt(dir: impl AsRef<Path>) -> Result<Self> {
         Ok(Self {
             dir: absolute(dir.as_ref())?,
