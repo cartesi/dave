@@ -1405,6 +1405,9 @@ mod tests {
             watermark: 0,
         };
         let mut s = Storage::initialize(dir.path(), Some(&seed), &config).unwrap();
+        // The seed stores no seal: ingestion starts at epoch 0 for storage
+        // and for the reader, which takes its first expected number from here.
+        assert!(s.last_sealed_epoch().unwrap().is_none());
 
         // Epochs 0 and 1 hold one input each and arrive first; epoch 2 is
         // sealed empty in a later chunk.

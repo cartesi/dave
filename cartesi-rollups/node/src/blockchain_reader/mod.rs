@@ -487,15 +487,15 @@ impl BlockchainReader {
         stored: Totals,
         onchain: Totals,
     ) -> Result<(Vec<Input>, Vec<Epoch>)> {
+        let stored_seal = self.storage.last_sealed_epoch()?;
         let sealed_epochs = if stored.last_sealed_epoch == onchain.last_sealed_epoch {
             Vec::new()
         } else {
-            self.collect_sealed_epochs(chain, prev_block, current_block)
+            self.collect_sealed_epochs(chain, prev_block, current_block, stored_seal.as_ref())
                 .await?
         };
 
-        let mut merged_sealed_epochs: Vec<Epoch> =
-            self.storage.last_sealed_epoch()?.into_iter().collect();
+        let mut merged_sealed_epochs: Vec<Epoch> = stored_seal.into_iter().collect();
         merged_sealed_epochs.extend(sealed_epochs.iter().cloned());
 
         let input_events = if stored.inputs == onchain.inputs {
@@ -513,14 +513,17 @@ impl BlockchainReader {
         Ok((inputs, sealed_epochs))
     }
 
+    /// The chunk's seals in chain order, each checked to continue the one
+    /// before it; `stored` is the last seal already ingested.
     async fn collect_sealed_epochs(
         &mut self,
         chain: &Chain,
         prev_block: u64,
         current_block: u64,
+        stored: Option<&Epoch>,
     ) -> Result<Vec<Epoch>> {
         // Errors, not panics: a panic here would stop every worker.
-        chain
+        let logs = chain
             .decoded_logs::<EpochSealed>(
                 self.address_book.consensus,
                 None,
@@ -528,33 +531,35 @@ impl BlockchainReader {
                 prev_block + 1,
                 current_block,
             )
-            .await?
-            .iter()
-            .map(|(e, meta)| {
-                let epoch = Epoch {
-                    epoch_number: u64::try_from(e.epochNumber).with_context(|| {
-                        format!("EpochSealed epoch number {} exceeds u64", e.epochNumber)
-                    })?,
-                    input_index_boundary: u64::try_from(e.inputIndexUpperBound).with_context(
-                        || {
-                            format!(
-                                "EpochSealed input bound {} exceeds u64",
-                                e.inputIndexUpperBound
-                            )
-                        },
-                    )?,
-                    root_tournament: e.tournament,
-                    block_created_number: meta
-                        .block_number
-                        .context("EpochSealed log has no block number")?,
-                };
-                info!(
-                    "epoch received: epoch_number {}, input_index_boundary {}, root_tournament {}",
-                    epoch.epoch_number, epoch.input_index_boundary, epoch.root_tournament
-                );
-                Ok(epoch)
-            })
-            .collect()
+            .await?;
+        let bound = |bound: U256| {
+            u64::try_from(bound)
+                .with_context(|| format!("EpochSealed input bound {bound} exceeds u64"))
+        };
+        let mut epochs: Vec<Epoch> = Vec::with_capacity(logs.len());
+        for (e, meta) in &logs {
+            let epoch = Epoch {
+                epoch_number: u64::try_from(e.epochNumber).with_context(|| {
+                    format!("EpochSealed epoch number {} exceeds u64", e.epochNumber)
+                })?,
+                input_index_boundary: bound(e.inputIndexUpperBound)?,
+                root_tournament: e.tournament,
+                block_created_number: meta
+                    .block_number
+                    .context("EpochSealed log has no block number")?,
+            };
+            ensure_seal_continues(
+                epochs.last().or(stored),
+                &epoch,
+                bound(e.inputIndexLowerBound)?,
+            )?;
+            info!(
+                "epoch received: epoch_number {}, input_index_boundary {}, root_tournament {}",
+                epoch.epoch_number, epoch.input_index_boundary, epoch.root_tournament
+            );
+            epochs.push(epoch);
+        }
+        Ok(epochs)
     }
 
     async fn collect_input_events(
@@ -757,6 +762,50 @@ fn ensure_complete(head: u64, ingested: Totals, onchain: Totals) -> Result<()> {
                 show(ingested.last_sealed_epoch)
             ),
         }
+    );
+    Ok(())
+}
+
+/// A seal continues the one before it, in number and in inputs.
+///
+/// Its epoch number is the next one, 0 with no seal before it: the density
+/// storage's `insert_epochs_in` requires at the commit, repeated here because
+/// a gap must be refused before the numbering. A gap is a seal log the
+/// provider left out, in this response or at the tail of a chunk already
+/// stored, and the inputs numbered past it sit in the wrong epochs: the
+/// numbering's own checks would report them as a consensus with another cap.
+///
+/// Its lower bound is the previous seal's upper bound, 0 for epoch 0. The
+/// numbering takes each epoch's first input from there without reading the
+/// lower bound, so a consensus whose epochs overlap or leave a gap would be
+/// numbered wrong in silence.
+fn ensure_seal_continues(previous: Option<&Epoch>, epoch: &Epoch, lower: u64) -> Result<()> {
+    let (next, expected) = match previous {
+        Some(previous) => (
+            previous.epoch_number.checked_add(1),
+            previous.input_index_boundary,
+        ),
+        None => (Some(0), 0),
+    };
+    anyhow::ensure!(
+        Some(epoch.epoch_number) == next,
+        IncompleteLogs {
+            check: LogCheck::StoredEpochs,
+            message: format!(
+                "epoch {}'s seal follows {}: incomplete EpochSealed logs from the provider",
+                epoch.epoch_number,
+                previous.map_or("no seal".to_string(), |previous| format!(
+                    "epoch {}'s",
+                    previous.epoch_number
+                )),
+            ),
+        }
+    );
+    anyhow::ensure!(
+        lower == expected,
+        "epoch {} seals inputs from {lower}, but the inputs sealed before it end at \
+         {expected}; this node needs a DaveConsensus whose epochs are contiguous",
+        epoch.epoch_number
     );
     Ok(())
 }
@@ -1264,13 +1313,24 @@ mod witness_tests {
             ));
         }
 
+        /// Seals that start at input 0, as epoch 1's does after the
+        /// fixture's empty epoch 0.
         fn seals(&self, seals: &[(u64, u64)]) {
+            let from_zero: Vec<_> = seals
+                .iter()
+                .map(|&(epoch, upper)| (epoch, 0, upper))
+                .collect();
+            self.seals_from(&from_zero);
+        }
+
+        /// Queues seals as (epoch number, lower bound, upper bound).
+        fn seals_from(&self, seals: &[(u64, u64, u64)]) {
             let logs: Vec<Log> = seals
                 .iter()
-                .map(|&(epoch_number, bound)| {
+                .map(|&(epoch_number, lower, bound)| {
                     let event = EpochSealed {
                         epochNumber: U256::from(epoch_number),
-                        inputIndexLowerBound: U256::ZERO,
+                        inputIndexLowerBound: U256::from(lower),
                         inputIndexUpperBound: U256::from(bound),
                         initialMachineStateHash: B256::ZERO,
                         outputsMerkleRoot: B256::ZERO,
@@ -1393,6 +1453,157 @@ mod witness_tests {
         assert_eq!(f.stored(), (5, totals(2, 0)), "nothing is committed");
     }
 
+    /// Each seal's lower bound is checked against the seal before it, the
+    /// stored one for the chunk's first and the chunk's own after that.
+    #[tokio::test]
+    async fn seals_that_continue_each_other_are_ingested() {
+        let mut f = fixture(2, 1_000);
+        f.head(10, 3, 3);
+        f.seals_from(&[(1, 0, 2), (2, 2, 2), (3, 2, 3)]);
+        f.inputs(&[2]);
+
+        assert!(f.reader.tick(&f.chain).await.unwrap());
+        assert_eq!(f.stored(), (10, totals(3, 3)));
+        assert_eq!(f.reader.storage.input_count(3).unwrap(), 1);
+    }
+
+    /// The numbering never reads a lower bound, so without this check a
+    /// seal that skips or repeats an input would be ingested: here epoch
+    /// 2's seal agrees with the stored count and starts one input early.
+    #[tokio::test]
+    async fn a_seal_that_does_not_start_at_the_previous_bound_is_refused() {
+        for seals in [
+            // against the chunk's own previous seal
+            vec![(1, 0, 2), (2, 1, 2)],
+            // against the stored one
+            vec![(1, 1, 2)],
+        ] {
+            let mut f = fixture(2, 1_000);
+            f.head(10, 2, seals.len() as u64);
+            f.seals_from(&seals);
+
+            let error = f.reader.tick(&f.chain).await.unwrap_err();
+            assert!(
+                error.to_string().contains("whose epochs are contiguous"),
+                "unexpected error: {error:#}"
+            );
+            assert_eq!(LogCheck::failed_by(&error), None, "not a provider fault");
+            assert_eq!(f.stored(), (5, totals(2, 0)), "nothing is committed");
+        }
+    }
+
+    #[test]
+    fn a_seal_continues_the_one_before_in_number_and_in_inputs() {
+        let typed = |result: Result<()>| LogCheck::failed_by(&result.unwrap_err());
+        let after = sealed(4, 10);
+        ensure_seal_continues(Some(&after), &sealed(5, 12), 10).unwrap();
+        ensure_seal_continues(None, &sealed(0, 3), 0).unwrap();
+        // The consensus's fault: untyped.
+        assert_eq!(
+            typed(ensure_seal_continues(Some(&after), &sealed(5, 12), 9)),
+            None
+        );
+        assert_eq!(typed(ensure_seal_continues(None, &sealed(0, 3), 1)), None);
+        // The provider's, whatever the bounds say.
+        for (previous, epoch) in [(Some(&after), 6), (Some(&after), 4), (None, 1)] {
+            assert_eq!(
+                typed(ensure_seal_continues(previous, &sealed(epoch, 12), 10)),
+                Some(LogCheck::StoredEpochs)
+            );
+        }
+    }
+
+    /// The walk's density check repeats the one storage makes at the commit,
+    /// so that a gap is refused before the numbering. The two must refuse the
+    /// same seals; all bounds are 0 here, so only the numbers can fail.
+    #[test]
+    fn the_walk_refuses_the_seal_numbers_storage_refuses() {
+        let seals = |numbers: &[u64]| -> Vec<Epoch> {
+            numbers.iter().map(|&number| sealed(number, 0)).collect()
+        };
+        let new_seals: [&[u64]; 10] = [
+            &[0],
+            &[1],
+            &[2],
+            &[3],
+            &[0, 1],
+            &[1, 2],
+            &[2, 3],
+            &[1, 3],
+            &[2, 2],
+            &[2, 1],
+        ];
+        for stored in [&[][..], &[0], &[0, 1]] {
+            for new in new_seals {
+                let (_dir, mut storage) = crate::storage::sql::test_helper::setup_storage();
+                let (stored, new) = (seals(stored), seals(new));
+                storage
+                    .insert_consensus_data(1, [].iter(), stored.iter())
+                    .unwrap();
+
+                let mut previous = stored.last();
+                let mut walk = Ok(());
+                for epoch in &new {
+                    walk = walk.and_then(|()| ensure_seal_continues(previous, epoch, 0));
+                    previous = Some(epoch);
+                }
+                let insert = storage
+                    .insert_consensus_data(2, [].iter(), new.iter())
+                    .map_err(anyhow::Error::from);
+
+                assert_eq!(walk.is_ok(), insert.is_ok(), "{stored:?} then {new:?}");
+                for refused in [walk, insert].into_iter().filter_map(Result::err) {
+                    assert_eq!(LogCheck::failed_by(&refused), Some(LogCheck::StoredEpochs));
+                }
+            }
+        }
+    }
+
+    /// A seal log dropped at the tail of a chunk already stored: epoch 1's
+    /// seal, over input 0 alone, never arrived, so the inputs after it were
+    /// numbered on into epoch 1 and split at the cap (taken as 2 for the
+    /// stored rows). Epoch 2's seal is refused by its number, before the
+    /// numbering can read the misplaced inputs as a consensus with another
+    /// cap, whether they are all stored or one arrives with the seal.
+    #[tokio::test]
+    async fn a_seal_after_a_dropped_one_is_refused_before_the_numbering() {
+        seal_after_a_dropped_one(&[(1, 0), (1, 1), (2, 0), (2, 1)], &[]).await;
+        seal_after_a_dropped_one(&[(1, 0), (1, 1)], &[2]).await;
+    }
+
+    /// Epoch 2's seal [1, 3) arrives over `stored` input ids, with the
+    /// inputs `arriving` in its chunk.
+    async fn seal_after_a_dropped_one(stored: &[(u64, u64)], arriving: &[u64]) {
+        let (dir, mut storage) = crate::storage::sql::test_helper::setup_storage();
+        let inputs: Vec<Input> = stored
+            .iter()
+            .map(|&(epoch_number, input_index_in_epoch)| Input {
+                id: InputId {
+                    epoch_number,
+                    input_index_in_epoch,
+                },
+                data: vec![],
+            })
+            .collect();
+        storage
+            .insert_consensus_data(5, inputs.iter(), [&sealed(0, 0)].into_iter())
+            .unwrap();
+        let count = (stored.len() + arriving.len()) as u64;
+        let mut f = fixture_over(dir, storage, 1_000);
+        f.head(10, count, 2);
+        f.seals_from(&[(2, 1, 3)]);
+        f.inputs(arriving);
+
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert!(
+            error.to_string().contains("incomplete EpochSealed logs"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::StoredEpochs));
+        let stored = stored.len() as u64;
+        assert_eq!(f.stored(), (5, totals(stored, 0)), "nothing is committed");
+    }
+
     /// A fresh directory holds no sealed epoch, so even a chain that shows
     /// nothing past epoch 0 is scanned for epoch 0's seal.
     #[tokio::test]
@@ -1498,9 +1709,10 @@ mod witness_tests {
         assert_eq!(f.stored(), (5, totals(0, 0)), "nothing is committed");
     }
 
-    /// An input index gap, and logs that do not continue the stored rows (a
-    /// seal or input dropped at an earlier chunk's tail), fail typed checks;
-    /// a transport failure fails none.
+    /// An input index gap and a seal that does not continue the stored ones
+    /// (one dropped at an earlier chunk's tail) fail typed checks, and so
+    /// does storage's own refusal of rows out of sequence; a transport
+    /// failure fails none.
     #[tokio::test]
     async fn completeness_and_continuity_failures_are_typed() {
         let mut f = fixture(0, 1_000);
@@ -1509,20 +1721,39 @@ mod witness_tests {
         let error = f.reader.tick(&f.chain).await.unwrap_err();
         assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::InputIndex));
 
-        // Epoch 1's seal was dropped: epoch 2's follows epoch 0's.
+        // Epoch 1's seal was dropped: epoch 2's follows epoch 0's. Its number
+        // refuses it before its lower bound, which is not epoch 0's upper
+        // one, is compared: the fault is the provider's, not the consensus's.
         let mut f = fixture(2, 1_000);
         f.head(10, 2, 2);
-        f.seals(&[(2, 2)]);
+        f.seals_from(&[(2, 2, 2)]);
         let error = f.reader.tick(&f.chain).await.unwrap_err();
         assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::StoredEpochs));
 
-        // So input 2, stored as epoch 1's third, is really epoch 2's first.
-        let mut f = fixture(3, 1_000);
-        f.head(10, 4, 2);
-        f.seals(&[(2, 4)]);
-        f.inputs(&[3]);
-        let error = f.reader.tick(&f.chain).await.unwrap_err();
-        assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::StoredInputs));
+        // Storage makes the same refusals at the commit, behind the reader:
+        // its errors carry the same remedy.
+        let skipped = Input {
+            id: InputId {
+                epoch_number: 1,
+                input_index_in_epoch: 7,
+            },
+            data: vec![],
+        };
+        let storage = &mut f.reader.storage;
+        let error = storage
+            .insert_consensus_data(6, [&skipped].into_iter(), [].iter())
+            .unwrap_err();
+        assert_eq!(
+            LogCheck::failed_by(&error.into()),
+            Some(LogCheck::StoredInputs)
+        );
+        let error = storage
+            .insert_consensus_data(6, [].iter(), [&sealed(2, 2)].into_iter())
+            .unwrap_err();
+        assert_eq!(
+            LogCheck::failed_by(&error.into()),
+            Some(LogCheck::StoredEpochs)
+        );
 
         let mut f = fixture(0, 1_000);
         f.rpc.push_failure_msg("connection refused");
