@@ -231,7 +231,7 @@ mod tests {
             .into_iter(),
             [&Epoch {
                 epoch_number: 0,
-                input_index_boundary: 12,
+                input_index_boundary: 3,
                 root_tournament: Address::ZERO,
                 block_created_number: 0,
             }]
