@@ -320,6 +320,18 @@ Options:
   the filesystem makes them), so never modify a template or snapshot
   directory in place once a node was seeded from it; removing it and
   storing it again makes new files and is safe.
+- A node release validates only applications deployed with its own Cartesi
+  Machine generation: this one, those whose deployment carries the v0.23
+  state transition. At every start the node reads `CM_MARCHID` and the
+  pristine uarch hash from the state transition the application's tournament
+  factory names, compares them with the linked machine's, and refuses a
+  mismatch with an ERROR line ending `state transition <address> configured
+  by tournament factory <address> is incompatible: incompatible state
+  transition MARCHID: deployed 22, node requires 23` (or `... pristine uarch
+  hash: deployed <hash>, linked emulator <hash>`) and exit 30, which no
+  restart clears. A fresh data directory answers the change of stored
+  machine format, not this: an application deployed with the previous
+  generation keeps the node release that matches it.
 - To upgrade across a change that requires a fresh data directory, start the
   new node on a new directory with its own funded signer, let it catch up,
   then stop the old one; never wipe the only node's directory in place. The
