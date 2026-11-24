@@ -49,13 +49,18 @@ both read by number at a finalized head sampled just before, and it starts
 epoch k. Only that last settled state is accepted: an older one would need a
 log search, and an image stays current for at least a root allowance. Any
 other image is refused with exit 30, naming `snapshots/0x<hash>`, where every
-node working on epoch k keeps the state to take; a state settled after the
+node working on epoch k keeps the state to take (one that does not load at
+all, a missing or truncated file, is an ordinary error instead: exit 1, which
+a supervisor retries); a state settled after the
 sampled head is refused until its settlement finalizes, since the
 finalized-only reader could not execute its epoch anyway. The root hash is
 the contents': the node discards the image's stored hash tree, which a load
 would otherwise believe for every page it marks clean, and rebuilds it,
 once to inspect the image and once on the clone it seeds, so a corrupt or
-forged image has another root and is refused like any other.
+forged image has another root and is refused like any other. That holds for
+the image as it was read: the seeded copy still shares the image's read-only
+files by hard link where the filesystem makes them, so an image modified in
+place afterwards changes the node's files with it (node README).
 A matching image paused elsewhere is still refused:
 the engine starts every epoch from a state awaiting input, so the node could
 not defend any of its epochs (for a settled state this cannot happen, since
