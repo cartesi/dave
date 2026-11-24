@@ -282,7 +282,7 @@ impl Storage {
         let path = snapshot_path(&self.state_dir, &hash);
         super::snapshots::assert_runner_boundary_dir(&path, epoch, input);
         let log2_run_stride = self.sling_config()?.geometry.root_stride();
-        let base = Durable::at(&path);
+        let base = Durable::at(&path)?;
         let working = match self.checkout(&base) {
             Ok(working) => working,
             Err(error) => {

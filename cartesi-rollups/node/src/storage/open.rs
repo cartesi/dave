@@ -340,7 +340,7 @@ impl Storage {
         // sparse copy inside the clone. A crash before the clone is
         // published leaves staging, which the next start sweeps; one after
         // it orphans the directory, which the next seed adopts.
-        let working = self.checkout(&Durable::at(image.path()))?;
+        let working = self.checkout(&Durable::at(image.path())?)?;
         // The clone inherits the stored hash tree inspection did not
         // trust. Rebuilt in place, later updates build on hashes of the
         // contents, and the publisher checks its root against the image's.
