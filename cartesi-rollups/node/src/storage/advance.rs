@@ -138,29 +138,49 @@ fn input_count_in(tx: &Transaction, epoch: u64) -> Result<u64> {
     Ok(i64_to_u64(count))
 }
 
-fn epoch_is_sealed_in(tx: &Transaction, epoch: u64) -> Result<bool> {
-    Ok(tx
+/// A sealed epoch's input upper bound, an index into the application's
+/// whole input sequence; none while the epoch is open.
+fn sealed_bound_in(tx: &Transaction, epoch: u64) -> Result<Option<u64>> {
+    let bound: Option<i64> = tx
         .query_row(
-            "SELECT 1 FROM epochs WHERE epoch_number = ?1",
+            "SELECT input_index_boundary FROM epochs WHERE epoch_number = ?1",
             [u64_to_i64(epoch)],
-            |_| Ok(()),
+            |row| row.get(0),
         )
-        .optional()?
-        .is_some())
+        .optional()?;
+    Ok(bound.map(i64_to_u64))
+}
+
+fn epoch_is_sealed_in(tx: &Transaction, epoch: u64) -> Result<bool> {
+    Ok(sealed_bound_in(tx, epoch)?.is_some())
 }
 
 /// The roll's guard, run inside the settlement transaction: the durable
-/// cursor sits at the end of a sealed epoch. Returns the cursor row.
+/// cursor sits at the end of a sealed epoch, and the seal covers exactly
+/// the epoch's stored inputs. The reader refuses a seal that disagrees
+/// with the split it stored; the roll does not settle on that arithmetic
+/// alone. Returns the cursor row.
 fn roll_ready_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
     let (epoch, boundary_input, hash) = super::snapshots::latest_boundary_in(tx)?;
-    assert!(
-        epoch_is_sealed_in(tx, epoch)?,
-        "refusing to roll open epoch {epoch}"
-    );
+    let Some(upper) = sealed_bound_in(tx, epoch)? else {
+        panic!("refusing to roll open epoch {epoch}");
+    };
     let input_count = input_count_in(tx, epoch)?;
     assert_eq!(
         boundary_input, input_count,
         "refusing to roll epoch {epoch}: durable boundary {boundary_input}, input count {input_count}"
+    );
+    // Seals are stored densely from epoch 0, so the previous one exists.
+    let lower = match epoch.checked_sub(1) {
+        Some(previous) => sealed_bound_in(tx, previous)?
+            .unwrap_or_else(|| panic!("epoch {epoch} is sealed and epoch {previous} is not")),
+        None => 0,
+    };
+    assert_eq!(
+        lower.checked_add(input_count),
+        Some(upper),
+        "refusing to roll epoch {epoch}: its seal covers inputs {lower} to {upper}, \
+         {input_count} stored"
     );
     Ok((epoch, boundary_input, hash))
 }
@@ -730,10 +750,11 @@ mod tests {
             .unwrap();
     }
 
+    /// Seals epoch 0 over the inputs stored so far.
     fn seal_epoch_zero(s: &mut Storage) {
         let epoch = Epoch {
             epoch_number: 0,
-            input_index_boundary: 0,
+            input_index_boundary: s.input_count(0).unwrap(),
             root_tournament: Address::ZERO,
             block_created_number: 1,
         };
@@ -956,7 +977,7 @@ mod tests {
         };
         let epoch = Epoch {
             epoch_number: 0,
-            input_index_boundary: 0,
+            input_index_boundary: 5,
             root_tournament: Address::ZERO,
             block_created_number: 1,
         };
@@ -1516,6 +1537,48 @@ mod tests {
         seal_epoch_zero(&mut s);
         let hash = s.snapshot_hash(0, 0).unwrap().unwrap();
         s.insert_boundary(0, 1, &hash).unwrap();
+
+        let _ = s.roll_epoch();
+    }
+
+    fn seal(s: &mut Storage, epoch_number: u64, input_index_boundary: u64) {
+        let epoch = Epoch {
+            epoch_number,
+            input_index_boundary,
+            root_tournament: Address::ZERO,
+            block_created_number: 1,
+        };
+        s.insert_consensus_data(1, [].iter(), [&epoch].into_iter())
+            .unwrap();
+    }
+
+    /// Ingest stores the bound a seal carries without comparing it with the
+    /// stored inputs: that comparison is the reader's, and the roll makes
+    /// it again.
+    #[test]
+    #[should_panic(expected = "its seal covers inputs 0 to 3, 2 stored")]
+    fn roll_refuses_a_seal_that_covers_other_inputs_than_the_stored_ones() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs(&mut s, 0, 2);
+        let (batch, _) = record_mutated_batch(&mut s, 2);
+        s.commit_advances(batch).unwrap();
+        seal(&mut s, 0, 3);
+
+        let _ = s.roll_epoch();
+    }
+
+    /// An epoch's first input is the previous seal's bound: an empty epoch
+    /// whose seal ends below it would pass a count taken from zero.
+    #[test]
+    #[should_panic(expected = "its seal covers inputs 2 to 0, 0 stored")]
+    fn roll_refuses_a_seal_that_does_not_continue_the_previous_one() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs(&mut s, 0, 2);
+        let (batch, _) = record_mutated_batch(&mut s, 2);
+        s.commit_advances(batch).unwrap();
+        seal_epoch_zero(&mut s);
+        s.roll_epoch().unwrap();
+        seal(&mut s, 1, 0);
 
         let _ = s.roll_epoch();
     }
