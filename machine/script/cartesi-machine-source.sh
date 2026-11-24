@@ -133,12 +133,23 @@ require_generated_paths_ignored() {
     done
 }
 
+# What make left in src/ from the sources published before. A dependency
+# file that names a header the new pin dropped stops make ("No rule to make
+# target"), and ar never drops a member the new pin no longer builds. Only
+# ignored files are listed, so no upstream source is touched.
+remove_build_outputs() {
+    git -C "$emulator_dir" ls-files -z --others --ignored --exclude-standard -- \
+        'src/*.o' 'src/*.d' 'src/*.a' |
+        (cd "$emulator_dir" && xargs -0 rm -f --)
+}
+
 # The files are validated before the checkout changes, and the state that
 # vouches for them is renamed in last.
 publish_generated_sources() {
     local extracted="$1" provider="$2" head="$3" path
 
     require_generated_paths_ignored
+    remove_build_outputs
     for path in "${generated_files[@]}"; do
         chmod 0644 "${extracted}/${path}"
         mv -f -- "${extracted}/${path}" "${emulator_dir}/${path}"
