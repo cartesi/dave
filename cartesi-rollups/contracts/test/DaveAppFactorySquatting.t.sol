@@ -4,7 +4,11 @@
 pragma solidity ^0.8.30;
 
 import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/WithdrawalConfig.sol";
+import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
+import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
+import {IApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactory.sol";
+import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 import {RollupsTest} from "cartesi-rollups-contracts-3.0.0/test/util/RollupsTest.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
@@ -14,6 +18,7 @@ import {IDaveConsensus} from "src/IDaveConsensus.sol";
 contract DaveAppFactorySquattingTest is RollupsTest {
     DaveAppFactory factory;
     ITournamentFactory constant TOURNAMENT_FACTORY = ITournamentFactory(address(0x100));
+    IOutputsMerkleRootValidator constant NO_VALIDATOR = IOutputsMerkleRootValidator(address(0));
     bytes32 constant TEMPLATE = bytes32(uint256(1));
 
     function setUp() external {
@@ -39,6 +44,105 @@ contract DaveAppFactorySquattingTest is RollupsTest {
         assertEq(app.owner(), address(0));
         assertEq(consensus.getClaimStagingPeriod(), 10);
         assertEq(predicted.balance, 1 ether);
+    }
+
+    /// @notice The salt the factory hands the application factory, which
+    /// binds the consensus settings.
+    function _applicationSalt(uint256 period, address manager, address[] memory sentries, bytes32 salt)
+        private
+        pure
+        returns (bytes32)
+    {
+        return keccak256(abi.encode(period, manager, sentries, salt));
+    }
+
+    /// @notice The predicted application address is the one the application
+    /// factory reserves for the Dave factory under that salt.
+    function testThePredictedApplicationIsReservedForTheFactory() external view {
+        WithdrawalConfig memory config;
+        address[] memory sentries = new address[](0);
+        (address predicted,) = factory.calculateDaveAppAddress(TEMPLATE, 10, address(0), sentries, config, 0);
+        assertEq(
+            predicted,
+            _contracts.core.applicationFactory
+                .calculateReservedApplicationAddress(
+                    NO_VALIDATOR,
+                    address(factory),
+                    TEMPLATE,
+                    _contracts.core.inputBox,
+                    config,
+                    _applicationSalt(10, address(0), sentries, 0),
+                    address(factory)
+                )
+        );
+    }
+
+    /// @notice Nobody else can occupy the predicted application address. The
+    /// same application deployed through the application factory by another
+    /// caller, permissionless or reserved, lands elsewhere. So does the same
+    /// pair created by a second Dave factory over the same application
+    /// factory. The pair is still created where it was predicted.
+    function testFuzzAnotherCallerCannotOccupyThePredictedApplication(
+        uint64 period,
+        address manager,
+        address sentry,
+        bytes32 salt,
+        address caller
+    ) external {
+        vm.assume(sentry != address(0));
+        vm.assume(caller != address(factory));
+        WithdrawalConfig memory config;
+        address[] memory sentries = new address[](1);
+        sentries[0] = sentry;
+        (address predicted, address expectedConsensus) =
+            factory.calculateDaveAppAddress(TEMPLATE, period, manager, sentries, config, salt);
+        bytes32 appSalt = _applicationSalt(period, manager, sentries, salt);
+        IApplicationFactory appFactory = _contracts.core.applicationFactory;
+        IInputBox inputBox = _contracts.core.inputBox;
+
+        vm.startPrank(caller);
+        IApplication permissionless =
+            appFactory.newApplication(NO_VALIDATOR, address(factory), TEMPLATE, inputBox, config, appSalt);
+        IApplication reserved =
+            appFactory.newReservedApplication(NO_VALIDATOR, address(factory), TEMPLATE, inputBox, config, appSalt);
+        vm.stopPrank();
+        assertNotEq(address(permissionless), predicted);
+        assertNotEq(address(reserved), predicted);
+
+        DaveAppFactory other = new DaveAppFactory(inputBox, appFactory, TOURNAMENT_FACTORY);
+        vm.prank(caller);
+        (IApplication otherApp,) = other.newDaveApp(TEMPLATE, period, manager, sentries, config, salt);
+        assertNotEq(address(otherApp), predicted);
+        assertEq(predicted.code.length, 0);
+
+        (IApplication app, IDaveConsensus consensus) =
+            factory.newDaveApp(TEMPLATE, period, manager, sentries, config, salt);
+        assertEq(address(app), predicted);
+        assertEq(address(consensus), expectedConsensus);
+        assertEq(address(app.getOutputsMerkleRootValidator()), expectedConsensus);
+    }
+
+    /// @notice No input precedes the pair: the InputBox refuses an address
+    /// with no code, so the consensus seals epoch 0 over no input. The node
+    /// starts reading at the deployment on that ground.
+    function testNoInputPrecedesThePair() external {
+        WithdrawalConfig memory config;
+        address[] memory sentries = new address[](0);
+        (address predicted,) = factory.calculateDaveAppAddress(TEMPLATE, 10, address(0), sentries, config, 0);
+        IInputBox inputBox = _contracts.core.inputBox;
+
+        vm.expectRevert(abi.encodeWithSelector(IApplicationChecker.ApplicationNotDeployed.selector, predicted));
+        inputBox.addInput(predicted, "early");
+        assertEq(inputBox.getNumberOfInputs(predicted), 0);
+
+        (IApplication app, IDaveConsensus consensus) = factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
+        (uint256 epochNumber, uint256 lower, uint256 upper,,,,,) = consensus.getCurrentSealedEpoch();
+        assertEq(epochNumber, 0);
+        assertEq(lower, 0);
+        assertEq(upper, 0);
+
+        inputBox.addInput(address(app), "first");
+        assertEq(inputBox.getNumberOfInputs(address(app)), 1);
     }
 
     function testDifferentConsensusSettingsCannotSquatTheSameApplication() external {
