@@ -1473,12 +1473,19 @@ mod tests {
     /// root_hash ran before the close, and self-healing from the recorded
     /// dirty pages when it did not. Both reload, and clone, to the root
     /// hash of an in-memory advance of the same cycles, and the clone
-    /// source does not move.
+    /// source does not move. Each is also read once with its hash tree
+    /// rebuilt from its contents: a root taken on a load believes the saved
+    /// tree for every page marked clean, so it would pass a clone whose
+    /// data pages are stale under a current tree.
     #[test]
     fn a_closed_directory_is_a_stored_machine_before_any_sync() -> Result<()> {
         const PREFIX: u64 = 5_000_000;
         const TARGET: u64 = 15_000_000;
         let quiet = RuntimeConfig::quiet_console();
+        let from_contents = RuntimeConfig {
+            clear_hash_tree: true,
+            ..RuntimeConfig::quiet_console()
+        };
         let tmp = tempfile::tempdir().expect("failed creating a temp dir");
         let stored = tmp.path().join("stored");
 
@@ -1513,9 +1520,11 @@ mod tests {
             let mut reloaded = dir.load(&quiet)?;
             assert_eq!(reloaded.mcycle()?, TARGET);
             assert_eq!(reloaded.root_hash()?, expected);
+            assert_eq!(dir.load(&from_contents)?.root_hash()?, expected);
 
             let copy = dir.clone_to(&tmp.path().join(format!("copy-{index}")))?;
             assert_eq!(copy.load(&quiet)?.root_hash()?, expected);
+            assert_eq!(copy.load(&from_contents)?.root_hash()?, expected);
             let mut reopened = copy.open(&quiet)?;
             assert_eq!(reopened.root_hash()?, expected);
         }
