@@ -104,10 +104,16 @@ is when a spill epoch seals is bounded by an argument, not by a measurement.
 Its premises: a root tournament gives no result before its allowance has run,
 so each seal comes at least a root allowance after the last; and the runner
 starts a spill epoch only once the one before is both finished and sealed (it
-idles on a full open epoch and rolls at the seal). Then below the threshold a
-spill epoch's backlog at its seal is never more than the first's, and none
+idles on a full open epoch and rolls at the seal). Then below the threshold,
+of the backlog that was already pending when the epoch before it sealed, a
+spill epoch owes at its own seal never more than the first did, and nothing
 below about 18 ms per input where `C` is a week (half the root allowance over
-2^24). Which side of either figure a deployment's `t` falls on waits for the
+2^24). The bound covers that backlog only. Outside it, at any pace: an open
+tail shorter than the snapshot gap is never executed before its epoch seals,
+since the runner plans an open epoch in full batches (with one input past
+the cap at a seal, that input waits for the next seal); and inputs keep
+arriving during the epoch, up to the block of the acceptance that seals it.
+Which side of either figure a deployment's `t` falls on waits for the
 Linux measurement (todo.md). The wait itself holds
 no honest action past its `G`, so it draws nothing from `C`: it is application
 latency, which the model does not bound. Each full epoch ahead of an input
