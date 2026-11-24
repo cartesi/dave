@@ -815,6 +815,8 @@ fn ensure_seal_continues(previous: Option<&Epoch>, epoch: &Epoch, lower: u64) ->
 /// own index against the next expected one and a sealed epoch's end against
 /// its bound: a log dropped before the chunk's last one fails the tick before
 /// anything is stored. One dropped at the chunk's tail is [`ensure_complete`]'s.
+/// A seal that ends past the inputs is missing logs; one that ends below them,
+/// or spans more than `max_inputs`, comes from a consensus with another cap.
 fn construct_input_ids<'a>(
     mut epoch_number: u64,
     input_index_boundary: u64,
@@ -869,7 +871,7 @@ fn construct_input_ids<'a>(
     }
     if input_index_boundary != u64::MAX {
         anyhow::ensure!(
-            *next_index == input_index_boundary,
+            *next_index >= input_index_boundary,
             IncompleteLogs {
                 check: LogCheck::SealedBound,
                 message: format!(
@@ -877,6 +879,15 @@ fn construct_input_ids<'a>(
                      {next_index} inputs arrived: incomplete logs from the provider"
                 ),
             }
+        );
+        // The inputs numbered past the bound came in blocks before the
+        // seal's, so the seal counted them, and it follows the previous seal
+        // (`ensure_seal_continues`): it left them out by its cap alone.
+        anyhow::ensure!(
+            *next_index == input_index_boundary,
+            "epoch {epoch_number} seal ends at {input_index_boundary}, stored inputs end at \
+             {next_index}; this node needs a DaveConsensus that caps each epoch at \
+             {max_inputs} inputs"
         );
         *next_input_index_in_epoch = 0;
     }
@@ -1090,6 +1101,31 @@ mod input_numbering_tests {
             .number_inputs(&[], &[sealed(0, 0), sealed(1, 3)], 2)
             .unwrap_err();
         assert!(error.to_string().contains("caps each epoch at 2 inputs"));
+    }
+
+    /// The other direction: a consensus with a smaller cap seals fewer
+    /// inputs than the node numbered into the epoch. More inputs arrived,
+    /// not fewer, so it is not the provider's fault.
+    #[test]
+    fn a_seal_below_the_stored_inputs_names_the_cap() {
+        let (_dir, mut reader) = reader();
+        let inputs = reader
+            .number_inputs(&events(&[0, 1]), &[sealed(0, 0)], 2)
+            .unwrap();
+        assert_eq!(ids(&inputs), [(1, 0), (1, 1)]);
+        reader
+            .storage
+            .insert_consensus_data(1, inputs.iter(), [&sealed(0, 0)].into_iter())
+            .unwrap();
+        let error = reader
+            .number_inputs(&[], &[sealed(0, 0), sealed(1, 1)], 2)
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "epoch 1 seal ends at 1, stored inputs end at 2; \
+             this node needs a DaveConsensus that caps each epoch at 2 inputs"
+        );
+        assert_eq!(LogCheck::failed_by(&error), None);
     }
 
     #[test]
@@ -1602,6 +1638,23 @@ mod witness_tests {
         assert_eq!(LogCheck::failed_by(&error), Some(LogCheck::StoredEpochs));
         let stored = stored.len() as u64;
         assert_eq!(f.stored(), (5, totals(stored, 0)), "nothing is committed");
+    }
+
+    /// A seal whose bound is below the stored count is the consensus's, not
+    /// the provider's: no remedy is named, and nothing is committed.
+    #[tokio::test]
+    async fn a_seal_below_the_stored_count_is_not_a_provider_fault() {
+        let mut f = fixture(2, 1_000);
+        f.head(10, 2, 1);
+        f.seals(&[(1, 1)]);
+
+        let error = f.reader.tick(&f.chain).await.unwrap_err();
+        assert!(
+            error.to_string().contains("caps each epoch at"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(LogCheck::failed_by(&error), None);
+        assert_eq!(f.stored(), (5, totals(2, 0)), "nothing is committed");
     }
 
     /// A fresh directory holds no sealed epoch, so even a chain that shows
