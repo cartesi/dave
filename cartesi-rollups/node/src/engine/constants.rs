@@ -175,19 +175,19 @@ mod tests {
         let root = manifest_dir.join("../..");
         let emulator_constants = std::fs::read_to_string(root.join(
             "cartesi-rollups/contracts/dependencies/\
-             cartesi-rollups-contracts-3.0.0-alpha.10/dependencies/\
-             cartesi-machine-solidity-step-0.15.0/src/EmulatorConstants.sol",
+             cartesi-rollups-contracts-3.0.0-alpha.11/dependencies/\
+             cartesi-machine-solidity-step-0.17.0/src/EmulatorConstants.sol",
         ))
         .expect("read DaveConsensus's vendored EmulatorConstants.sol");
         let memory = std::fs::read_to_string(root.join(
             "cartesi-rollups/contracts/dependencies/\
-             cartesi-rollups-contracts-3.0.0-alpha.10/dependencies/\
-             cartesi-machine-solidity-step-0.15.0/src/Memory.sol",
+             cartesi-rollups-contracts-3.0.0-alpha.11/dependencies/\
+             cartesi-machine-solidity-step-0.17.0/src/Memory.sol",
         ))
         .expect("read DaveConsensus's vendored Memory.sol");
         let canonical_machine = std::fs::read_to_string(root.join(
             "cartesi-rollups/contracts/dependencies/\
-             cartesi-rollups-contracts-3.0.0-alpha.10/src/common/CanonicalMachine.sol",
+             cartesi-rollups-contracts-3.0.0-alpha.11/src/common/CanonicalMachine.sol",
         ))
         .expect("read CanonicalMachine.sol");
 
