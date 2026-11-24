@@ -60,11 +60,13 @@ carry no backlog (reviews/README.md).
 
 ## Before mainnet funds
 
-- Adopt `newReservedApplication` and its reserved address calculator once a
-  rollups-contracts release ships cartesi/rollups-contracts#561, retaining the
-  consensus-bound salt. If none ships before the first mainnet app or audit
-  scope freeze, choose between waiting and creating Application directly.
-  (cartesi-rollups/contracts/AGENTS.md)
+- A lead, not assessed: the rollups contracts an application is deployed
+  with (`Application`, `ApplicationFactory`, `InputBox`) are built by their
+  own release at solc 0.8.30, through the IR with the optimizer on, which is
+  the class the Yul optimizer bug fixed in 0.8.38 applies to. Dave's Foundry
+  suites compile the same sources at 0.8.38, so they do not run the deployed
+  bytecode; e2e does. Whether the bug touches those contracts is open.
+  (plans/audit-readiness.md)
 - Rehearse the backstop for an undetected node bug: on a throwaway Sepolia
   application, hold the node out past join closure, let a fabricated claim
   win, and have the guardian foreclose inside the claim staging period. Then

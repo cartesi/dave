@@ -2,20 +2,40 @@
 
 ## Unreleased
 
-A new deployment generation: every contract is recompiled and the state
-transition moves to Cartesi Machine v0.23, moving deterministic deployment
+A new deployment generation: every contract is recompiled, the state
+transition moves to Cartesi Machine v0.23 and the rollups contracts to
+cartesi-rollups-contracts 3.0.0-alpha.11, moving deterministic deployment
 addresses and every machine hash.
 
 ### Contracts
 
-- Compile every contract with solc 0.8.38 instead of 0.8.30, which was
+- Compile Dave's own contracts (`prt/contracts` and
+  `cartesi-rollups/contracts`) with solc 0.8.38 instead of 0.8.30, which was
   inside the range of a Yul optimizer bug fixed in 0.8.38. No source
-  changes; all bytecode, and so every deterministic address, moves.
+  changes; all their bytecode, and so every deterministic address, moves.
+  The rollups contracts are deployed as their own release builds them, at
+  0.8.30.
 - `CartesiStateTransition` qualifies Cartesi Machine v0.23 through
   solidity-step v0.17: `CM_MARCHID()` is 23 and every uarch reset restores
   v0.23's pristine uarch hash. The step reports a halt before a cycle
   overflow and refuses a TLB write outside the shadow TLB. Every machine
   state hash moves, so templates must be rebuilt with the v0.23 tools.
+- The rollups contracts are those of cartesi-rollups-contracts
+  3.0.0-alpha.11, where 3.0.0-alpha.10 kept its addresses through the last
+  releases. All of them are new deployments at new addresses, `InputBox`
+  and `ApplicationFactory` included: an application created by this
+  release's `DaveAppFactory` takes its inputs from the new `InputBox`.
+- `DaveAppFactory` deploys the application at an address the application
+  factory reserves for it (`newReservedApplication`), so nobody else can
+  occupy a predicted application address. `newDaveApp` and
+  `calculateDaveAppAddress` keep their signatures, event and errors, and
+  give other addresses than before for the same arguments. Still do not send
+  value to a predicted address: anyone who knows the arguments can create
+  the pair, which starts epoch 0's dispute before a validator may be
+  running, and a direct transfer reaches the machine as no input. Deposit
+  through the portals after deployment. The calculator does not validate
+  its arguments either: where `newDaveApp` would refuse them, nothing can be
+  deployed at the addresses it returns.
 
 ### Node
 

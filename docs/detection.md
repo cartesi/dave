@@ -31,7 +31,7 @@ knowledge:
 Foreclosure stops a result only before `acceptStagedTournamentResult`. An
 accepted result stays: its outputs remain executable (`executeOutput` has no
 foreclosure gate), and a later foreclosure pays withdrawals from the accepted
-state (rollups-contracts 3.0.0-alpha.10, `Application.sol`; read it again on
+state (rollups-contracts 3.0.0-alpha.11, `Application.sol`; read it again on
 a dependency bump).
 
 Acceptance needs a staged result and either every sentry's claim of the

@@ -49,10 +49,17 @@ The Lua client selects inputs directly from each sealed epoch's lower and
 upper bounds.
 
 DaveAppFactory's application address is a function of the template, withdrawal
-configuration and full consensus settings. Use its calculator to predict
-addresses, but do not send value to one before `DaveAppCreated`: anyone can
-occupy it through the shared ApplicationFactory with an application that has
-no validator (cartesi-rollups/contracts/AGENTS.md).
+configuration and full consensus settings, and the application factory
+reserves it for DaveAppFactory: only `newDaveApp` with those arguments, from
+any caller, deploys there. Use its calculator to predict addresses, but do not
+send value to one. Anyone who knows the arguments can create the pair, which
+starts epoch 0's dispute, and until a validator runs a lone false claim that
+the guardian does not foreclose in the staging window settles and can move
+what the application holds. A direct transfer also reaches the machine as no
+input: deposit through the portals after deployment. The calculator does not
+validate its arguments, so for a sentry set or withdrawal configuration that
+`newDaveApp` refuses, nothing can be deployed at the addresses it returns
+(cartesi-rollups/contracts/AGENTS.md).
 
 ## Epoch states, from the node's perspective
 
