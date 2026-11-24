@@ -5,7 +5,7 @@ pragma solidity ^0.8.30;
 
 import {Vm} from "forge-std-1.9.6/src/Vm.sol";
 
-import {EmulatorConstants} from "cartesi-machine-solidity-step-0.15.0/src/EmulatorConstants.sol";
+import {EmulatorConstants} from "cartesi-machine-solidity-step-0.17.0/src/EmulatorConstants.sol";
 
 import {MachineValidationErrors} from "cartesi-rollups-contracts-3.0.0/src/common/MachineValidationErrors.sol";
 import {MachineValidityProof} from "cartesi-rollups-contracts-3.0.0/src/common/MachineValidityProof.sol";
