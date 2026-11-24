@@ -406,8 +406,14 @@ local function decode_standing(
     local expected_candidate = fold:candidate(
         tournament_fold.address
     )
-    assert(same(candidate, expected_candidate),
-        "standing candidate disagrees with fold candidate")
+    if not same(candidate, expected_candidate) then
+        error(string.format(
+            "standing candidate disagrees with fold candidate:"
+                .. " standing %s, fold %s",
+            candidate and tostring(candidate) or "none",
+            expected_candidate and tostring(expected_candidate) or "none"
+        ), 0)
+    end
 
     local standing
     if wire.standing == 0 then
@@ -928,14 +934,33 @@ function Adapter.observe_fold(transport, fold, head)
             "fold tournament address must be normalized lowercase"
         )
         if fold_reachable(fold, tournament_fold, observations) then
-            local observation =
-                observe_tournament(transport, fold, tournament_fold, head)
-            validate_parent_topology(
-                fold,
-                tournament_fold,
-                observations,
-                observation
-            )
+            -- A contradiction between the fold and a view says what
+            -- disagreed, not where: name the tournament and the head the
+            -- views were pinned to, then fail as before.
+            local ok, observation = pcall(function()
+                local observation =
+                    observe_tournament(transport, fold, tournament_fold, head)
+                validate_parent_topology(
+                    fold,
+                    tournament_fold,
+                    observations,
+                    observation
+                )
+                return observation
+            end)
+            if not ok then
+                local failure = observation
+                if type(failure) == "string" and type(head) == "table" then
+                    failure = string.format(
+                        "%s (tournament %s, observed at head %s %s)",
+                        failure,
+                        tournament_fold.address,
+                        tostring(head.number),
+                        tostring(head.hash)
+                    )
+                end
+                error(failure, 0)
+            end
             observations[tournament_fold.address] = observation
         end
     end
