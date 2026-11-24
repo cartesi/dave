@@ -12,9 +12,6 @@ repository = { workspace = true }
 
 
 [features]
-# Links against `libcartesi_jsonrpc.a`
-remote_machine = ["cartesi-machine-sys/remote_machine"]
-
 # Requires LIBCARTESI_PATH; INCLUDECARTESI_PATH overrides the inferred include directory.
 external_cartesi = ["cartesi-machine-sys/external_cartesi"]
 

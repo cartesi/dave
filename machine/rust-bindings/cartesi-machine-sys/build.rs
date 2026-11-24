@@ -61,11 +61,7 @@ fn main() {
     // Static link. Source fallback is built with `slirp=no`. External
     // providers may be the upstream release package, whose archive references
     // libslirp; `link_external` adds that dependency when it is referenced.
-    if cfg!(feature = "remote_machine") {
-        println!("cargo:rustc-link-lib=static=cartesi_jsonrpc");
-    } else {
-        println!("cargo:rustc-link-lib=static=cartesi");
-    }
+    println!("cargo:rustc-link-lib=static=cartesi");
 
     // OpenMP linker configuration (cross-platform)
     if cfg!(target_os = "macos") {
@@ -286,17 +282,9 @@ fn link_external(libdir: &Path, out_path: &Path) {
     let cartesi = libdir.join("libcartesi.a");
     println!("cargo:rerun-if-changed={}", cartesi.display());
     stage_archive(&cartesi, out_path);
-    let mut slirp = references_slirp(&cartesi);
-
-    if cfg!(feature = "remote_machine") {
-        let jsonrpc = libdir.join("libcartesi_jsonrpc.a");
-        println!("cargo:rerun-if-changed={}", jsonrpc.display());
-        stage_archive(&jsonrpc, out_path);
-        slirp |= references_slirp(&jsonrpc);
-    }
 
     println!("cargo:rustc-link-search={}", out_path.display());
-    if slirp {
+    if references_slirp(&cartesi) {
         link_slirp();
     }
 }
@@ -343,27 +331,18 @@ mod build_cm {
 
     pub fn build(machine_dir: &Path, out_path: &Path) {
         let libcartesi = machine_dir.join("src/libcartesi.a");
-        let libcartesi_jsonrpc = machine_dir.join("src/libcartesi_jsonrpc.a");
 
         // Preparation owns all downloads and generated sources. Make is
         // incremental, so a changed Git index checks the selected targets,
         // while an unchanged Cargo invocation does not run this script.
         run_make(
             machine_dir,
-            &[
-                "-C",
-                "src",
-                "release=yes",
-                "slirp=no",
-                "libcartesi.a",
-                "libcartesi_jsonrpc.a",
-            ],
+            &["-C", "src", "release=yes", "slirp=no", "libcartesi.a"],
         );
 
         // Reuse the same staging path as external archives. In particular,
         // this removes a read-only Nix-store copy left by a previous provider.
         super::stage_archive(&libcartesi, out_path);
-        super::stage_archive(&libcartesi_jsonrpc, out_path);
     }
 
     fn run_make(machine_dir: &Path, args: &[&str]) {

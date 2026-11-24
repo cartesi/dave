@@ -341,7 +341,7 @@ build_source() {
     jobs="${DAVE_MACHINE_BUILD_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
     [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || jobs=1
     make -C "${emulator_dir}/src" -j"$jobs" \
-        release=yes slirp=no libcartesi.a libcartesi_jsonrpc.a
+        release=yes slirp=no libcartesi.a
 }
 
 setup_provider() {
@@ -359,8 +359,6 @@ setup_provider() {
 }
 
 check_provider() {
-    local lib
-
     if external_provider_selected; then
         validate_external_provider
         printf 'external Cartesi Machine provider is ready\n'
@@ -368,9 +366,7 @@ check_provider() {
     fi
 
     require_prepared_source
-    for lib in libcartesi.a libcartesi_jsonrpc.a; do
-        [[ -f "${emulator_dir}/src/${lib}" ]] || die "source provider has not built ${lib}"
-    done
+    [[ -f "${emulator_dir}/src/libcartesi.a" ]] || die "source provider has not built libcartesi.a"
     printf 'Cartesi Machine source provider is ready\n'
 }
 
