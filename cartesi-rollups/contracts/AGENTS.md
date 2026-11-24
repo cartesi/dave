@@ -152,6 +152,14 @@ under forge's invariant engine, in seeded walks at three sentry
 configurations that must reach every settlement operation, every root
 outcome and every refusal the model names outside the dispute moves, and in
 directed schedules.
+For the input cap, the handler checks after every step, against the
+production InputBox, that a sealed span holds at most 2^24 inputs and does
+not pass the InputBox count at its sealing, and that an input is finalized
+exactly below the lower bound. Its model of the bounds repeats the
+contract's formula, so the exact bounds rest on the directed schedules: one
+span sealed with inputs left pending, a backlog of two spans plus one
+drained over three epochs while inputs arrive, and inputs added between a
+staging and its acceptance.
 `test/DaveConsensusErrorPaths.t.sol` pins `TournamentResultNotStaged` and
 `InputHashMismatch`. The handler states its limits: a root is driven only as
 far as a root result needs, machine validity proofs come from the upstream

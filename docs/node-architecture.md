@@ -589,7 +589,12 @@ during catch-up is checked by contiguity alone: a log missing from its tail
 surfaces only later, at the next log of its kind or at `F`, and then stops
 ingestion until the data directory is rebuilt. Until `F` reaches genesis (a
 node started before its deployment finalized), the consensus has no code to
-answer the totals, and ingestion waits without error.
+answer the totals, and ingestion waits without error. Genesis is the earlier
+of the two deployment blocks, so the wait covers a consensus deployed no
+later than its application, as the factory deploys both in one transaction. A
+consensus deployed in a later block still has no code at an `F` between the
+two: those ticks fail on the sealed-epoch read and are retried like any
+failed read, and ingestion goes on once the consensus's block is finalized.
 
 Ingestion starts at genesis, the earlier of the application's and the
 consensus's recorded deployment blocks, so a new application on a long-lived

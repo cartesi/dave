@@ -159,7 +159,10 @@ carry no backlog (reviews/README.md).
 
 ## Tests
 
-- Pin the capacity boundaries: the last input slot and the last stride.
+- Reach the input cap in a node-against-chain or e2e run. The cap is a
+  compile-time constant on every side, so it takes a devnet and builds at a
+  small one. Sealing at the cap, the last input slot's opening and the last
+  stride are pinned below e2e.
   (test-harness.md)
 - Identify the reference CLI by package digest instead of its version
   string, which cannot tell the release from its pre-releases or from an

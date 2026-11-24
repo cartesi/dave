@@ -327,8 +327,15 @@ reloads the snapshot) and the scenario steers onto the closing slot of
 the big cycle where the reject yielded. It goes through
 `run_steered_epoch`, so it carries the same seal and STEP checks. (A
 maximum-size input's feed is now a node witness vector replayed in
-Foundry.) Not yet pinned: capacity boundaries (last input slot, last
-stride).
+Foundry.) No e2e or node-against-chain run reaches the input cap: the cap is
+the emulator's compile-time constant in the contract, the node and the Lua
+client alike, so a run at a small cap needs a devnet and builds of its own.
+The capacity boundaries are pinned below that: sealing at the cap in Foundry
+(the consensus's capacity test and lifecycle schedules), and the opening of
+the last input slot and the last stride (the epoch's last counter, 2^92 - 1)
+by `TournamentStateTransitionExtremesFfi.t.sol`, on the Lua client's proofs,
+and at toy scale by the node's engine toy, which proves every index of a full
+epoch.
 
 Per-PR CI (`.github/workflows/build.yml`): the contracts jobs run the forge suites
 (PRT disputes, structured STF tests and fuzz, and consensus); the workspace job
@@ -368,7 +375,10 @@ unverified claims - check before relying on them:
 - (closed 2026-07) Crash/restart recovery: chaos and the batched catch-up
   kill in e2e, and the harness's `restart_after_*` tests.
 - (closed 2026-07) Revert transitions at leaf level: `stf_revert`.
-- Epochs at capacity boundaries (max inputs, input at the last stride).
+- A node-against-chain or e2e run that reaches the input cap (see the
+  coverage matrix above: the cap is a compile-time constant on every side;
+  sealing at it, the last-slot opening and the last stride are pinned in
+  Foundry and the engine toy).
 - Provider misbehavior: RPC errors, long-range log splits, throttling.
 - Multiple honest nodes defending the same epoch concurrently.
 - The devnet's censorship budget is 0, so kill and chaos runs keep no slack:
