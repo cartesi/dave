@@ -31,7 +31,7 @@ test PROGRAM SCENARIO: (preflight PROGRAM SCENARIO)
 # this list. Serial on one instance: Dave:new resets the state dir, so disk
 # holds one scenario's state at a time. Chaos keeps seed 1 unless CHAOS_SEED
 # says otherwise.
-# run the e2e smoke; node logs land in _smoke/, exit status = failures
+# run the e2e smoke; node and anvil logs land in _smoke/, exit status = failures
 smoke:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -53,16 +53,20 @@ smoke:
     done
     rm -rf _smoke && mkdir _smoke
     log="dave${TEST_INSTANCE:+-$TEST_INSTANCE}.log"
+    anvil_log="anvil${TEST_INSTANCE:+-$TEST_INSTANCE}.log"
     failures=0
     for entry in "${scenarios[@]}"; do
         read -r program scenario <<< "$entry"
         start=$SECONDS
         # A scenario that dies before the node starts must not inherit the
         # previous scenario's log.
-        rm -f "$log"
+        rm -f "$log" "$anvil_log"
         CHAOS_SEED=${CHAOS_SEED:-1} just test "$program" "$scenario"
         rc=$?
         cp "$log" "_smoke/$program-$scenario.log" 2>/dev/null
+        # Each scenario's anvil truncates the one before it, and a player
+        # assertion is read against what anvil was mining at that moment.
+        cp "$anvil_log" "_smoke/$program-$scenario.anvil.log" 2>/dev/null
         # An ERROR asks an operator to act, so an honest run logs none.
         if [ "$rc" -eq 0 ] && grep -q ' ERROR ' "_smoke/$program-$scenario.log" 2>/dev/null; then
             echo "[smoke] $program $scenario: the node logged an ERROR"

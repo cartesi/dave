@@ -164,6 +164,11 @@ carry no backlog (reviews/README.md).
   small one. Sealing at the cap, the last input slot's opening and the last
   stride are pinned below e2e.
   (test-harness.md)
+- Move `FOUNDRY_VERSION` to an anvil that does not answer a call pinned to
+  the current head from the next block's state, after running the
+  pinned-call experiment against it. Until then an e2e player assertion that
+  the fold and a view disagree is cleared by a rerun.
+  (test-harness.md)
 - Identify the reference CLI by package digest instead of its version
   string, which cannot tell the release from its pre-releases or from an
   unreleased upstream build.

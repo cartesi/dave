@@ -361,8 +361,10 @@ oracle, and the steering helper read the level table from chain. Unsteered
 scenarios patch at `1 << 44`, an idle leaf.
 
 The smoke list lives in the `smoke` recipe of `test/e2e/rollups/justfile`, and
-CI and local runs share it. It runs serially and past failures, keeps each node
-log in `_smoke/`, fails a passing scenario whose node log holds an ERROR (an
+CI and local runs share it. It runs serially and past failures, keeps each
+scenario's node log and anvil log in `_smoke/` (`<program>-<scenario>.log` and
+`.anvil.log`, the directory CI uploads when the job fails), fails a passing
+scenario whose node log holds an ERROR (an
 honest run asks no operator to act), prints a results table, exits with the
 failure count, and warns about any scenario file the list omits.
 
@@ -513,6 +515,30 @@ record):
   unavailable") when another test spawned anvil in between: three of five
   harness runs on one tree. `just test-node-harness` therefore runs one
   test at a time. The node itself spawns nothing.
+- A Lua player assertion that the fold and a view disagree ("standing
+  candidate disagrees with fold candidate", a count of folded
+  `MatchAdvanced` events, a breadcrumb or a phase against a projection, a
+  live match the observer reports absent) in any e2e scenario, with more
+  draws in chaos, is most likely anvil and not the fold. anvil 1.5.1 answers
+  a call pinned to the current head from its live state, so while it mines
+  the next block a call pinned to block H can be answered with the state of
+  H + 1. On the pinned build, calls pinned by block hash while one
+  transaction is mined, compared with the same call repeated afterwards,
+  had a wrong answer in 17 to 19 of 20 rounds over two runs. For the
+  candidate case the fold and the contract were read and ruled out. The
+  node meets the same anvil in e2e: its reads pinned by hash fail closed
+  and the tick is retried. The one CI failure is tied to this cause by
+  timing alone (the node's join, which changes the compared field, landed
+  within about 60 ms of the assertion), which is why the failure now prints
+  both values, the tournament and the head, and the smoke keeps each
+  scenario's anvil log. The remedy today is to rerun the job. The fix is to
+  move `FOUNDRY_VERSION` to an anvil that checks the head again after
+  waiting for its database lock; upstream 1.9.0 and later appear to, by
+  reading their source and not by running it (a lead: run the same
+  experiment against the new version before relying on it). The reader does
+  not retry: that would guard a test actor against its provider and be dead
+  code after the move. Reopen that if the flake becomes frequent before
+  Foundry moves (todo.md).
 - When independent processes freeze and resume in lockstep, check
   `pmset -g log` before blaming software: an unattended macOS run dies of
   idle sleep, not bugs. The e2e scenario recipe holds the machine awake on
