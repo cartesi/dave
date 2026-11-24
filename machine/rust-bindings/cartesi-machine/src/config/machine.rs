@@ -514,6 +514,12 @@ mod tests {
     /// bindings were written against. If this fails after an emulator bump,
     /// update `EXPECTED_EMULATOR_VERSION` in `lib.rs` and rerun the config
     /// round-trip tests to re-confirm the schema.
+    ///
+    /// The header the bindings were generated from must also be that
+    /// library's: its constants are what a consumer compiles in (the node's
+    /// deployment guard reads `CM_MARCHID` from it), and the two are located
+    /// by separate variables. Pre-releases of one version share both numbers
+    /// and pass.
     #[test]
     fn test_emulator_version_pin() {
         let linked = Machine::version();
@@ -524,6 +530,19 @@ mod tests {
              Update EXPECTED_EMULATOR_VERSION after verifying the config schema still matches.",
             format_emulator_version(EXPECTED_EMULATOR_VERSION),
             format_emulator_version(linked),
+        );
+        assert_eq!(
+            u64::from(cartesi_machine_sys::CM_VERSION_NUM),
+            linked,
+            "the C API header is emulator version {}, but libcartesi reports {}: \
+             INCLUDECARTESI_PATH and LIBCARTESI_PATH name different releases",
+            format_emulator_version(u64::from(cartesi_machine_sys::CM_VERSION_NUM)),
+            format_emulator_version(linked),
+        );
+        assert_eq!(
+            u64::from(cartesi_machine_sys::CM_MARCHID),
+            library_default().processor.registers.marchid,
+            "the C API header's CM_MARCHID is not the one libcartesi gives a machine"
         );
     }
 

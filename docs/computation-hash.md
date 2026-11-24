@@ -62,9 +62,10 @@ distinct when changing the coordinate code.
 It rejects a larger counter before parsing its proof or consulting the data
 provider. The concrete adapter also exposes `CM_MARCHID`, solidity-step's
 `EmulatorConstants.CM_MARCHID`, which step generates from the Cartesi Machine
-release it targets. Node startup compares the deployed value
-with the linked Cartesi Machine library before opening or initializing local
-storage. The adapter also publishes `UARCH_PRISTINE_STATE_HASH`, the pristine
+release it targets. Node startup compares the deployed value with
+`CM_MARCHID` from the Cartesi Machine header the node was built against,
+before opening or initializing local storage; a bindings test keeps that
+header and the linked library on one version. The adapter also publishes `UARCH_PRISTINE_STATE_HASH`, the pristine
 uarch hash that every uarch reset restores, taken from solidity-step's
 `EmulatorConstants` rather than pinned locally, for claimers to compare with
 their own emulator before joining.
