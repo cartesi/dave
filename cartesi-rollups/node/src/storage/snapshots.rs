@@ -117,7 +117,7 @@ impl Storage {
         // directory fsync has not completed, so adoption establishes
         // durability independently before any caller registers a row.
         let adopt = |dest: PathBuf| -> anyhow::Result<Durable> {
-            let published = Durable::at(dest);
+            let published = Durable::at(dest)?;
             published.sync()?;
             Ok(published)
         };

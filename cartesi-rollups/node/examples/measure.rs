@@ -275,7 +275,7 @@ fn bench_clone_loop(report: &mut String, image: &Path, scratch_root: &Path) -> R
     let quiet = RuntimeConfig::quiet_console();
     let chain_root = scratch(scratch_root, "clone-chain")?;
     let (first, template_clone) =
-        timed(|| Ok(Durable::at(image).clone_to(&chain_root.join("boundary-0"))?))?;
+        timed(|| Ok(Durable::at(image)?.clone_to(&chain_root.join("boundary-0"))?))?;
     // Every boundary stays until the loop ends, as a kept one would.
     let mut boundaries = vec![first];
 

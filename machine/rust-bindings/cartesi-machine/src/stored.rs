@@ -86,11 +86,14 @@ impl Volatile {
     /// the same filesystem. On failure the directory is discarded, unless
     /// the rename itself landed before failing.
     pub fn persist(self, to: &Path) -> Result<Durable> {
+        // Resolved before anything moves: the handle returned must name
+        // this directory wherever the working directory goes afterwards.
+        let to = absolute(to)?;
         Machine::sync_stored(&self.dir)?;
-        Machine::rename_stored(&self.dir, to)?;
+        Machine::rename_stored(&self.dir, &to)?;
         // The directory moved: nothing is left here to remove.
         let _ = self.keep();
-        Ok(Durable { dir: to.to_owned() })
+        Ok(Durable { dir: to })
     }
 
     /// Gives up the removal: the directory stays, and the discard rule
@@ -136,13 +139,18 @@ fn absolute(dir: &Path) -> Result<PathBuf> {
 /// template, a published snapshot.
 #[derive(Clone, Debug)]
 pub struct Durable {
+    /// Absolute, like a volatile's: the handle names one directory, not
+    /// whatever a relative path means after a change of working directory.
     dir: PathBuf,
 }
 
 impl Durable {
-    /// Trusts `dir` to hold such a machine. Nothing checks it.
-    pub fn at(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+    /// Trusts `dir` to hold such a machine. Nothing checks it; the path is
+    /// resolved against the working directory of now.
+    pub fn at(dir: impl AsRef<Path>) -> Result<Self> {
+        Ok(Self {
+            dir: absolute(dir.as_ref())?,
+        })
     }
 
     /// Syncs the directory again, for one found already in place whose own

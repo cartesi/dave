@@ -1502,7 +1502,7 @@ mod tests {
         );
         let expected = machine.root_hash()?;
         drop(machine);
-        let stored = Durable::at(stored);
+        let stored = Durable::at(stored)?;
 
         // One clone closed with its sidecars brought exact, another closed
         // cold: stale hash sidecars, dirtiness recorded.
@@ -1545,7 +1545,7 @@ mod tests {
         let mut config = Machine::default_config()?;
         config.ram.length = 4096;
         create_machine(&config)?.store(&stored)?;
-        let stored = Durable::at(stored);
+        let stored = Durable::at(stored)?;
         let dir = |name: &str| tmp.path().join(name);
 
         let closed = stored.clone_to(&dir("closed"))?.open(&quiet)?.close()?;
@@ -1581,6 +1581,43 @@ mod tests {
         Ok(())
     }
 
+    /// A durable handle is absolute however it was made, by naming a
+    /// directory or by persisting to one: a relative path must not follow
+    /// a later change of working directory. The destination here is given
+    /// relative to the working directory the test runs in.
+    #[test]
+    fn a_durable_directory_is_held_by_an_absolute_path() -> Result<()> {
+        let named = Durable::at("no-such-stored-machine")?;
+        assert!(named.path().is_absolute());
+        assert!(named.path().ends_with("no-such-stored-machine"));
+        assert!(Durable::at("").is_err());
+
+        let quiet = RuntimeConfig::quiet_console();
+        let tmp = tempfile::tempdir().expect("failed creating a temp dir");
+        let mut config = Machine::default_config()?;
+        config.ram.length = 4096;
+        let mut machine = create_machine(&config)?;
+        let root = machine.root_hash()?;
+        machine.store(&tmp.path().join("stored"))?;
+
+        let mut relative = std::path::PathBuf::new();
+        let cwd = std::env::current_dir().expect("no working directory");
+        for _ in cwd.components().skip(1) {
+            relative.push("..");
+        }
+        relative.push(tmp.path().strip_prefix("/").expect("an absolute path"));
+        relative.push("published");
+        assert!(relative.is_relative());
+
+        let published = Durable::at(tmp.path().join("stored"))?
+            .clone_to(&tmp.path().join("staged"))?
+            .persist(&relative)?;
+        assert!(published.path().is_absolute());
+        assert!(tmp.path().join("published").is_dir());
+        assert_eq!(published.load(&quiet)?.root_hash()?, root);
+        Ok(())
+    }
+
     /// Persisting syncs and renames without replacing, and a volatile that
     /// does not make it is discarded.
     #[test]
@@ -1593,7 +1630,7 @@ mod tests {
         let mut machine = create_machine(&config)?;
         let root = machine.root_hash()?;
         machine.store(&stored)?;
-        let stored = Durable::at(stored);
+        let stored = Durable::at(stored)?;
         let dir = |name: &str| tmp.path().join(name);
 
         let published = stored
@@ -1702,7 +1739,7 @@ mod tests {
         machine.run(1_000_000)?;
         machine.store(&stored)?;
         drop(machine);
-        let stored = Durable::at(stored);
+        let stored = Durable::at(stored)?;
 
         {
             let _private = stored.load(&quiet)?;
