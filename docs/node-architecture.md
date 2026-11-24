@@ -336,7 +336,18 @@ rejected input before it reverts to it, but a root taken on a load checks the
 stored hash tree and dirty marks, not the data under pages the tree marks
 clean: it catches a torn or stale tree, not a stale page under a current one.
 Since the machine stays on its own directory, what a batch publishes is a
-clone, where it used to be a directory the machine itself wrote. A destroy
+clone, where it used to be a directory the machine itself wrote. An option
+left for later: after the last accepted input before a publication, in a
+runner batch or a crossing, the machine is not used again, so the rotation
+could keep the directory it wrote as the checkpoint, with no clone and no
+reopen; a batch ending on an accepted input would then publish what the
+machine wrote, and clones would serve only as rollback checkpoints. It is
+not taken because on XFS the reflink guarantees the clone, so it would guard
+a case outside the supported filesystem, and it saves one clone and one
+reopen per batch, nothing per input, for a last-input flag and a branch in
+the rotation. A supported filesystem that does not guarantee a clone of a
+closed, unsynced directory, or a measured need for the published directory
+to be independent of cloning, reopens it. A destroy
 that fails (the emulator could not save its pending dirty-page marks, which
 only a bug of its own causes) leaves files not to be trusted: the working
 clone is discarded with the batch, and a restart replays from the last
