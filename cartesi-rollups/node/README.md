@@ -386,7 +386,10 @@ Options:
   101 a panic (restart with backoff and page, since a loop means a bug or
   corrupt local state). A 101 loop at a snapshot-root assert means corrupt
   local state: rebuild the data directory beside it as for 40, never delete a
-  row or a snapshot directory alone, which a replay would adopt again. A death
+  row or a snapshot directory alone, which a replay would adopt again. A
+  single 101 at a first start, at the staged machine's root assert, means the
+  seed image changed between its inspection and its clone: nothing was
+  seeded, and the restart reads the image again. A death
   by signal logs nothing of its own: 137 (SIGKILL) is usually the kernel's
   out-of-memory killer; 135 (SIGBUS, systemd `status=7/BUS`) means the data
   directory's filesystem filled while a machine was mapped for writing; 134

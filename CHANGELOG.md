@@ -43,7 +43,8 @@ past the span.
   accepted input the machine stays on the directory it wrote instead of
   moving to a fresh clone.
 - A first start rebuilds the seed image's hash tree from its contents
-  (about 0.4 s for a 540 MB image) instead of believing the tree stored
+  (about 0.4 s on macOS for the 543 MB echo test image: 0.12 s to inspect
+  it, 0.28 s on the clone it seeds) instead of believing the tree stored
   with it, so a corrupt or forged image is refused by its root.
 - A leaf build takes an input delivered with the machine's cycle counter
   saturated, which only a template can preset, where it used to stop the
