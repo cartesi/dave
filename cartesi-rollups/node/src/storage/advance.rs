@@ -126,8 +126,9 @@ impl AdvanceBatch {
 
 /// The epoch's input count, as one past its highest index: an index seek
 /// where a count walks the whole epoch. Exact because ingest admits an
-/// epoch's inputs densely from zero and nothing deletes one; the plan's
-/// contiguity asserts catch a prefix that is not.
+/// epoch's inputs densely from zero and nothing deletes one. Were a row
+/// missing all the same, the plan's contiguity asserts catch it ahead of
+/// the cursor, and the roll's count of the rows catches it behind.
 fn input_count_in(tx: &Transaction, epoch: u64) -> Result<u64> {
     let count: i64 = tx.query_row(
         "SELECT COALESCE(MAX(input_index_in_epoch) + 1, 0)
@@ -136,6 +137,17 @@ fn input_count_in(tx: &Transaction, epoch: u64) -> Result<u64> {
         |row| row.get(0),
     )?;
     Ok(i64_to_u64(count))
+}
+
+/// The epoch's stored input rows, by the walk `input_count_in` avoids: for
+/// the roll, once per epoch.
+fn input_rows_in(tx: &Transaction, epoch: u64) -> Result<u64> {
+    let rows: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM inputs WHERE epoch_number = ?1",
+        [u64_to_i64(epoch)],
+        |row| row.get(0),
+    )?;
+    Ok(i64_to_u64(rows))
 }
 
 /// A sealed epoch's input upper bound, an index into the application's
@@ -169,6 +181,14 @@ fn roll_ready_in(tx: &Transaction) -> Result<(u64, u64, Hash)> {
     assert_eq!(
         boundary_input, input_count,
         "refusing to roll epoch {epoch}: durable boundary {boundary_input}, input count {input_count}"
+    );
+    // That count is one past the highest index, and the plan looks for
+    // holes from the cursor forward only. A row missing behind the cursor
+    // moves neither, and a dispute would read it as a window with no input.
+    let input_rows = input_rows_in(tx, epoch)?;
+    assert_eq!(
+        input_rows, input_count,
+        "refusing to roll epoch {epoch}: {input_rows} stored inputs for {input_count} indexes"
     );
     // Seals are stored densely from epoch 0, so the previous one exists.
     let lower = match epoch.checked_sub(1) {
@@ -1564,6 +1584,21 @@ mod tests {
         let (_handle, mut s) = setup_storage();
         append_inputs(&mut s, 0, 2);
         let (batch, _) = record_mutated_batch(&mut s, 2);
+        s.commit_advances(batch).unwrap();
+        seal(&mut s, 0, 3);
+
+        let _ = s.roll_epoch();
+    }
+
+    /// A row missing behind the cursor: the highest index, the boundary and
+    /// the seal all agree, and the plan, which looks for holes from the
+    /// cursor on, never saw it. Only a count of the rows does.
+    #[test]
+    #[should_panic(expected = "2 stored inputs for 3 indexes")]
+    fn roll_refuses_an_epoch_missing_an_input_behind_the_cursor() {
+        let (_handle, mut s) = setup_storage();
+        append_inputs_with_a_hole(&mut s, 1, 2, 1);
+        let (batch, _) = record_mutated_batch(&mut s, 3);
         s.commit_advances(batch).unwrap();
         seal(&mut s, 0, 3);
 
