@@ -58,8 +58,10 @@ its deadline.
   and uncalled. Fallback: any node with a funded key, which stages and
   accepts a root its commitment won without having joined it (the node
   harness's `a_second_node_settles_the_epoch_the_first_won_and_left`). A root
-  won by another commitment that ends in the true state is staged only by a
-  direct call, since a node stages its own win. No deadline.
+  won by another commitment that ends in the true state is settled only by
+  direct calls, for both steps: a node that lost the root stages nothing
+  and, even after somebody stages, does not accept. It only submits its
+  sentry claim. No deadline.
 - D, the detector is blind. It has no fresh reading, or its provider lags.
   Every quiet reading is then ambiguous, so D alerts on its own.
 
