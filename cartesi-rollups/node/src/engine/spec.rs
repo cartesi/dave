@@ -71,7 +71,7 @@ fn halt(big_cycles: &[u64]) -> ToyInput {
 
 /// Scripts covering every geometry case: full activity, early uarch
 /// halts, early yields, rejection (revert), machine halt, inputs after a
-/// halt, empty epoch.
+/// halt, empty epoch, full epoch.
 fn scripts_for(structure: &Structure) -> Vec<(&'static str, Vec<ToyInput>)> {
     let max_usteps = structure.big_span() - 1;
     let window_bigs = 1u64 << structure.log2_barch_span;
@@ -96,6 +96,13 @@ fn scripts_for(structure: &Structure) -> Vec<(&'static str, Vec<ToyInput>)> {
         (
             "halt_then_input",
             vec![accept(&[2]), halt(&[1]), accept(&[1])],
+        ),
+        // Appended likewise. An input in every window of the four-window
+        // structures: no padding window, and the last input's window ends
+        // the epoch. The shorter scripts fill only the two-window one.
+        (
+            "full_epoch",
+            vec![accept(&[2, 1]), reject(&[1]), accept(&[3]), accept(&[1, 1])],
         ),
     ]
     .into_iter()
