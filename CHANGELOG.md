@@ -37,8 +37,8 @@ past the span.
   node built against v0.22 cannot start against these contracts, v0.22
   templates do not load, and a data directory built by an earlier node is
   refused (new store format and commitment semantics).
-- The runner's time per input falls from about 150 ms to about 18 ms
-  accepted and 22 ms rejected on the echo image (macOS): v0.23 no longer
+- The runner's time per input falls from about 150 ms to 15 to 18 ms
+  accepted and about 22 ms rejected on the echo image (macOS): v0.23 no longer
   reads a fresh clone's hash-tree cache one page at a time, and after an
   accepted input the machine stays on the directory it wrote instead of
   moving to a fresh clone.

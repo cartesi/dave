@@ -17,7 +17,7 @@ carry no backlog (reviews/README.md).
   no priority), and count one re-preparation of a leaf proof still pending
   at the next tick in the fallback latency. Measure on Linux XFS on a cloud
   volume, since every figure so far is APFS and a Linux clone writes back
-  the source's dirty pages first: the runner's whole time per input (about
+  the source's dirty pages first: the runner's whole time per input (15 to
   18 ms accepted and 22 ms rejected on macOS with v0.23, echo, against the
   36 ms threshold; time it on local NVMe and on the cloud volume at baseline
   provisioning), the clone's latency and bytes written per input with a

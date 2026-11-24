@@ -74,7 +74,7 @@ and bonds do not. The testnets, with `C` of 8 hours and free gas, have no such
 price. An attack that fills a resource (disk, links, memory, provider quota)
 for less than that is a wall to close; one that costs more, or is out of
 model, is a door, and a guard against it is not worth its code. These figures
-use emulator v0.22.0 on one macOS machine. On v0.23 that machine measures 18
+use emulator v0.22.0 on one macOS machine. On v0.23 that machine measures 15
 to 22 ms per input (measurements/measurements.md), under the threshold
 below, so the price is due its re-derivation, on the Linux measurement with
 the runner and a dispute sharing cores and the disk under pressure
@@ -89,7 +89,7 @@ outrun the root join, provided the snapshot disk keeps up (a full epoch keeps
 bought with gas alone, not the drain: a full epoch still draws up to
 `2^24 x t` from that epoch's `C`, less the time the chain takes to carry it,
 and the ledger counts that drain like any other delay. On macOS with
-emulator v0.23 an input takes about 18 ms if accepted and 22 ms if rejected,
+emulator v0.23 an input takes 15 to 18 ms if accepted and 22 ms if rejected,
 and the adversary chooses: at the slower, the drain is at most about 4.3
 days (61% of a week), and the runner executes about 45 such inputs a second
 where Ethereum carries at most about 165, so it does not keep up as
@@ -244,8 +244,8 @@ the contract is near 2^35.3 big cycles per input at a gap of 1
 (150 s / 3.5 ns), and near 2^30.9 at the default gap of 64 (63 replayed
 inputs and one sampled: 150 s / (63 x 1.1 + 3.5) ns), where the prefix
 replay dominates. Each replayed input also pays the node's fixed overhead
-(18 to 22 ms of whole time per input on macOS with emulator v0.23; its Linux
-re-measurement is due), about 1.1-1.4 s of the 150 s at the default gap, and
+(15 to 22 ms of whole time per input on macOS with emulator v0.23; its Linux
+re-measurement is due), about 0.9-1.4 s of the 150 s at the default gap, and
 that overhead alone caps any gap near `G / (2 x overhead)`. The gap also
 bounds the open tail a seal leaves unexecuted, which the root join waits for.
 These are estimates on one workload; a re-measurement on validator-grade
