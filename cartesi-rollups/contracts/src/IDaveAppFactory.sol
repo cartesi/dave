@@ -54,9 +54,18 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     /// @param salt A 32-byte value used to add entropy to the addresses
     /// @return appContractAddress The application contract address
     /// @return daveConsensusAddress The Dave consensus contract address
-    /// @dev Do not send value to a predicted address before `DaveAppCreated`:
-    /// anyone can occupy the application address through the shared
-    /// application factory, with no validator, making `newDaveApp` revert.
+    /// @dev The application factory reserves the application address for this
+    /// factory, and the consensus address is this factory's own deployment:
+    /// only `newDaveApp` with these arguments deploys at either.
+    /// @dev Do not send value to a predicted address. Anyone who knows the
+    /// arguments can call `newDaveApp`, which starts the first epoch's
+    /// dispute: until a validator runs, a lone false claim that is not
+    /// foreclosed in time settles and can move what the application holds.
+    /// A direct transfer also reaches the machine as no input: deposit
+    /// through the portals after deployment. A salt kept private until
+    /// deployment keeps others from deploying the pair first.
+    /// @dev The arguments are not validated here: where `newDaveApp` would
+    /// refuse them, nothing can ever be deployed at the addresses returned.
     function calculateDaveAppAddress(
         bytes32 templateHash,
         uint256 claimStagingPeriod,
