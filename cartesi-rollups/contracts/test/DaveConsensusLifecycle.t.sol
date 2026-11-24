@@ -835,6 +835,97 @@ contract DaveConsensusLifecycleScheduleTest is DaveConsensusLifecycleTestBase {
         assertFalse(consensus.wasInputFinalized(app, EPOCH_INPUT_CAPACITY, 0));
     }
 
+    /// @notice A backlog of two capacity spans plus one input drains over
+    /// three epochs while inputs keep arriving. Each seal starts where the
+    /// last one ended and takes one span at most, so an input added during
+    /// the drain is sealed behind the backlog's last input.
+    function testBacklogDrainsOverThreeEpochsAheadOfLaterInputs() public {
+        uint256 backlog = 2 * EPOCH_INPUT_CAPACITY + 1;
+        handler.addInputBacklog(backlog);
+
+        // Epoch 0 was sealed empty, so its acceptance finds the whole backlog.
+        handler.settleEpochWith(SETTLING_ONE);
+        handler.assertModel();
+        _assertSealed(1, 0, EPOCH_INPUT_CAPACITY);
+        assertFalse(consensus.wasInputFinalized(app, 0, 0));
+
+        handler.addInputFrom(BYSTANDER, "first during the drain");
+        handler.settleEpochWith(SETTLING_TWO);
+        handler.assertModel();
+        _assertSealed(2, EPOCH_INPUT_CAPACITY, 2 * EPOCH_INPUT_CAPACITY);
+        assertTrue(consensus.wasInputFinalized(app, EPOCH_INPUT_CAPACITY - 1, 0));
+        assertFalse(consensus.wasInputFinalized(app, EPOCH_INPUT_CAPACITY, 0));
+        // One backlog input is still pending, and the new one waits behind it.
+        handler.probeInputWith(EPOCH_INPUT_CAPACITY + 1, handler.inputAt(backlog));
+        assertEq(handler.tally(Tally.INPUTS_PADDED), 1);
+
+        handler.addInputFrom(BYSTANDER, "second during the drain");
+        handler.settleEpochWith(SETTLING_ONE);
+        handler.assertModel();
+        _assertSealed(3, 2 * EPOCH_INPUT_CAPACITY, backlog + 2);
+        assertTrue(consensus.wasInputFinalized(app, 2 * EPOCH_INPUT_CAPACITY - 1, 0));
+        assertFalse(consensus.wasInputFinalized(app, 2 * EPOCH_INPUT_CAPACITY, 0));
+        assertFalse(consensus.wasInputFinalized(app, backlog, 0));
+        // The epoch opens with the backlog's last input, which has no bytes,
+        // then holds the two later inputs in arrival order.
+        handler.probeInputWith(0, handler.inputAt(backlog));
+        _refused(PROVIDE, IDaveConsensus.InputHashMismatch.selector);
+        handler.probeInputWith(1, handler.inputAt(backlog));
+        handler.probeInputWith(2, handler.inputAt(backlog + 1));
+        assertEq(handler.tally(Tally.INPUTS_BOUND), 2);
+        handler.probeInputWith(3, handler.inputAt(backlog + 1));
+        assertEq(handler.tally(Tally.INPUTS_PADDED), 2);
+
+        // The drain is over: nothing is pending and the next epoch is empty.
+        handler.settleEpochWith(SETTLING_TWO);
+        handler.assertModel();
+        _assertSealed(4, backlog + 2, backlog + 2);
+        assertTrue(consensus.wasInputFinalized(app, backlog + 1, 0));
+        assertFalse(consensus.wasInputFinalized(app, backlog + 2, 0));
+        assertEq(handler.tally(Tally.EPOCHS_SEALED_AT_CAPACITY), 2);
+        assertEq(handler.tally(Tally.EPOCHS_SEALED_WITH_INPUTS_PENDING), 2);
+    }
+
+    /// @notice The next epoch's bound is the InputBox count at the
+    /// acceptance, not at the staging: inputs added while the result waits
+    /// are sealed with the ones before it, up to one capacity span.
+    function testInputsAddedAfterStagingAreSealedAtAcceptance() public {
+        handler.addInputFrom(BYSTANDER, "before the staging");
+        _succeeded(ADD_INPUT);
+        handler.joinRootWith(SETTLING_ONE);
+        _succeeded(JOIN);
+        handler.elapseBy(ROOT_ALLOWANCE);
+        handler.stageAs(BYSTANDER, 0, SETTLING_ONE, INTACT);
+        _succeeded(STAGE);
+        _assertSealed(0, 0, 0);
+
+        handler.addInputFrom(BYSTANDER, "after the staging");
+        _succeeded(ADD_INPUT);
+        handler.elapseBy(PERIOD);
+        handler.addInputFrom(BYSTANDER, "in the acceptance's block");
+        _succeeded(ADD_INPUT);
+        handler.acceptAs(BYSTANDER, 0, REPORT_UNTOUCHED);
+        _succeeded(ACCEPT);
+        _assertSealed(1, 0, 3);
+        handler.probeInputWith(2, handler.inputAt(2));
+        assertEq(handler.tally(Tally.INPUTS_BOUND), 1);
+
+        // A backlog that lands after the staging is capped the same way.
+        handler.joinRootWith(SETTLING_TWO);
+        _succeeded(JOIN);
+        handler.elapseBy(ROOT_ALLOWANCE);
+        handler.stageAs(BYSTANDER, 1, SETTLING_TWO, INTACT);
+        _succeeded(STAGE);
+        handler.addInputBacklog(EPOCH_INPUT_CAPACITY + 1);
+        handler.elapseBy(PERIOD);
+        handler.acceptAs(BYSTANDER, 1, REPORT_UNTOUCHED);
+        _succeeded(ACCEPT);
+        _assertSealed(2, 3, 3 + EPOCH_INPUT_CAPACITY);
+        assertTrue(consensus.wasInputFinalized(app, 2, 0));
+        assertFalse(consensus.wasInputFinalized(app, 3, 0));
+        assertEq(handler.tally(Tally.EPOCHS_SEALED_WITH_INPUTS_PENDING), 1);
+    }
+
     function testForeclosureFreezesSettlementWhileReadinessFollowsTheClock() public {
         bytes32 state = handler.stateOf(SETTLING_ONE);
         handler.addInputFrom(BYSTANDER, "pending");
@@ -963,6 +1054,14 @@ contract DaveConsensusLifecycleScheduleTest is DaveConsensusLifecycleTestBase {
             "the call was expected to be refused"
         );
         handler.assertModel();
+    }
+
+    /// @notice The current sealed epoch's number and input bounds.
+    function _assertSealed(uint256 epochNumber, uint256 lower, uint256 upper) private view {
+        (uint256 actualEpochNumber, uint256 actualLower, uint256 actualUpper,,,,,) = consensus.getCurrentSealedEpoch();
+        assertEq(actualEpochNumber, epochNumber, "epoch number");
+        assertEq(actualLower, lower, "lower bound");
+        assertEq(actualUpper, upper, "upper bound");
     }
 
     function _stagedSnapshot() private view returns (bytes32) {
