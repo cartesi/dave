@@ -12,8 +12,6 @@ repository = { workspace = true }
 
 
 [features]
-remote_machine = []
-
 # Keeps manifest-level enforcement for packaged consumers: unlike the env-only
 # default, enabling this feature fails rather than falling back to source.
 external_cartesi = []
