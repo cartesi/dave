@@ -335,7 +335,7 @@ fn corpus_cli() -> String {
 }
 
 /// The pinned release's `--version` line.
-const REFERENCE_CLI_VERSION: &str = "cartesi-machine 0.23.0-test4";
+const REFERENCE_CLI_VERSION: &str = "cartesi-machine 0.23.0";
 
 fn assert_corpus_cli_version(cli: &str) {
     let version = Command::new(cli).arg("--version").output().unwrap();
