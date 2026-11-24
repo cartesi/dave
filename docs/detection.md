@@ -23,11 +23,15 @@ state (rollups-contracts 3.0.0-alpha.10, `Application.sol`; read it again on
 a dependency bump).
 
 Acceptance needs a staged result and either every sentry's claim of the
-staged state or the staging period, counted from the staging block.
-`submitSentryClaim` checks its caller and the epoch number, not staging, so
-claims can precede it: when every sentry has claimed the state that is then
-staged, acceptance can share the staging block, and there is no window at
-all. Without sentries only the period opens acceptance.
+staged state or the staging period, counted from the staging block. The
+agreement is checked when acceptance is called, and `submitSentryClaim`
+checks its caller and the epoch number, not staging, so a claim can land
+before the staging or in any block after it. With sentries the window
+therefore has no fixed length: the period bounds it, and it ends in the
+block the last sentry's agreeing claim lands. When every sentry has claimed
+the state that is then staged, acceptance can share the staging block, and
+there is no window at all. Without sentries only the period opens
+acceptance.
 
 ## What to detect
 
@@ -68,8 +72,10 @@ Earliest first, with the lead each leaves before acceptance:
 2. The winner fields of `canStageTournamentResult`, once the root finishes:
    the wait for staging, then the window.
 3. `SentryClaim`, a sentry's own state, at any point of the epoch.
-4. `EpochStaged`: the window alone, which is the staging period, or nothing
-   when every sentry already agrees.
+4. `EpochStaged`: the window alone. Without sentries that is the staging
+   period. With sentries it is not a fixed number of blocks: the period at
+   most, ended by the last sentry's agreeing claim in whatever block it
+   lands, and nothing when every sentry already agrees.
 5. The next `EpochSealed`, which starts from the accepted state: too late.
 
 So a disagreement is detected at the join. Its lead is the adversary's choice,
