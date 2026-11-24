@@ -67,12 +67,14 @@ contract DaveAppFactory is IDaveAppFactory {
 
     /// @notice Instantiate a new application contract owned by the current contract,
     /// with no outputs Merkle root validator (the zero address), and with the input box
-    /// as the data-availability source.
+    /// as the data-availability source, at the address reserved for the current contract.
     function _newApplication(bytes32 templateHash, WithdrawalConfig calldata withdrawalConfig, bytes32 salt)
         internal
         returns (IApplication)
     {
-        return APP_FACTORY.newApplication(NO_VALIDATOR, address(this), templateHash, INPUT_BOX, withdrawalConfig, salt);
+        return APP_FACTORY.newReservedApplication(
+            NO_VALIDATOR, address(this), templateHash, INPUT_BOX, withdrawalConfig, salt
+        );
     }
 
     /// @notice Instantiate a new `DaveConsensus` contract.
@@ -96,14 +98,15 @@ contract DaveAppFactory is IDaveAppFactory {
         );
     }
 
-    /// @notice Calculates the address of an application contract.
+    /// @notice Calculates the address of an application contract,
+    /// which the application factory reserves for the current contract.
     function _calculateApplicationAddress(
         bytes32 templateHash,
         WithdrawalConfig calldata withdrawalConfig,
         bytes32 salt
     ) internal view returns (address) {
-        return APP_FACTORY.calculateApplicationAddress(
-            NO_VALIDATOR, address(this), templateHash, INPUT_BOX, withdrawalConfig, salt
+        return APP_FACTORY.calculateReservedApplicationAddress(
+            NO_VALIDATOR, address(this), templateHash, INPUT_BOX, withdrawalConfig, salt, address(this)
         );
     }
 
