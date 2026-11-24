@@ -61,11 +61,12 @@ truth.
   compatibility surface (`EpochSealed` has six fields with indexed
   epoch number; the node's blockchain reader consumes it).
 - `src/DaveAppFactory.sol` - one-transaction CREATE2 deployment of
-  application plus consensus: creates the app with no validator, deploys
+  application plus consensus: creates the app with no validator at the
+  address the application factory reserves for this contract, deploys
   consensus, migrates the app's validator to it, renounces ownership.
   All steps run inside one `newDaveApp` call, so there is no
   partial-completion window; `calculateDaveAppAddress` predicts both
-  addresses for configuration (see the squatting non-claim before funding).
+  addresses for configuration (see the pre-funding non-claim).
 - `src/ISentryErrors.sol` - sentry error selectors.
 
 ## Invariants to protect
@@ -95,8 +96,13 @@ truth.
   reach it, and the sum must stay checked, since a wrapped position would
   bind a settled input.
 - The application address binds the template, withdrawal configuration and
-  every consensus setting, so `newDaveApp` from any caller can land a
-  predicted address only with the pair that address was predicted for.
+  every consensus setting, and the application factory reserves it for
+  `DaveAppFactory` (`newReservedApplication`). So only `newDaveApp` can
+  deploy there, and from any caller it lands a predicted address only with
+  the pair that address was predicted for. Both halves are needed: without
+  the reservation anyone could occupy the address through the application
+  factory, and without the bound salt `newDaveApp` itself could land it
+  under other consensus settings.
 
 ## Change guardrails
 
@@ -135,8 +141,16 @@ fixture to cover capped epoch storage and events, backlog rollover and boundary
 counts. `test/DaveAppFactory.t.sol` exercises construction, stage and accept,
 `wasInputFinalized`, staging reverts on bad proofs, root failure, sentry
 rotation and a winner exhausting the payment callback. The factory tests pin
-the consensus-settings address binding. The leaf-proof gas FFI fixture
-(`test/gas/`), node integration tests and e2e smoke add coverage.
+the consensus-settings address binding. `test/DaveAppFactorySquatting.t.sol`
+pins the reservation: the predicted application address is the one the
+application factory reserves for the Dave factory under the salt that binds
+the consensus settings; another caller, an account or a second Dave factory
+over the same application factory, cannot occupy it; and the InputBox
+refuses the address until the pair exists, so epoch 0 seals empty. The
+reservation tests vary the staging period, the sentry manager, one sentry,
+the salt and the caller, not the withdrawal configuration. The leaf-proof
+gas FFI fixture (`test/gas/`), node integration tests and e2e smoke add
+coverage.
 `test/NodeProofs.t.sol` and `test/NodeWitnesses.t.sol` check that the contracts'
 verifiers and the step accept the node's proofs and witnesses, without running
 `DaveConsensus`.
@@ -182,8 +196,15 @@ the change is not exercised.
   delay. The staging period is a reaction window, not a fraud proof.
 - Epochs have no inherent duration: sealing bounds are sampled at
   acceptance time, so epoch length is a function of settlement cadence.
-- The shared ApplicationFactory's salt does not bind its caller, so anyone
-  can occupy a predicted application address with an application that has
-  no validator. `newDaveApp` then reverts for those settings and salt, and
-  value sent there first is stranded. Do not send value to a predicted
-  address before `DaveAppCreated` (docs/todo.md).
+- A predicted address is not safe to fund. Reservation only keeps others
+  from occupying it. `newDaveApp` is permissionless, so anyone who knows the
+  arguments can create the predicted pair, and the consensus constructor
+  starts epoch 0's root tournament in that block. If no validator joins
+  within the root allowance and the guardian does not foreclose in the
+  staging window, a lone commitment wins and its outputs root can move what
+  the application holds. A direct transfer also reaches the machine as no
+  input: deposits go through the portals after deployment.
+- `calculateDaveAppAddress` does not validate its arguments. For a sentry
+  set or withdrawal configuration that `newDaveApp` refuses, it returns
+  addresses nothing can ever be deployed at, and value sent to one is
+  stranded.

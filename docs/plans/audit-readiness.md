@@ -25,7 +25,7 @@ Out of scope: everything under `test/`, including `test/devnet/` (a
 devnet-only script behind a `NotADevnet` guard) and the test-only
 `TableTournamentParametersProvider` and `TournamentParameterTableValidator`;
 the off-chain clients; the rollups-contracts dependency (`Application`,
-`InputBox`, 3.0.0-alpha.10), which is upstream.
+`InputBox`, 3.0.0-alpha.11), which is upstream.
 
 ## Trust boundaries to hand the auditor
 
@@ -71,9 +71,10 @@ dispute-game.md:
 - Nothing bounds the delay a backlog past the input span adds to later
   inputs; the aggregate-throughput assumption remains separate
   (dimensioning.md).
-- Anyone can occupy a predicted application address through the shared
-  ApplicationFactory, which blocks that `newDaveApp` (cartesi/rollups-contracts#561;
-  docs/todo.md, Before mainnet funds).
+- `newDaveApp` is permissionless: anyone who knows a pair's arguments can
+  create it, which starts epoch 0, and value sent to the predicted address
+  before a validator runs is undefended
+  (cartesi-rollups/contracts/AGENTS.md).
 
 ## Pre-audit items
 
