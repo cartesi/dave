@@ -342,10 +342,11 @@ only a bug of its own causes) leaves files not to be trusted: the working
 clone is discarded with the batch, and a restart replays from the last
 snapshot. A snapshot is durable, one per gap. The machine wrapper carries
 the two as types (`Volatile`, `Durable`): a shared open takes ownership of
-a volatile directory and only a checked close gives it back, so nothing can
-clone, load or sync a directory a machine still maps, a durable snapshot
-cannot be opened shared, and a volatile directory that is not persisted
-removes itself.
+a volatile directory and only a checked close gives it back, so on the typed
+path nothing can clone, load or sync a directory a machine still maps, a
+durable snapshot cannot be opened shared, and a volatile directory that is
+not persisted removes itself. The wrapper's raw-path functions stay public,
+and a second handle can be made for a directory by trusting its path.
 
 While an epoch is open, a tail shorter than `--snapshot-gap-inputs` remains
 unexecuted until a full batch is available. Once the epoch is sealed, the
