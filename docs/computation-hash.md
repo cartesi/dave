@@ -402,9 +402,15 @@ a tagged release carries the fix (todo.md, Upstream):
 The node's own seam tests and their Solidity replay (`NodeWitnessesTest`)
 stay as the evidence that does not pass through the emulator's collectors.
 
-One emulator trait shapes Dave's leaf builds without changing any value: its
-hash tree goes parallel by core count rather than by work, so per-step leaf
-hashing runs serially (`runtime_config`, `engine/machine_stf.rs`).
+One node setting shapes Dave's leaf builds without changing any value:
+per-step leaf hashing runs with the hash tree serial (`runtime_config`,
+`engine/machine_stf.rs`). It answers v0.22, whose hash tree went parallel by
+core count rather than by work, which made a per-step hash about nine times
+slower (about 110 us against 12 us on 18 cores). v0.23 sizes its thread pool
+by work: the least of the configured concurrency, the hashes to do divided by
+300, and the block count. Measured on v0.23 (macOS, 18 cores), a ustep with
+its root hash takes about 12 us with the setting or without it, so whether
+leaf builds still need it is a lead, open until a Linux run without it.
 
 Any divergence between (1)/(2) and (3) means an honest node loses a
 dispute it should have won. The e2e tests cross-check (1) against (2)

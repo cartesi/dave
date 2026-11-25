@@ -102,13 +102,22 @@ pub struct MachineStf {
     feeder: Feeder,
 }
 
-/// The emulator fixes its hash-tree concurrency at load. It hashes in
-/// parallel once a hash's dirty pages outnumber the host's cores, and at
-/// one root hash per ustep the thread pool's fork and join then costs
-/// several times the hashing itself (about 110 us against 12 us per hash
-/// on 18 cores, nine times slower overall). A leaf build hashes every
-/// ustep over a few dirty pages, so it hashes serially; sampled strides
-/// hash large dirty sets, where the parallel path wins.
+/// The hash-tree concurrency a machine is loaded with. A leaf build hashes
+/// every ustep over a few dirty pages, so it hashes serially; sampled
+/// strides hash large dirty sets, where the parallel path wins (on v0.23,
+/// 0.33 ms against 1.38 ms serial for a root after 2^18 cycles of the
+/// stress image, 18 cores).
+///
+/// The serial setting answers v0.22, which hashed in parallel once a
+/// hash's dirty pages outnumbered the host's cores: at one root hash per
+/// ustep the thread pool's fork and join cost several times the hashing
+/// itself (about 110 us against 12 us per hash on 18 cores, nine times
+/// slower overall). v0.23 sizes the pool by work
+/// (`hash_tree::get_parallel_threads`: the least of the configured
+/// concurrency, the hashes to do over 300 and the block count), and
+/// there a ustep with its root hash measured about 12 us with the
+/// setting or without it (macOS, 18 cores). Whether leaf builds still
+/// need it is a lead: no Linux run has been made without it.
 fn runtime_config(hashing: Hashing) -> RuntimeConfig {
     let mut config = RuntimeConfig::quiet_console();
     if hashing == Hashing::PerStep {
