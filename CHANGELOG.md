@@ -29,16 +29,14 @@ addresses and every machine hash.
   factory reserves for it (`newReservedApplication`), so nobody else can
   occupy a predicted application address. `newDaveApp` and
   `calculateDaveAppAddress` keep their signatures, event and errors, and
-  give other addresses than before for the same arguments. Still do not send
-  value to a predicted address: anyone who knows the arguments can create
-  the pair, which starts epoch 0's dispute before a validator may be
-  running, and a direct transfer reaches the machine as no input. Deposit
-  through the portals after deployment. A private salt keeps others from
-  creating the pair first only until the deployment is broadcast: a copy of
-  its calldata that lands first deploys the same pair, and the original
-  `newDaveApp` then reverts with empty data. The calculator does not validate
-  its arguments either: where `newDaveApp` would refuse them, nothing can be
-  deployed at the addresses it returns.
+  give other addresses than before for the same arguments. `newDaveApp`
+  stays permissionless: anyone who knows the arguments can create the pair,
+  which starts epoch 0's dispute, so a validator has to be ready from that
+  block. A private salt protects only until the deployment is broadcast: a
+  copy of its calldata that lands first deploys the same pair, and the
+  original `newDaveApp` then reverts with empty data. The calculator does
+  not validate its arguments: where `newDaveApp` would refuse them, nothing
+  can be deployed at the addresses it returns.
 
 ### Node
 

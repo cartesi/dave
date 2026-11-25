@@ -66,7 +66,7 @@ truth.
   consensus, migrates the app's validator to it, renounces ownership.
   All steps run inside one `newDaveApp` call, so there is no
   partial-completion window; `calculateDaveAppAddress` predicts both
-  addresses for configuration (see the pre-funding non-claim).
+  addresses for configuration (see the permissionless-creation non-claim).
 - `src/ISentryErrors.sol` - sentry error selectors.
 
 ## Invariants to protect
@@ -196,18 +196,17 @@ the change is not exercised.
   delay. The staging period is a reaction window, not a fraud proof.
 - Epochs have no inherent duration: sealing bounds are sampled at
   acceptance time, so epoch length is a function of settlement cadence.
-- A predicted address is not safe to fund. Reservation only keeps others
-  from occupying it. `newDaveApp` is permissionless, so anyone who knows the
-  arguments can create the predicted pair, and the consensus constructor
-  starts epoch 0's root tournament in that block. If no validator joins
-  within the root allowance and the guardian does not foreclose in the
-  staging window, a lone commitment wins and its outputs root can move what
-  the application holds. A direct transfer also reaches the machine as no
-  input: deposits go through the portals after deployment. A salt kept
-  private keeps others from creating the pair first only until `newDaveApp`
-  is broadcast, not after: a copy of its calldata that lands first deploys
-  the same pair, and the original call then reverts with empty data.
+- Creating a pair is permissionless, and the reservation does not change
+  that: it only keeps others from occupying the address. Anyone who knows
+  the arguments can call `newDaveApp`, and the consensus constructor starts
+  epoch 0's root tournament in that block, so a validator has to be ready
+  from then. If none joins within the root allowance and the guardian does
+  not foreclose in the staging window, a lone commitment wins and its
+  outputs root settles. A salt kept private protects only until
+  `newDaveApp` is broadcast, not after: a copy of its calldata that lands
+  first deploys the same pair, and the original call then reverts with
+  empty data. Assets reach an application through the portals, as the
+  rollups contracts document.
 - `calculateDaveAppAddress` does not validate its arguments. For a sentry
   set or withdrawal configuration that `newDaveApp` refuses, it returns
-  addresses nothing can ever be deployed at, and value sent to one is
-  stranded.
+  addresses nothing can ever be deployed at.

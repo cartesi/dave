@@ -72,9 +72,8 @@ dispute-game.md:
   inputs; the aggregate-throughput assumption remains separate
   (dimensioning.md).
 - `newDaveApp` is permissionless: anyone who knows a pair's arguments can
-  create it, which starts epoch 0, and value sent to the predicted address
-  before a validator runs is undefended
-  (cartesi-rollups/contracts/AGENTS.md).
+  create it, which starts epoch 0, and the pair is undefended until a
+  validator runs (cartesi-rollups/contracts/AGENTS.md).
 
 ## Pre-audit items
 
