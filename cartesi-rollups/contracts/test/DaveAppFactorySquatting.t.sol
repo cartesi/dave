@@ -70,21 +70,29 @@ contract DaveAppFactorySquattingTest is RollupsTest {
     }
 
     /// @notice The predicted application address is the one the application
-    /// factory reserves for the Dave factory under that salt.
-    function testThePredictedApplicationIsReservedForTheFactory() external view {
-        WithdrawalConfig memory config;
-        address[] memory sentries = new address[](0);
-        (address predicted,) = factory.calculateDaveAppAddress(TEMPLATE, 10, address(0), sentries, config, 0);
+    /// factory reserves for the Dave factory under that salt, whatever the
+    /// arguments: neither view validates them, so none is assumed valid.
+    function testFuzzThePredictedApplicationIsReservedForTheFactory(
+        bytes32 templateHash,
+        uint256 claimStagingPeriod,
+        address sentryManager,
+        address[] calldata sentries,
+        WithdrawalConfig calldata withdrawalConfig,
+        bytes32 salt
+    ) external view {
+        (address predicted,) = factory.calculateDaveAppAddress(
+            templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
+        );
         assertEq(
             predicted,
             _contracts.core.applicationFactory
                 .calculateReservedApplicationAddress(
                     NO_VALIDATOR,
                     address(factory),
-                    TEMPLATE,
+                    templateHash,
                     _contracts.core.inputBox,
-                    config,
-                    _applicationSalt(10, address(0), sentries, 0),
+                    withdrawalConfig,
+                    _applicationSalt(claimStagingPeriod, sentryManager, sentries, salt),
                     address(factory)
                 )
         );
