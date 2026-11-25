@@ -240,7 +240,10 @@ and the floor about 3.34 ETH. A slot whose estimate fails other than by a
 revert reserves 15M, 3 ETH at that fee. Above the work-price cap an action's
 refund falls short of its cost, and a replaced transaction pays its whole max
 fee, so a long dispute during a fee spike draws the balance down: the per-tick
-error is the signal to top up. These are Ethereum L1 numbers from `Bond.sol`,
+error is the signal to top up. A sentry's claim follows the dispute's call in
+its batch and reserves about 0.73M gas at the max fee: a balance short by
+that much gets the claim refused and the dispute's call admitted. These are
+Ethereum L1 numbers from `Bond.sol`,
 `Gas.sol` and the deployed table; recompute them when any of them changes.
 
 Here are its arguments:
@@ -407,7 +410,9 @@ Options:
   means the relay holds, drops or refuses its sends; the nonce it names is
   the stuck one (a nonce that advances each tick instead means the call mines
   without effect; [submit-relay.md](../../docs/runbooks/submit-relay.md) says
-  how to find the held transaction). Until the relay recovers, restart
+  how to find the held transaction; a sentry claim can be the one, once
+  foreclosure or a rotation of its slot leaves it unable to succeed). Until
+  the relay recovers, restart
   without `--blockchain-http-submit-endpoint`, accepting paid reverts on the
   public pool.
 - The read endpoint is part of the node's trust base: its answers are taken
@@ -483,6 +488,10 @@ Options:
   (hours per year of Sepolia history at a 10,000-block cap) and can outlast
   a testnet's root allowance: use a provider without a tight cap, or seed
   from the last settled state (above).
+- A sentry node casts its claim as soon as it has computed the sealed epoch,
+  beside any dispute and without waiting for the root's winner: the vote on
+  chain is a sign that the node is up, which a node whose join is not the
+  one on chain gives no other way.
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
   canonical table that allowance is about one week and 140 minutes on
@@ -494,9 +503,10 @@ Options:
   A lost root's error says whether the winner ends in this node's final state
   or diverges from it; a sentry node claims its own state either way. After a
   divergent state settles, the node stops with exit 30 at the next epoch.
-  Foreclosure never stops dispute moves or bond recovery. Once the dispute has
-  a result, the node skips settlement while foreclosure is visible at that
-  head. It exits 30 only when recovery is complete and foreclosure is finalized.
+  Foreclosure never stops dispute moves or bond recovery. The node casts no
+  sentry claim while foreclosure is visible at the head it reads, and once
+  the dispute has a result it skips settlement there too. It exits 30 only
+  when recovery is complete and foreclosure is finalized.
   Restarting resumes that work, so do not stop a node with an active dispute.
   Between epochs it may join the next root and wait out its allowance before
   exiting; a fresh directory replays history first. A foreclosure racing

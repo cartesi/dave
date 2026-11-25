@@ -66,7 +66,8 @@ no validator (cartesi-rollups/contracts/AGENTS.md).
    validated here, and `EpochStaged` carries the staged post-epoch machine
    state hash and outputs root. Sentries (0..N addresses fixed at deployment,
    rotatable by the sentry manager) may independently `submitSentryClaim` the
-   post-epoch machine state hash they computed themselves.
+   post-epoch machine state hash they computed themselves. A claim does not
+   wait for staging: the contract takes it from the seal on.
 4. Settled: anyone called `acceptStagedTournamentResult(epochNumber)`,
    allowed once the result is staged AND (every sentry claimed the staged
    hash OR the claim staging period elapsed - with zero sentries, only
@@ -86,13 +87,14 @@ before debugging an unexpected revert on any settlement call. Deeper
 contract context: `cartesi-rollups/contracts/AGENTS.md`.
 
 Foreclosure never gates the node's dispute moves, cleanup or bond recovery.
-Once the dispute has a result, the node reads foreclosure at the Hero's head
-and suppresses sentry claims, staging and acceptance while it is set. A reorg
-can restore settlement. When recovery is complete and foreclosure is also
-finalized, the node exits 30. A restart resumes defense and recovery, or exits
-on its first tick once nothing remains owed. Foreclosure is not settlement,
-so the epoch completion cursor does not advance. A foreclosure racing read
-and inclusion can still cost one transaction's gas.
+The node reads foreclosure at the Hero's head before it plans a sentry claim,
+and on every tick once the dispute has a result, and plans no claim, staging
+or acceptance while it is set. A reorg can restore settlement. When recovery
+is complete and foreclosure is also finalized, the node exits 30. A restart
+resumes defense and recovery, or exits on its first tick once nothing remains
+owed. Foreclosure is not settlement, so the epoch completion cursor does not
+advance. A foreclosure racing read and inclusion can still cost one
+transaction's gas.
 
 Between epochs the node may join the next root and wait out its allowance
 before it exits: an open commitment can still be paired by a late joiner.
@@ -198,16 +200,18 @@ Three worker threads share one SQLite database (see
 - epoch-manager (`cartesi-rollups/node/src/epoch_manager`): follows the durable
   `epoch_completion` cursor rather than the latest sealed epoch. Until that
   epoch settles, its Hero uses the locally computed settlement material to
-  choose a dispute action or one cleanup. Once the root has a winner, a
-  sentry claims the state it computed, whoever won; a won root also permits
-  the later settlement steps: stage the verified result, or accept it after
-  agreement or the staging period. These calls target only the cursor's
-  epoch. Every available refund joins the same batch, even while the root is
-  running. Settled historical epochs need no Hero or local execution before
-  the manager can finish their refund obligations and advance. A data
-  directory seeded from the state its current sealed epoch k starts from
-  (node README) starts the cursor at k and never touches an earlier epoch:
-  bonds its signer holds there are the operator's to recover.
+  choose a dispute action or one cleanup. A sentry claims the state it
+  computed from the first tick it has that material, beside the dispute and
+  whoever wins it: the claim follows the Hero's request in the batch, every
+  tick until it is on chain. A won root permits the settlement steps: stage
+  the verified result, or accept it after agreement or the staging period.
+  These calls target only the cursor's epoch. Every available refund joins
+  the same batch, even while the root is running. Settled historical epochs
+  need no Hero or local execution before the manager can finish their refund
+  obligations and advance. A data directory seeded from the state its current
+  sealed epoch k starts from (node README) starts the cursor at k and never
+  touches an earlier epoch: bonds its signer holds there are the operator's
+  to recover.
 
 Recovery starts from the ingested epoch root and follows that tournament's
 `NewInnerTournament` descendants. It reads their bond dispositions at one
@@ -306,8 +310,8 @@ lost root should page a human. Its error says whether the winner ends in this
 node's final state (this node was not defended in time; the correct state
 settles once someone stages and accepts it, unless the epoch ended terminal,
 which nobody can stage) or another (a divergence: the guardian can still
-foreclose during the claim staging period). Either way a sentry claims its
-own state, which is the dissent the guardian reads; once a divergent state
-settles, the node stops with exit 30 when its next epoch starts from it. A
-won root whose final state does not settle is held with an error (the
-terminal case above).
+foreclose during the claim staging period). Either way a sentry's claim of
+its own state, made beside the dispute or at the latest now, is the dissent
+the guardian reads; once a divergent state settles, the node stops with exit
+30 when its next epoch starts from it. A won root whose final state does not
+settle is held with an error (the terminal case above).

@@ -1606,6 +1606,31 @@ mod tests {
         Ok(())
     }
 
+    /// A call kept at the head while it is pending leaves the next nonce to
+    /// a new call, which the pool admits and mines with it; the same new
+    /// call in the head's place is refused
+    /// (`stateless_wave_defers_to_the_pool`). The order of a wave is weighed
+    /// on these two (docs/node-architecture.md, the epoch manager's batch).
+    #[tokio::test]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
+    async fn a_new_call_is_admitted_behind_a_pending_head() -> Result<()> {
+        let (_anvil, provider, mut lane, signer) = spawn_lane().await?;
+        let alone = lane.submit_wave(wave(&[("head", 0x11)])).await?;
+        assert_eq!(verdicts(&alone), vec![(0, SendVerdict::Submitted)]);
+
+        let joined = lane
+            .submit_wave(wave(&[("head", 0x11), ("new", 0x22)]))
+            .await?;
+        assert_eq!(
+            verdicts(&joined),
+            vec![(0, SendVerdict::AlreadyKnown), (1, SendVerdict::Submitted)]
+        );
+        assert_eq!(nonces(&provider, signer).await?, (0, 2));
+        provider.anvil_mine(Some(1), None).await?;
+        assert_eq!(nonces(&provider, signer).await?, (2, 2));
+        Ok(())
+    }
+
     #[tokio::test]
     #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn rebuilding_a_wave_fills_a_dropped_prefix_and_resumes_partial_inclusion() -> Result<()>

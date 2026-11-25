@@ -599,6 +599,86 @@ async fn a_sentry_that_lost_its_root_still_claims_its_state() -> Result<()> {
     Ok(())
 }
 
+/// A sentry does not wait for its root's winner to vote. Against a rational
+/// adversary the node's claim leaves in the wave of its root join, behind
+/// the join, and is on chain while the dispute still runs: the node's own
+/// state, claimed once for the epoch.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_sentry_claims_while_its_dispute_runs() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+    // The node has bisected: the dispute is live.
+    node.run_with(
+        &mut world,
+        &mut [&mut adversary],
+        DISPUTE_ROUNDS,
+        |world, _| Ok(!world.honest_calls(ADVANCE).is_empty()),
+    )
+    .await?;
+
+    let position = |selector| {
+        let mut calls = world
+            .mined
+            .iter()
+            .enumerate()
+            .filter(|(_, mined)| mined.from == world.address(HONEST))
+            .filter(|(_, mined)| mined.selector == Some(selector));
+        let (position, mined) = calls.next().expect("the call mined");
+        assert!(calls.next().is_none(), "the call mined once");
+        (mined.block, position)
+    };
+    let (join, claim) = (position(JOIN), position(CLAIM));
+    assert_eq!(claim.0, join.0, "one wave, one block");
+    assert!(join.1 < claim.1, "the dispute's move takes the first nonce");
+    let root = world.consensus().canStageTournamentResult().call().await?;
+    assert!(!root.isFinished, "the root has no winner yet");
+    let ours = Storage::new(node.state_dir.path())?
+        .settlement_info(0)?
+        .expect("the node rolled epoch 0")
+        .final_state;
+    let votes = world
+        .consensus()
+        .getSentryClaimCount(U256::ZERO, ours.into())
+        .call()
+        .await?;
+    assert_eq!(votes, U256::ONE);
+
+    node.run_with(
+        &mut world,
+        &mut [&mut adversary],
+        DISPUTE_ROUNDS,
+        |_, storage| completed(storage, 0),
+    )
+    .await?;
+    assert_eq!(
+        world.honest_calls(CLAIM).len(),
+        1,
+        "one claim for the epoch"
+    );
+    assert_eq!(world.sealed_epochs().await?.len(), 2);
+    Ok(())
+}
+
+/// Foreclosed before it could vote, a sentry plans no claim, which the
+/// consensus would refuse, and still defends its commitment and recovers
+/// its bond.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_sentry_foreclosed_before_its_claim_defends_without_one() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let mut adversary = world.adversary(&node, 1, idle_tail(), Policy::Rational)?;
+    foreclose(&mut world).await?;
+    finish_foreclosed(&mut node, &mut world, Some(&mut adversary)).await?;
+    assert!(world.honest_calls(CLAIM).is_empty());
+    assert_eq!(world.honest_calls(WIN_LEAF).len(), 1);
+    Ok(())
+}
+
 /// A rational adversary disputes down to the leaf, where only the node
 /// can prove the divergent transition, a closing slot (simple): the node
 /// wins the leaf match by STEP, each inner tournament in turn, and

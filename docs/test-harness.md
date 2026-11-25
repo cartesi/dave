@@ -257,6 +257,9 @@ without joining, after the staging period when one is set
 
 The foreclosure tests pin continued defense and paid bond recovery before
 terminal exit, including a foreclosure during a live match and a restart.
+A sentry's claim is pinned to leave in the wave of its root join, behind the
+join, and to be on chain while the dispute runs; a sentry foreclosed before
+it could vote plans no claim and still defends.
 A foreclosure that is not yet finalized does not stop the node.
 A halted guest's true commitment defeats a malicious claimant through a real
 leaf proof across restarts, then remains unstaged.
