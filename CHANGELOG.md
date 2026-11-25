@@ -29,6 +29,10 @@ past the span.
 
 ### Node
 
+- This node refuses an application deployed with the previous generation:
+  the startup check of the deployed state transition against the linked
+  machine exits 30, which no restart clears. Such an application keeps the
+  node release that matches it.
 - Links Cartesi Machine v0.23, which refuses machines stored by v0.22: a
   node built against v0.22 cannot start against these contracts, v0.22
   templates do not load, and a data directory built by an earlier node is
@@ -69,6 +73,11 @@ past the span.
 
 ### For developers
 
+- No one recipe rebuilds every machine image v0.23 refuses:
+  `just programs::build-programs` covers echo and yield only. The stress
+  image the measurement recipes read has `just programs::build-stress`, and
+  the opt-in honeypot image `just programs::build-honeypot`, which needs
+  docker.
 - Rebuild the devnet bundle with `just rollups-contracts::build-devnet` after
   the contract changes, and the test machine images with
   `just programs::build-programs`: v0.23 does not load v0.22 images.
