@@ -33,6 +33,14 @@ the state that is then staged, acceptance can share the staging block, and
 there is no window at all. Without sentries only the period opens
 acceptance.
 
+Every sentry claiming one wrong state is the worst form of this: the window
+is gone for exactly the result it was there to stop. A commitment ending in
+that state, alone in its root, wins at the root's closure and can be staged
+and accepted in that block. It means the sentries share a defect, or the
+slots are no longer the operator's: the sentry manager's key moves a slot to
+another address, which claims in the current epoch if the slot had not, and
+in every later one.
+
 ## What to detect
 
 Each condition is named by the assumption that broke, with its fallback and
@@ -47,13 +55,24 @@ its deadline.
   acceptance, for a root whose winner ends in a wrong state, for a wrong
   staged result, and for a root that closes to joins holding no commitment
   with the true state and one with a wrong state a validity proof accepts,
-  which then wins. The other cases hold the application until the guardian
+  which then wins. Where every sentry has already claimed that wrong state
+  no window follows the staging, so the deadline moves back to the root
+  finishing with it: the root's closure, when no commitment with the true
+  state has joined. A `SentryRotation` the operator did not make is the
+  start of that case, and the guardian's alarm from its block. The other
+  cases hold the application until the guardian
   acts: no commitment joined at all, the root finishes without a winner, or
   the epoch ends terminal (defended, never stageable).
-- B, the honest side is losing time. No commitment has joined while the join
-  window runs; a second commitment has joined, so a dispute exists; a clock
-  runs unanswered. Fallback: a validator online. Deadline: that clock, after
-  which B is A.
+- B, the honest side is losing time. Fallback: a validator online. Each case
+  has its deadline, after which B is A.
+  - No commitment has joined while the join window runs. No clock runs yet:
+    the deadline is the root's closure less the time a validator needs to
+    join, which is computing the epoch and then inclusion. After it, no
+    join is a root without a winner and one adversarial join is a wrong
+    result winning.
+  - A second commitment has joined, so a dispute exists, or a clock runs
+    unanswered. The deadline is the clock of the commitment with the true
+    state.
 - C, settlement is idle. A finished root is unstaged, or acceptance is open
   and uncalled. Fallback: any node with a funded key, which stages and
   accepts a root its commitment won without having joined it (the node
@@ -127,6 +146,14 @@ exercised. A fact read from the chain alone (no commitment joined, a sentry
 rotated, settlement idle) stands as an alert; a mismatch waits until a second
 replay with other code agrees with the first, or the first input boundary at
 which the replay and a node differ is found.
+
+Corroboration takes time, and the deadline does not wait for it. The replay
+needs nothing later than the seal: `EpochSealed` fixes the epoch's inputs,
+so the replay and the second one can both start at the seal and have the
+root's whole allowance to finish in, whatever joins and when. One started
+only at the mismatch has the lead the adversary chose, which can be the
+window alone. The staging period then has to be longer than corroboration
+takes, and where every sentry already agrees there is no window to size.
 
 ## Sentries
 
