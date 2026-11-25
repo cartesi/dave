@@ -205,6 +205,32 @@ test-kms: bind
     ./script/ensure-docker.sh
     cargo test -p cartesi-sling-node --lib kms:: -- --ignored
 
+# Extra arguments go to cargo, as in `--release --target <triple>`. A
+# libtest filter that matches nothing exits 0, so a renamed test would
+# leave the run green and empty: each test's own result line is required.
+# The output goes through a file, not a pipe, so the status is cargo's.
+# the two machine tests that vouch for a built provider; fails unless both ran
+test-machine-provider *CARGO_ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    tests=(
+      machine::tests::uarch_pristine_hash_is_what_a_uarch_reset_restores
+      config::machine::tests::test_emulator_version_pin
+    )
+    log=$(mktemp)
+    trap 'rm -f "$log"' EXIT
+    status=0
+    cargo test -p cartesi-machine "$@" -- --exact "${tests[@]}" \
+      > "$log" 2>&1 || status=$?
+    cat "$log"
+    [ "$status" -eq 0 ] || exit "$status"
+    for test in "${tests[@]}"; do
+      grep -qxF "test $test ... ok" "$log" || {
+        echo "error: $test did not run: renamed or moved?" >&2
+        exit 1
+      }
+    done
+
 # fail-loud real-machine differentials and golden fixtures
 test-engine-machine: bind
     ./script/machine-image-fingerprint.sh verify echo
