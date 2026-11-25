@@ -611,9 +611,9 @@ fn report_loss(epoch: &Epoch, settlement: &Settlement, loss: Loss) {
             if ours == final_state {
                 error!(
                     "epoch {e}: root tournament {} went to another commitment with this \
-                     node's final state {final_state}: the correct state settles once anyone \
-                     stages it (this node stages only its own win), but this node's \
-                     commitment was not defended in time",
+                     node's final state {final_state}: the correct state settles once someone \
+                     stages it and then accepts it, and this node does neither for a root \
+                     it did not win. This node's commitment was not defended in time",
                     epoch.root_tournament
                 );
             } else {
