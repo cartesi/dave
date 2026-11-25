@@ -1173,10 +1173,11 @@ mod tests {
 
     /// The input budget's seams and the terminal openings as chain witnesses
     /// for the Solidity step, which NodeWitnessesTest (cartesi-rollups/contracts)
-    /// replays: RX_ACCEPTED openings on the budget's last cycle and on a
-    /// halted machine (seam 2), an RX_REJECTED closing on the budget's last
-    /// cycle (seam 1), and openings that feed a terminal machine, whose
-    /// delivery is the step's no-op (one shape with Y set, one without). No
+    /// replays: RX_ACCEPTED openings on the budget's last cycle, on a
+    /// halted machine and at a saturated cycle counter (seam 2), an
+    /// RX_REJECTED closing on the budget's last cycle (seam 1), and
+    /// openings that feed a terminal machine, whose delivery is the step's
+    /// no-op (one shape with Y set, one without). No
     /// input can reach seam 1 by execution (it would run 2^48 - 1 cycles),
     /// so, as in the Lua vectors, the budget shrinks after a physical delivery.
     /// UPDATE_FIXTURES=1 regenerates tests/fixtures/node_seam_witnesses.json.
@@ -1202,6 +1203,7 @@ mod tests {
         for (name, machine) in [
             ("budget_seam_accepted_opening", budget_seam_machine()?),
             ("halted_accepted_opening", halted_yield_machine()?),
+            ("saturated_accepted_opening", saturated_yield_machine()?),
             // The chain still delivers to a terminal app. The proof must log
             // the no-op delivery, which the node's post-state check cannot
             // see (the state is unchanged) but the step parses.
