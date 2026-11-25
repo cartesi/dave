@@ -147,10 +147,12 @@ application factory reserves for the Dave factory under the salt that binds
 the consensus settings; another caller, an account or a second Dave factory
 over the same application factory, cannot occupy it; and the InputBox
 refuses the address until the pair exists, so epoch 0 seals empty. The
-reservation tests vary the staging period, the sentry manager, one sentry,
-the salt and the caller, not the withdrawal configuration. The leaf-proof
-gas FFI fixture (`test/gas/`), node integration tests and e2e smoke add
-coverage.
+prediction is fuzzed over every argument of the calculators, with none
+assumed valid since neither view validates them. The tests that deploy vary
+the staging period, the sentry manager, one sentry, the salt and the caller,
+not the template or the withdrawal configuration; one holds the empty revert
+of a pair deployed twice. The leaf-proof gas FFI fixture (`test/gas/`), node
+integration tests and e2e smoke add coverage.
 `test/NodeProofs.t.sol` and `test/NodeWitnesses.t.sol` check that the contracts'
 verifiers and the step accept the node's proofs and witnesses, without running
 `DaveConsensus`.
