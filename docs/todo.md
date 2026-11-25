@@ -18,7 +18,7 @@ carry no backlog (reviews/README.md).
   at the next tick in the fallback latency. Measure on Linux XFS on a cloud
   volume, since every figure so far is APFS and a Linux clone writes back
   the source's dirty pages first: the runner's whole time per input (15 to
-  18 ms accepted and 22 ms rejected on macOS with v0.23, echo, against the
+  18 ms accepted and 22.6 ms rejected on macOS with v0.23, echo, against the
   36 ms threshold; time it on local NVMe and on the cloud volume at baseline
   provisioning), the clone's latency and bytes written per input with a
   dirty source, the runner's sustained inputs per second for accepted,
@@ -48,7 +48,7 @@ carry no backlog (reviews/README.md).
   whole time per input is under the 36 ms threshold on macOS, so inputs
   alone no longer outrun the root join there (the lead above says Linux
   may differ), and the price follows from the next wall: the drain (up to
-  2^24 inputs' time, up to 4.3 days of a week at those figures) combined
+  2^24 inputs' time, up to 4.4 days of a week at those figures) combined
   with other delays, or the snapshot disk.
   (dimensioning.md, One reference price)
 - Have someone who did not write them review the commitment and proof paths
