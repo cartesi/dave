@@ -226,6 +226,9 @@ the endpoint's answer to that newest send (`SendVerdict` in
   the endpoint's text, and a bare "transaction underpriced" there is a
   full pool or a minimum tip, another condition than `Outbid`.
 
+The seventh verdict, `Reverts`, is never the page's: such a call was not
+sent, and the ERROR reads "it reverts at latest" in the verdict's place.
+
 A hold looks like the latest nonce staying at the named one while the named
 hash is UNKNOWN, or PENDING without a simError, on the relay's status page
 (`https://protect.flashbots.net/tx/<hash>` for Flashbots,
