@@ -67,7 +67,8 @@ addresses and every machine hash.
   repaired. The claim follows the dispute's move in the batch, so that move
   never depends on it; a move that comes due while a claim from an earlier
   tick is still pending waits one inclusion of it, as behind a pending
-  refund. No claim is cast under foreclosure.
+  refund. No claim is cast under foreclosure, and the ERROR for a claim that
+  does not land names the missing vote, not a dispute clock.
 
 ### For developers
 

@@ -177,10 +177,9 @@ impl EpochManager {
                     ),
                 };
                 error!(
-                    "{label} to {to} has been planned for {} min without landing ({why}): \
-                     the node keeps planning a step that does not land, and a dispute clock \
-                     may be running",
-                    lasted.as_secs() / 60
+                    "{label} to {to} has been planned for {} min without landing ({why}): {}",
+                    lasted.as_secs() / 60,
+                    unlanded_cost(&label)
                 );
             }
         }
@@ -738,6 +737,19 @@ fn report_loss(epoch: &Epoch, settlement: &Settlement, loss: Loss) {
              local commitment's match; root tournament {}",
             epoch.root_tournament
         ),
+    }
+}
+
+/// What an overdue call costs while it does not land. A claim runs no
+/// dispute clock: it costs the vote, without which acceptance waits out
+/// the claim staging period.
+fn unlanded_cost(label: &str) -> &'static str {
+    if label == CLAIM {
+        "this sentry's vote is missing on chain, so the epoch settles only after its \
+         claim staging period"
+    } else {
+        "the node keeps planning a step that does not land, and a dispute clock may be \
+         running"
     }
 }
 
@@ -1328,6 +1340,15 @@ mod tests {
         );
         assert!(rpc.read_q().is_empty());
     }
+    #[test]
+    fn an_unlanded_claim_names_its_own_cost() {
+        assert!(unlanded_cost(CLAIM).contains("claim staging period"));
+        assert!(!unlanded_cost(CLAIM).contains("dispute clock"));
+        for label in ["advanceMatch", "joinTournament", "tryRecoveringBond"] {
+            assert!(unlanded_cost(label).contains("dispute clock"));
+        }
+    }
+
     /// A dispute move a Hero tick planned, as the lane takes it.
     fn dispute_move() -> LaneRequest {
         (
