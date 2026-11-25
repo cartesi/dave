@@ -67,7 +67,9 @@ addresses and every machine hash.
   repaired. The claim follows the dispute's move in the batch, so that move
   never depends on it; a move that comes due while a claim from an earlier
   tick is still pending waits one inclusion of it, as behind a pending
-  refund. No claim is cast under foreclosure, and the ERROR for a claim that
+  refund. The claim is planned from each tick's reads alone, so one a reorg
+  dropped is cast again and a slot rotated to the signer votes on the next
+  tick. No claim is cast under foreclosure, and the ERROR for a claim that
   does not land names the missing vote, not a dispute clock.
 
 ### For developers

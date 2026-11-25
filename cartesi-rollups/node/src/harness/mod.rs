@@ -431,6 +431,25 @@ impl World {
         Ok(())
     }
 
+    /// A point to reorg back to (`reorg_to`).
+    pub async fn snapshot(&self) -> Result<alloy::primitives::U256> {
+        Ok(self.provider.anvil_snapshot().await?)
+    }
+
+    /// Drops every block mined since `snapshot`, as a reorg of the tip
+    /// does when their transactions are not included again. Keep it above
+    /// the finalized head, which the node takes as final.
+    pub async fn reorg_to(&mut self, snapshot: alloy::primitives::U256) -> Result<()> {
+        ensure!(
+            self.provider.anvil_revert(snapshot).await?,
+            "anvil has no such snapshot"
+        );
+        let latest = self.latest().await?;
+        self.mined.retain(|mined| mined.block <= latest);
+        self.checked = latest;
+        Ok(())
+    }
+
     pub fn consensus(&self) -> DaveConsensus::DaveConsensusInstance<DynProvider> {
         DaveConsensus::new(self.book.consensus, self.provider.clone())
     }

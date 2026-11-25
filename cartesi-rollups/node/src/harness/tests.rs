@@ -662,6 +662,39 @@ async fn a_sentry_claims_while_its_dispute_runs() -> Result<()> {
     Ok(())
 }
 
+/// A claim whose block a reorg leaves behind is cast again: the node saw
+/// it on chain one tick and not the next, and keeps nothing from the first.
+#[tokio::test]
+#[ignore = "needs the devnet bundle and the echo image; run `just test-node-harness`"]
+async fn a_claim_dropped_by_a_reorg_is_cast_again() -> Result<()> {
+    let mut world = World::spawn(&[HONEST], 1000).await?;
+    let mut node = world.honest_node().await?;
+    node.roll(&mut world, 0).await?;
+    let before = world.snapshot().await?;
+    node.turn(&mut world).await?;
+    assert_eq!(world.honest_calls(CLAIM).len(), 1);
+    // The node observes its claim on chain, and has nothing to send.
+    node.tick(&world).await?;
+
+    world.reorg_to(before).await?;
+    assert!(world.honest_calls(CLAIM).is_empty());
+    node.run_until(&mut world, ROUNDS, |world, _| {
+        Ok(!world.honest_calls(CLAIM).is_empty())
+    })
+    .await?;
+    let ours = Storage::new(node.state_dir.path())?
+        .settlement_info(0)?
+        .expect("the node rolled epoch 0")
+        .final_state;
+    let votes = world
+        .consensus()
+        .getSentryClaimCount(U256::ZERO, ours.into())
+        .call()
+        .await?;
+    assert_eq!(votes, U256::ONE);
+    Ok(())
+}
+
 /// Foreclosed before it could vote, a sentry plans no claim, which the
 /// consensus would refuse, and still defends its commitment and recovers
 /// its bond.

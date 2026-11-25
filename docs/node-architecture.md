@@ -760,13 +760,18 @@ number, an earlier claim and foreclosure, and the node has the state it
 claims once the epoch's settlement material exists. So the claim is planned
 from that tick, on every tick until it is on chain, whatever the dispute's
 state; staging and acceptance still follow only the node's own win.
-Once the claim is on chain, or cannot be made (the signer is no sentry, the
-consensus is past the epoch, or foreclosure is visible), the manager reads
-nothing more for it until the root has its winner, when the views are read
-again. That mark is in memory: a restart reads once more, and a slot rotated
-to the signer mid-epoch misses that epoch's early vote. A read that fails
-before the root has its winner costs the tick its claim and nothing else: it
-logs a warning and counts as no stall.
+The claim is planned from each tick's views alone: nothing read at the latest
+head is kept for a later tick. A claim whose block a reorg left behind is
+planned again on the tick that no longer sees it, and a slot rotated to the
+signer mid-epoch votes on the next tick. The views are read in the order that
+ends soonest, one call for a signer that is no sentry and two for a sentry
+that has voted, and that is what every tick of a dispute pays for it. A mark
+that skipped them once the claim was seen was built first and removed: it
+kept a latest-head fact as if it were final, so a claim dropped by a reorg
+left a healthy sentry silent until the root's winner, the one thing the
+early claim is for. A read that fails before the root has its winner costs
+the tick its claim and nothing else: it logs a warning and counts as no
+stall.
 
 The defense comes first and the claim yields, so the claim follows the
 Hero's request in the batch. A batch's order is the order of its nonces, of
