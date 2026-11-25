@@ -83,6 +83,17 @@ says that a dispute exists, and stops: the validators say the rest.
 Each condition is named by the assumption that broke, with what it is for,
 its fallback and its deadline, and with what the chain alone shows of it.
 
+A signal that something has not happened yet needs a time by which a
+healthy deployment has done it. That time is no contract value and none of
+the dispute game's budgets: `G`, `T` and `C` say where a delay is charged,
+not when a healthy node acts. It is the operator's target, set from what
+its own validators and sentries do. A node that joins from finalized state
+lands its root join about `max(build, finality) + inclusion` after the
+seal, which on Ethereum is past `G` on every epoch
+([dimensioning.md](dimensioning.md#tournament-clock-budgets)). The hard
+thresholds are the chain's own deadlines: the root's closure, the root's
+finish and the end of the staging period.
+
 - A, a wrong result can settle, or the true one cannot. For foreclosure, by
   the guardian. Deadline: acceptance. Which state is wrong a validator says
   ([below](#who-knows-the-true-state)); the chain alone shows:
@@ -109,11 +120,12 @@ its fallback and its deadline, and with what the chain alone shows of it.
     commitment starts with the root's allowance less the time since the
     root's start (`joinTournament`, `Clock.initializePausedAt`). Two
     thresholds:
-    - The page: none by the root-join target the dispute game assumes, `G`
-      from the root's start
-      ([dispute-game.md](dispute-game.md#security-statement-and-assumptions)).
-      Every delay past it draws on `C`, the one delay ledger
+    - The page: none by the operator's join target (above). The dispute
+      game's own target, `G` from the root's start
+      ([dispute-game.md](dispute-game.md#security-statement-and-assumptions)),
+      is where a join starts to draw on `C`, the one delay ledger
       ([dimensioning.md](dimensioning.md#one-delay-ledger-one-reference-price)).
+      It is no threshold for a page: the finality wait alone passes it.
     - The hard cutoff, reported apart: the root's closure, the instant a
       joining clock would start at nothing, from which every join is
       refused (`TournamentIsClosed`). Then no join is a root without a
@@ -128,13 +140,13 @@ its fallback and its deadline, and with what the chain alone shows of it.
     someone is wrong or attacking. The detector follows it no further, and
     each validator's operator confirms that it is in the dispute.
   - A sentry has not claimed. Two thresholds:
-    - By `G` from the root's start, for attention: it may only be down. A
-      sentry that runs a validator has its state by the time it could
-      join.
-    - Once the root has finished, for its operator to act. A silent sentry
-      delays acceptance and does not stop it, so the result is accepted at
-      the end of the staging period without that sentry's check, and with
-      every sentry silent nobody has vouched for it on chain.
+    - Past the operator's target for that sentry (above), for attention:
+      it may only be down.
+    - Once the root has finished and that target has passed, for its
+      operator to act. A silent sentry delays acceptance and does not stop
+      it, so the result is accepted at the end of the staging period
+      without that sentry's check, and with every sentry silent nobody has
+      vouched for it on chain.
 - C, settlement is idle. A finished root is unstaged, or acceptance is open
   and uncalled. For repair, with no deadline. Fallback: any node with a
   funded key, which stages and accepts a root its commitment won without
@@ -207,9 +219,12 @@ validator, and its mismatch has no tournament to settle it. A lead, not
 planned work.
 
 A fact read from the chain alone stands as an alert. A disagreement between
-two implementations is settled, not judged, while the root still takes
-joins: the second one joins, and the on-chain step decides. After closure
-it is the guardian's. Foreclosure is irreversible, and both sides ran the
+two implementations is settled, not judged, once both commitments are in
+the root: the second one joins while the root takes joins, the on-chain
+step decides, and each keeps defending for as long as their match runs,
+which can be long after closure. It is the guardian's only where the
+tournament cannot settle it, because the root closed before the second
+commitment was in. Foreclosure is irreversible, and both sides ran the
 same emulator over the same inputs, so the fault is in one side's own code
 or in what its provider served: whoever acts on it first finds the first
 input boundary at which the two differ. That takes time and the deadline
