@@ -378,7 +378,7 @@ rotation, and the removal of the checkpoint or clone it retires. A rejected
 input also loads its checkpoint privately and checks its root hash before
 the rotation closes that machine and clones the checkpoint again. On
 emulator v0.23 the echo image's whole time per input is 15 to 18 ms accepted
-and about 22 ms rejected on macOS (measurements/measurements.md), most of it the
+and about 23 ms rejected on macOS (measurements/measurements.md), most of it the
 rotation's four steps at 3 to 5 ms each. An accepted input leaves the
 machine on the directory it wrote, whose pages are in the page cache. An
 input that follows a rejection runs on a fresh clone, a new inode with
@@ -386,7 +386,7 @@ nothing cached, and pays about 8 ms for the first touch of its pages (a warm
 input runs in about 2 ms); a stream that alternates the two takes 20 to
 21 ms. On v0.22.0 the reload alone took about 130 ms: it walked the clone's
 50 MB page hash-tree cache (`hash_tree.phtc`) one dependent page at a time,
-a layout v0.23 changed. The overhead still caps the runner, near 45 inputs
+a layout v0.23 changed. The overhead still caps the runner, near 44 inputs
 per second there on its slowest stream whatever the application does, and a
 crossing costs it once per crossed input. That is why the gap stays a fixed
 input count. A policy that keeps a bounded number
