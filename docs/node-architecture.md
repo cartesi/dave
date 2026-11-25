@@ -781,10 +781,17 @@ behind it: a claim that is refused, reverts or is held costs the dispute's
 call of its batch nothing. Across ticks the lane treats a claim as it does a
 refund (below). One sent on an earlier tick and still pending has the nonce
 a new move needs; the move is turned down as a replacement and waits for the
-claim's inclusion, one inclusion and a polling interval. It takes a claim
-pending when a move first comes due: a node that joins sends the claim in
-the join's batch, where it mines with the join before any later move
-exists.
+claim's inclusion. The wait is not always that one inclusion and a polling
+interval. A refused head does not stop the rest of the batch, so the lane
+sends the claim again behind the move, at the next nonce, and that copy
+reverts once the first lands. On a public pool it costs a reverted claim's
+gas, and one more refusal of the move if the copy is mined a block after the
+first. Behind a revert-protecting relay the copy can no longer succeed and
+holds the nonce the move needs next: one more way to the stall of
+runbooks/submit-relay.md. A pending refund does all of this today, and none
+of it is built against. It takes a claim pending when a move first comes
+due: a node that joins sends the claim in the join's batch, where it mines
+with the join before any later move exists.
 
 The claim first in the batch was weighed against this. It turns that
 refusal into an admission, since a pool admits a new call behind a pending

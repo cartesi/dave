@@ -1631,6 +1631,35 @@ mod tests {
         Ok(())
     }
 
+    /// A head refused at a pending call's nonce does not stop the tail, and
+    /// the lane holds no state: the pending call goes out again behind the
+    /// head, at the next nonce. Both copies mine, so a call that succeeds
+    /// once, a sentry claim or a bond recovery, pays for a reverted copy;
+    /// the refused head goes out after them.
+    #[tokio::test]
+    #[ignore = "spawns anvil; run `just test-node-harness`"]
+    async fn a_pending_call_is_sent_again_behind_a_head_refused_at_its_nonce() -> Result<()> {
+        let (_anvil, provider, mut lane, signer) = spawn_lane().await?;
+        let alone = lane.submit_wave(wave(&[("pending", 0x11)])).await?;
+        assert_eq!(verdicts(&alone), vec![(0, SendVerdict::Submitted)]);
+
+        let behind = lane
+            .submit_wave(wave(&[("due", 0x22), ("pending", 0x11)]))
+            .await?;
+        assert_eq!(
+            verdicts(&behind),
+            vec![(0, SendVerdict::Outbid), (1, SendVerdict::Submitted)]
+        );
+        assert_ne!(behind[1].tx_hash, alone[0].tx_hash);
+        assert_eq!(nonces(&provider, signer).await?, (0, 2));
+
+        provider.anvil_mine(Some(1), None).await?;
+        assert_eq!(nonces(&provider, signer).await?, (2, 2));
+        let after = lane.submit_wave(wave(&[("due", 0x22)])).await?;
+        assert_eq!(verdicts(&after), vec![(2, SendVerdict::Submitted)]);
+        Ok(())
+    }
+
     #[tokio::test]
     #[ignore = "spawns anvil; run `just test-node-harness`"]
     async fn rebuilding_a_wave_fills_a_dropped_prefix_and_resumes_partial_inclusion() -> Result<()>
