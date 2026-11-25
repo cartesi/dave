@@ -203,7 +203,10 @@ the change is not exercised.
   within the root allowance and the guardian does not foreclose in the
   staging window, a lone commitment wins and its outputs root can move what
   the application holds. A direct transfer also reaches the machine as no
-  input: deposits go through the portals after deployment.
+  input: deposits go through the portals after deployment. A salt kept
+  private keeps others from creating the pair first only until `newDaveApp`
+  is broadcast, not after: a copy of its calldata that lands first deploys
+  the same pair, and the original call then reverts with empty data.
 - `calculateDaveAppAddress` does not validate its arguments. For a sentry
   set or withdrawal configuration that `newDaveApp` refuses, it returns
   addresses nothing can ever be deployed at, and value sent to one is
