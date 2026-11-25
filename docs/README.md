@@ -51,8 +51,9 @@ PRT contract engineering:
 Node operation:
 
 - [detection.md](detection.md) - what a detector outside the node must see
-  when the tournament's assumptions fail: the conditions, their deadlines,
-  the references to compare the chain with, and the sentry rule.
+  when the tournament's assumptions fail: what the chain alone can say, the
+  conditions and their deadlines, who knows the true state, and the sentry
+  rule.
 - [runbooks/submit-relay.md](runbooks/submit-relay.md) - what a submit relay
   must do, the procedure that qualifies one, and its dated results.
 
