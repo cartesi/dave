@@ -709,6 +709,7 @@ mod tests {
     use crate::storage::Epoch;
     use crate::storage::open::snapshots_path;
     use alloy::primitives::{Address, U256};
+    use cartesi_machine::config::runtime::RuntimeConfig;
     use cartesi_machine::machine::Machine;
 
     /// A window's runs for tests: arbitrary interior, tail carrying
@@ -754,6 +755,22 @@ mod tests {
             .unwrap();
         machine.put_machine(inner);
         Digest::new(machine.state_hash().unwrap())
+    }
+
+    /// The bytes `mutate` writes over, read from the machine's memory: a
+    /// root alone comes from the stored hash tree, which vouches for a
+    /// page it marks clean whatever the page holds.
+    fn ram_head(machine: &mut Machine) -> Vec<u8> {
+        machine
+            .read_memory(cartesi_machine::constants::ar::RAM_START, 3)
+            .unwrap()
+    }
+
+    fn working_ram_head(machine: &mut RollupsMachine) -> Vec<u8> {
+        let mut inner = machine.take_machine();
+        let bytes = ram_head(&mut inner);
+        machine.put_machine(inner);
+        bytes
     }
 
     fn append_inputs(s: &mut Storage, start: u64, count: u64) {
@@ -1035,12 +1052,17 @@ mod tests {
         assert!(s.advance_plan(3).unwrap().settled);
     }
 
+    /// A checkpoint is a clone of the working directory the machine keeps
+    /// writing to, so its bytes are read back too: one that shared blocks
+    /// with that directory would keep its root and hold the later writes.
     #[test]
     fn gap_three_mixed_accept_reject_publishes_only_final_boundary() {
         let (_handle, mut s) = setup_storage();
         append_inputs(&mut s, 0, 3);
 
         let (mut machine, mut batch) = s.begin_advances().unwrap();
+        let pristine = working_ram_head(&mut machine);
+        assert!(pristine[0] != 0x77 && pristine[1] != 0xEE);
         let accepted_0 = mutate(&mut machine, 0, 0x11);
         machine.increment_input();
         s.record_accepted(&mut batch, &mut machine, &flat_window(accepted_0))
@@ -1053,6 +1075,12 @@ mod tests {
         s.record_reverted(&mut batch, &mut machine, &flat_window(accepted_0))
             .unwrap();
         assert_eq!(Digest::new(machine.state_hash().unwrap()), accepted_0);
+        // The rejected write landed on the accepted one's page, after the
+        // checkpoint was cloned.
+        assert_eq!(
+            working_ram_head(&mut machine),
+            [0x11, pristine[1], pristine[2]]
+        );
         assert_eq!(batch.boundary_path(), first_checkpoint);
 
         let accepted_2 = mutate(&mut machine, 2, 0x22);
@@ -1073,6 +1101,9 @@ mod tests {
             "no intermediate batch boundary may enter the database"
         );
 
+        // A write after the last checkpoint, which the batch never
+        // records: the published boundary must not hold it.
+        mutate(&mut machine, 0, 0x77);
         drop(machine);
         s.commit_advances(batch).unwrap();
         assert_eq!(
@@ -1084,6 +1115,9 @@ mod tests {
             vec![0, 3]
         );
         assert_eq!(s.snapshot_hash(0, 3).unwrap(), Some(accepted_2.data()));
+        let published = s.snapshot_dir(0, 3).unwrap().unwrap();
+        let mut published = Machine::load(&published, &RuntimeConfig::quiet_console()).unwrap();
+        assert_eq!(ram_head(&mut published), [0x11, pristine[1], 0x22]);
         assert_eq!(
             s.window_root_count(
                 0,
