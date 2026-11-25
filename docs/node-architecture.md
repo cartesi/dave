@@ -770,8 +770,10 @@ that skipped them once the claim was seen was built first and removed: it
 kept a latest-head fact as if it were final, so a claim dropped by a reorg
 left a healthy sentry silent until the root's winner, the one thing the
 early claim is for. A read that fails before the root has its winner costs
-the tick its claim and nothing else: it logs a warning and counts as no
-stall.
+the tick its claim: it logs a warning and counts as no stall, and the
+dispute's move still goes out on that tick. The move waits for that read to
+answer or fail, as it does for every read of the tick, since a batch is
+sent once it is whole.
 
 The defense comes first and the claim yields, so the claim follows the
 Hero's request in the batch. A batch's order is the order of its nonces, of
@@ -789,9 +791,11 @@ gas, and one more refusal of the move if the copy is mined a block after the
 first. Behind a revert-protecting relay the copy can no longer succeed and
 holds the nonce the move needs next: one more way to the stall of
 runbooks/submit-relay.md. A pending refund does all of this today, and none
-of it is built against. It takes a claim pending when a move first comes
-due: a node that joins sends the claim in the join's batch, where it mines
-with the join before any later move exists.
+of it is built against. It takes a claim still pending on the tick a move
+comes due. A node that joins sends the claim in the join's batch, and the
+two usually mine together, before any later move exists; they are separate
+transactions, though, and a block that takes the join alone leaves the
+joiner where a node that claimed alone is.
 
 The claim first in the batch was weighed against this. It turns that
 refusal into an admission, since a pool admits a new call behind a pending
@@ -805,6 +809,18 @@ the join for the relay's hold. A bounded wait of a later move is the
 smaller price. What would reopen the order: claims found pending across
 ticks often enough for that wait to cost real time, or a purpose for the
 claim under which it should not yield.
+
+The copy could be removed in the lane: a call refused as a replacement
+would end its batch, costing what follows it, none of which has a deadline,
+a tick at most. It was weighed and left. On a public pool it saves a
+reverted claim or refund, rarely. Behind a relay the copy is one more
+transaction that can no longer succeed, as is the send of every honest node
+that loses a race for a step, and the relay's third requirement bounds them
+all (runbooks/submit-relay.md). Holding back the claim alone was not
+pursued: a refund is a call of the same kind in the same place, and the
+lane would have to be told which is which. What would reopen it: a relay in
+use that refuses a different transaction at a nonce it holds and frees it
+only near G.
 
 The node deliberately finishes its refunds before participating in the next
 epoch. Other participants can advance the chain meanwhile. Operation accepts
