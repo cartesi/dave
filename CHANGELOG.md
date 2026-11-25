@@ -33,7 +33,10 @@ addresses and every machine hash.
   value to a predicted address: anyone who knows the arguments can create
   the pair, which starts epoch 0's dispute before a validator may be
   running, and a direct transfer reaches the machine as no input. Deposit
-  through the portals after deployment. The calculator does not validate
+  through the portals after deployment. A private salt keeps others from
+  creating the pair first only until the deployment is broadcast: a copy of
+  its calldata that lands first deploys the same pair, and the original
+  `newDaveApp` then reverts with empty data. The calculator does not validate
   its arguments either: where `newDaveApp` would refuse them, nothing can be
   deployed at the addresses it returns.
 
