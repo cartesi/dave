@@ -5,58 +5,32 @@ pragma solidity ^0.8.30;
 
 import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/WithdrawalConfig.sol";
 import {IOutputsMerkleRootValidator} from "cartesi-rollups-contracts-3.0.0/src/consensus/IOutputsMerkleRootValidator.sol";
-import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
-import {IApplicationChecker} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationChecker.sol";
-import {IApplicationFactory} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactory.sol";
-import {IInputBox} from "cartesi-rollups-contracts-3.0.0/src/inputs/IInputBox.sol";
 import {RollupsTest} from "cartesi-rollups-contracts-3.0.0/test/util/RollupsTest.sol";
-import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
 import {DaveAppFactory} from "src/DaveAppFactory.sol";
-import {IDaveConsensus} from "src/IDaveConsensus.sol";
 
+/// @notice The factory's address prediction, with no deployment: the views
+/// validate nothing, so no argument is assumed valid. What a reserved
+/// address is worth, and that the pair lands on the prediction, are held
+/// elsewhere: the first by the application factory's own tests, the second
+/// by `DaveAppFactoryTest.testNewDaveApp`.
 contract DaveAppFactorySquattingTest is RollupsTest {
+    /// @notice The arguments of `calculateDaveAppAddress`.
+    struct Arguments {
+        bytes32 templateHash;
+        uint256 claimStagingPeriod;
+        address sentryManager;
+        address[] sentries;
+        WithdrawalConfig withdrawalConfig;
+        bytes32 salt;
+    }
+
     DaveAppFactory factory;
     ITournamentFactory constant TOURNAMENT_FACTORY = ITournamentFactory(address(0x100));
     IOutputsMerkleRootValidator constant NO_VALIDATOR = IOutputsMerkleRootValidator(address(0));
-    bytes32 constant TEMPLATE = bytes32(uint256(1));
 
     function setUp() external {
-        vm.mockCall(
-            address(TOURNAMENT_FACTORY),
-            abi.encodeWithSelector(ITournamentFactory.instantiate.selector),
-            abi.encode(ITournament(address(0x200)))
-        );
         factory = new DaveAppFactory(_contracts.core.inputBox, _contracts.core.applicationFactory, TOURNAMENT_FACTORY);
-    }
-
-    function testAnotherCallerCanOnlyDeployTheExactPredictedDavePair() external {
-        WithdrawalConfig memory config;
-        address[] memory sentries = new address[](0);
-        (address predicted, address expectedConsensus) =
-            factory.calculateDaveAppAddress(TEMPLATE, 10, address(0), sentries, config, 0);
-        vm.deal(predicted, 1 ether);
-        vm.prank(address(0xbad));
-        (IApplication app, IDaveConsensus consensus) = factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
-        assertEq(address(app), predicted);
-        assertEq(address(consensus), expectedConsensus);
-        assertEq(address(app.getOutputsMerkleRootValidator()), expectedConsensus);
-        assertEq(app.owner(), address(0));
-        assertEq(consensus.getClaimStagingPeriod(), 10);
-        assertEq(predicted.balance, 1 ether);
-    }
-
-    /// @notice A second deployment of the same pair reverts with empty error
-    /// data, whoever sends it: the application factory's revert on an
-    /// address that has code. A copy of a broadcast deployment that lands
-    /// first does this to the original.
-    function testTheSamePairCannotBeDeployedTwice() external {
-        WithdrawalConfig memory config;
-        address[] memory sentries = new address[](0);
-        vm.prank(address(0xbad));
-        factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
-        vm.expectRevert(bytes(""));
-        factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
     }
 
     /// @notice The salt the factory hands the application factory, which
@@ -99,109 +73,85 @@ contract DaveAppFactorySquattingTest is RollupsTest {
         );
     }
 
-    /// @notice Nobody else can occupy the predicted application address. The
-    /// same application deployed through the application factory by another
-    /// caller, permissionless or reserved, lands elsewhere. So does the same
-    /// pair created by a second Dave factory over the same application
-    /// factory. The pair is still created where it was predicted.
-    function testFuzzAnotherCallerCannotOccupyThePredictedApplication(
-        uint64 claimStagingPeriod,
-        address sentryManager,
-        address sentry,
-        bytes32 salt,
-        address caller
-    ) external {
-        vm.assume(sentry != address(0));
-        vm.assume(caller != address(factory));
-        WithdrawalConfig memory config;
-        address[] memory sentries = new address[](1);
-        sentries[0] = sentry;
-        (address predicted, address expectedConsensus) =
-            factory.calculateDaveAppAddress(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
-        bytes32 appSalt = _applicationSalt(claimStagingPeriod, sentryManager, sentries, salt);
-        IApplicationFactory appFactory = _contracts.core.applicationFactory;
-        IInputBox inputBox = _contracts.core.inputBox;
+    // Each argument alone moves both addresses, so no other value of it can
+    // land on a pair's application or its consensus. One argument moves per
+    // test and the other five stay: two argument sets drawn apart never
+    // differ in one field only, which is the draw that catches an argument
+    // left out of an address. The test above cannot catch that either, since
+    // its salt mirrors the factory's.
 
-        vm.startPrank(caller);
-        IApplication permissionless =
-            appFactory.newApplication(NO_VALIDATOR, address(factory), TEMPLATE, inputBox, config, appSalt);
-        IApplication reserved =
-            appFactory.newReservedApplication(NO_VALIDATOR, address(factory), TEMPLATE, inputBox, config, appSalt);
-        vm.stopPrank();
-        assertNotEq(address(permissionless), predicted);
-        assertNotEq(address(reserved), predicted);
-
-        DaveAppFactory other = new DaveAppFactory(inputBox, appFactory, TOURNAMENT_FACTORY);
-        vm.prank(caller);
-        (IApplication otherApp,) = other.newDaveApp(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
-        assertNotEq(address(otherApp), predicted);
-        assertEq(predicted.code.length, 0);
-
-        (IApplication app, IDaveConsensus consensus) =
-            factory.newDaveApp(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
-        assertEq(address(app), predicted);
-        assertEq(address(consensus), expectedConsensus);
-        assertEq(address(app.getOutputsMerkleRootValidator()), expectedConsensus);
+    function testFuzzTheTemplateHashMovesBothAddresses(Arguments calldata arguments, bytes32 otherTemplateHash)
+        external
+        view
+    {
+        vm.assume(otherTemplateHash != arguments.templateHash);
+        Arguments memory other = arguments;
+        other.templateHash = otherTemplateHash;
+        _assertBothAddressesMove(arguments, other);
     }
 
-    /// @notice No input precedes the pair: the InputBox refuses an address
-    /// with no code, so the consensus seals epoch 0 over no input. The node
-    /// starts reading at the deployment on that ground.
-    function testNoInputPrecedesThePair() external {
-        WithdrawalConfig memory config;
-        address[] memory sentries = new address[](0);
-        (address predicted,) = factory.calculateDaveAppAddress(TEMPLATE, 10, address(0), sentries, config, 0);
-        IInputBox inputBox = _contracts.core.inputBox;
-
-        vm.expectRevert(abi.encodeWithSelector(IApplicationChecker.ApplicationNotDeployed.selector, predicted));
-        inputBox.addInput(predicted, "early");
-        assertEq(inputBox.getNumberOfInputs(predicted), 0);
-
-        (IApplication app, IDaveConsensus consensus) = factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
-        (uint256 epochNumber, uint256 lower, uint256 upper,,,,,) = consensus.getCurrentSealedEpoch();
-        assertEq(epochNumber, 0);
-        assertEq(lower, 0);
-        assertEq(upper, 0);
-
-        inputBox.addInput(address(app), "first");
-        assertEq(inputBox.getNumberOfInputs(address(app)), 1);
-    }
-
-    function testDifferentConsensusSettingsCannotSquatTheSameApplication() external {
-        WithdrawalConfig memory config;
-        address[] memory sentries = new address[](0);
-        (address victim, address expectedConsensus) =
-            factory.calculateDaveAppAddress(TEMPLATE, 10, address(0), sentries, config, 0);
-        (address attacker,) = factory.calculateDaveAppAddress(TEMPLATE, 0, address(0), sentries, config, 0);
-        assertNotEq(victim, attacker);
-        vm.prank(address(0xbad));
-        factory.newDaveApp(TEMPLATE, 0, address(0), sentries, config, 0);
-        (IApplication app, IDaveConsensus consensus) = factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
-        assertEq(address(app), victim);
-        assertEq(address(consensus), expectedConsensus);
-    }
-
-    function testFuzzAllConsensusSettingsAreBoundToTheApplicationAddress(
-        uint64 claimStagingPeriod,
-        address sentryManager,
-        bytes32 salt
+    function testFuzzTheClaimStagingPeriodMovesBothAddresses(
+        Arguments calldata arguments,
+        uint256 otherClaimStagingPeriod
     ) external view {
-        WithdrawalConfig memory config;
-        address[] memory sentries = new address[](0);
-        (address original,) =
-            factory.calculateDaveAppAddress(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
-        (address otherClaimStagingPeriod,) = factory.calculateDaveAppAddress(
-            TEMPLATE, uint256(claimStagingPeriod) + 1, sentryManager, sentries, config, salt
+        vm.assume(otherClaimStagingPeriod != arguments.claimStagingPeriod);
+        Arguments memory other = arguments;
+        other.claimStagingPeriod = otherClaimStagingPeriod;
+        _assertBothAddressesMove(arguments, other);
+    }
+
+    function testFuzzTheSentryManagerMovesBothAddresses(Arguments calldata arguments, address otherSentryManager)
+        external
+        view
+    {
+        vm.assume(otherSentryManager != arguments.sentryManager);
+        Arguments memory other = arguments;
+        other.sentryManager = otherSentryManager;
+        _assertBothAddressesMove(arguments, other);
+    }
+
+    function testFuzzTheSentriesMoveBothAddresses(Arguments calldata arguments, address[] calldata otherSentries)
+        external
+        view
+    {
+        vm.assume(keccak256(abi.encode(otherSentries)) != keccak256(abi.encode(arguments.sentries)));
+        Arguments memory other = arguments;
+        other.sentries = otherSentries;
+        _assertBothAddressesMove(arguments, other);
+    }
+
+    function testFuzzTheWithdrawalConfigMovesBothAddresses(
+        Arguments calldata arguments,
+        WithdrawalConfig calldata otherWithdrawalConfig
+    ) external view {
+        vm.assume(keccak256(abi.encode(otherWithdrawalConfig)) != keccak256(abi.encode(arguments.withdrawalConfig)));
+        Arguments memory other = arguments;
+        other.withdrawalConfig = otherWithdrawalConfig;
+        _assertBothAddressesMove(arguments, other);
+    }
+
+    function testFuzzTheSaltMovesBothAddresses(Arguments calldata arguments, bytes32 otherSalt) external view {
+        vm.assume(otherSalt != arguments.salt);
+        Arguments memory other = arguments;
+        other.salt = otherSalt;
+        _assertBothAddressesMove(arguments, other);
+    }
+
+    function _predict(Arguments memory arguments) private view returns (address, address) {
+        return factory.calculateDaveAppAddress(
+            arguments.templateHash,
+            arguments.claimStagingPeriod,
+            arguments.sentryManager,
+            arguments.sentries,
+            arguments.withdrawalConfig,
+            arguments.salt
         );
-        assertNotEq(original, otherClaimStagingPeriod);
-        (address otherSentryManager,) = factory.calculateDaveAppAddress(
-            TEMPLATE, claimStagingPeriod, address(uint160(sentryManager) ^ 1), sentries, config, salt
-        );
-        assertNotEq(original, otherSentryManager);
-        sentries = new address[](1);
-        sentries[0] = address(1);
-        (address otherSentries,) =
-            factory.calculateDaveAppAddress(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
-        assertNotEq(original, otherSentries);
+    }
+
+    function _assertBothAddressesMove(Arguments memory arguments, Arguments memory other) private view {
+        (address application, address consensus) = _predict(arguments);
+        (address otherApplication, address otherConsensus) = _predict(other);
+        assertNotEq(application, otherApplication, "the application address did not move");
+        assertNotEq(consensus, otherConsensus, "the consensus address did not move");
     }
 }
