@@ -90,7 +90,10 @@ its deadline.
   won by another commitment that ends in the true state is settled only by
   direct calls, for both steps: a node that lost the root stages nothing
   and, even after somebody stages, does not accept. It only submits its
-  sentry claim. No deadline.
+  sentry claim. That holds where the state can be staged: an epoch that
+  ended with the application terminal has no validity proof that settles,
+  so nobody stages it, whoever won, and it is one of A's hold cases. No
+  deadline.
 - D, the detector is blind. It has no fresh reading, or its provider lags.
   Every quiet reading is then ambiguous, so D alerts on its own.
 
