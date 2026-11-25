@@ -88,24 +88,27 @@ The baseline to check a measurement against, counted from the code: requests
 per polling interval, on any chain but anvil (where the reader's two age
 probes are off).
 
-- Idle, with one sealed epoch whose root holds only the node's commitment: 9.
-  Six block fetches (the reader's finalized head and its two age probes, the
-  epoch manager's finalized head, and the tournament reader's finalized and
-  latest heads), two calls (`tournamentStanding` at latest, `bondRecovery` at
-  finalized) and one log query (the root's latest tail).
-- On a tick where the finalized head advanced: 13. Two more calls (the
-  reader's on-chain totals) and two more log queries (the finalized fold and
-  the recovery walk). On Ethereum at the default interval that is about one
-  tick in thirteen.
+- Idle, with one sealed epoch whose root holds only the node's commitment:
+  10, or 11 for a sentry. Six block fetches (the reader's finalized head and
+  its two age probes, the epoch manager's finalized head, and the tournament
+  reader's finalized and latest heads), two calls (`tournamentStanding` at
+  latest, `bondRecovery` at finalized), the sentry claim's views at latest
+  (the signer's slot, and for a sentry whether it has claimed; four calls on
+  the ticks before its claim lands) and one log query (the root's latest
+  tail).
+- On a tick where the finalized head advanced: 14, or 15 for a sentry. Two
+  more calls (the reader's on-chain totals) and two more log queries (the
+  finalized fold and the recovery walk). On Ethereum at the default interval
+  that is about one tick in thirteen.
 - In a dispute, with `N` live tournaments at latest, `L` levels of them and
   `R` open tournaments in the recovery tree: 6 block fetches; `L` log
   queries, one per 100 tournaments of a level, and `L` plus the recovery
   tree's generations more when the finalized head advanced; `N + R` calls,
-  plus 2 when the node's path ends in a clocked or sealed leaf match, and 2
-  when the finalized head advanced. A tick that did machine work observes
-  again (2 block fetches, `L` log queries, and the standing and match
-  calls), and a join, a recovery with candidates, a root result and each
-  sent transaction add reads of their own.
+  plus the claim's one or two, plus 2 when the node's path ends in a clocked
+  or sealed leaf match, and 2 when the finalized head advanced. A tick that
+  did machine work observes again (2 block fetches, `L` log queries, and the
+  standing and match calls), and a join, a recovery with candidates, a root
+  result and each sent transaction add reads of their own.
 
 A fleet of three idle nodes, watched for a few days, showed block, call and
 log requests in close to the idle proportions, with somewhat more calls and
@@ -121,6 +124,12 @@ Two trims were priced and deferred, as leads:
   retire an epoch early or hold it open.
 - The reader's finalized age probe fetches again the block its tick just
   fetched: one block fetch per tick.
+
+A third was built and removed. A per-epoch mark skipped the sentry claim's
+views once the claim was seen on chain, saving those one or two calls a tick.
+It was the risk named above in another place: the flag was set from the
+latest head, so a claim whose block a reorg left behind stayed unplanned
+until the root's winner. The calls are paid instead.
 
 Sybils buy read load. On the two-level table each live child tournament
 costs the adversary about two root bonds (about 0.72 ETH at 50 gwei). The
