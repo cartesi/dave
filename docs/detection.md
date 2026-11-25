@@ -87,9 +87,11 @@ A signal that something has not happened yet needs a time by which a
 healthy deployment has done it. That time is no contract value and none of
 the dispute game's budgets: `G`, `T` and `C` say where a delay is charged,
 not when a healthy node acts. It is the operator's target, set from what
-its own validators and sentries do. A node that joins from finalized state
-lands its root join about `max(build, finality) + inclusion` after the
-seal, which on Ethereum is past `G` on every epoch
+its own validators and sentries do. A node that reads only finalized blocks
+learns of the seal at its finality, and still has the epoch's last inputs
+to run and its commitment to build. Its root join lands after finality,
+that remaining work, a polling interval and inclusion, and on Ethereum
+finality alone is past `G` on every epoch
 ([dimensioning.md](dimensioning.md#tournament-clock-budgets)). The hard
 thresholds are the chain's own deadlines: the root's closure, the root's
 finish and the end of the staging period.
@@ -222,9 +224,11 @@ A fact read from the chain alone stands as an alert. A disagreement between
 two implementations is settled, not judged, once both commitments are in
 the root: the second one joins while the root takes joins, the on-chain
 step decides, and each keeps defending for as long as their match runs,
-which can be long after closure. It is the guardian's only where the
-tournament cannot settle it, because the root closed before the second
-commitment was in. Foreclosure is irreversible, and both sides ran the
+which can be long after closure. It is the guardian's where the step does
+not get to decide: the root closed before the second commitment was in, or
+one side ran out of time, which decides a root and proves nothing about the
+state. A wrong winner that can be staged is then condition A, with its
+deadline. Foreclosure is irreversible, and both sides ran the
 same emulator over the same inputs, so the fault is in one side's own code
 or in what its provider served: whoever acts on it first finds the first
 input boundary at which the two differ. That takes time and the deadline
