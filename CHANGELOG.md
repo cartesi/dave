@@ -60,6 +60,14 @@ addresses and every machine hash.
   formerly `Underpriced`, when a pending transaction at that nonce outbids
   the node's send: a wait behind that transaction, not a fee to raise. The
   relay runbook lists the verdicts.
+- A sentry node casts its claim as soon as it has computed the sealed epoch,
+  beside the dispute, where it used to wait for the root's winner. Each
+  sentry so leaves a sign of life on chain soon after the seal, and a dead
+  node whose join is not the one on chain is noticed while it can still be
+  repaired. The claim follows the dispute's move in the batch, so that move
+  never depends on it; a move that comes due while a claim from an earlier
+  tick is still pending waits one inclusion of it, as behind a pending
+  refund. No claim is cast under foreclosure.
 
 ### For developers
 

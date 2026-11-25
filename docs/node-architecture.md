@@ -739,11 +739,58 @@ ownership. The `TOURNAMENT_RUNNING` check therefore adds no separate wait after
 finalized settlement.
 
 For the current epoch, each tick combines the Hero's action or one cleanup,
-an applicable settlement step, and every available bond recovery in one batch.
+a sentry claim or an applicable settlement step, and every available bond
+recovery in one batch, in that order.
 Recovery runs even while the root is contested and retries on the same
 finalized head. Latest may suppress an already-mined payment, but only finalized
 state can complete the epoch. Settlement planners stay bound to the cursor's
 epoch even if another participant has already settled it.
+
+A sentry's claim does not wait for the root's winner. Cast early, it is a
+sign of life: each sentry node shows on chain, soon after the seal, that it
+is up, so a dead node whose join is not the one on chain (a second node
+behind the first joiner) is noticed while it can still be repaired. Before,
+that sign came only once the root had its winner, at its closure at the
+earliest. The state is not the point, since a node that joins already
+publishes it from the same signer in `CommitmentJoined`; nor is settlement,
+whose steps do not move. `submitSentryClaim` checks its caller, the epoch
+number, an earlier claim and foreclosure, and the node has the state it
+claims once the epoch's settlement material exists. So the claim is planned
+from that tick, on every tick until it is on chain, whatever the dispute's
+state; staging and acceptance still follow only the node's own win.
+Once the claim is on chain, or cannot be made (the signer is no sentry, the
+consensus is past the epoch, or foreclosure is visible), the manager reads
+nothing more for it until the root has its winner, when the views are read
+again. That mark is in memory: a restart reads once more, and a slot rotated
+to the signer mid-epoch misses that epoch's early vote. A read that fails
+before the root has its winner costs the tick its claim and nothing else: it
+logs a warning and counts as no stall.
+
+The defense comes first and the claim yields, so the claim follows the
+Hero's request in the batch. A batch's order is the order of its nonces, of
+the pool's admission against one balance, and of the lane's own work on each
+call (estimate, sign, send). The first call therefore depends on nothing
+behind it: a claim that is refused, reverts or is held costs the dispute's
+call of its batch nothing. Across ticks the lane treats a claim as it does a
+refund (below). One sent on an earlier tick and still pending has the nonce
+a new move needs; the move is turned down as a replacement and waits for the
+claim's inclusion, one inclusion and a polling interval. It takes a claim
+pending when a move first comes due: a node that joins sends the claim in
+the join's batch, where it mines with the join before any later move
+exists.
+
+The claim first in the batch was weighed against this. It turns that
+refusal into an admission, since a pool admits a new call behind a pending
+one and mines the two together. But it puts the dispute's call behind a
+call with no deadline on every epoch. A pool short of the whole batch would
+admit the claim, about 0.73M gas of reserve and 15M when its estimate fails
+other than by a revert, and refuse the bond-carrying join until the claim
+mined. And behind a revert-protecting relay a claim overtaken by foreclosure
+or a rotation of its slot, between its send and its inclusion, would hold
+the join for the relay's hold. A bounded wait of a later move is the
+smaller price. What would reopen the order: claims found pending across
+ticks often enough for that wait to cost real time, or a purpose for the
+claim under which it should not yield.
 
 The node deliberately finishes its refunds before participating in the next
 epoch. Other participants can advance the chain meanwhile. Operation accepts
@@ -757,7 +804,7 @@ deadline-bearing waits on the manager meanwhile. That rests on the
 single-path Hero, not on a test: it has one engaged match per level, and a
 cold build starts only after the seal that created its level mined, so none
 of its own actions is pending; settlement is planned only once the root has a
-winner; and
+winner; and a sentry claim and
 refunds have no deadline (`tryRecoveringBond` has no time arm). A tick whose
 assembly ran machine work observes the chain again before planning, once,
 and that assembly reuses the build: the action, its head, the join's Solid
@@ -838,7 +885,10 @@ transaction that can no longer succeed: the relay never includes it, so it
 holds its nonce until the relay admits another transaction at that nonce,
 which the next tick's re-sign then is, or drops the held one. No relay
 documents the first, and Flashbots Protect documents the second after 25
-blocks by default; runbooks/submit-relay.md measures both. A race between
+blocks by default; runbooks/submit-relay.md measures both. A sentry claim
+can become such a transaction between its send and its inclusion, by
+foreclosure or its slot rotated away, and then holds the next move's nonce
+(runbooks/submit-relay.md, When a relay misbehaves). A race between
 honest nodes never holds its winner: the winner's nonce advanced, so it
 defends the next step while the losers wait. The commitment waits only when
 every honest transaction for a step is doomed at once: by an adversary's

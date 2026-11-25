@@ -7,7 +7,7 @@ use self::recovery::{RecoveryTree, plan_recovery};
 use alloy::primitives::{Address, B256, TxKind, U256, keccak256};
 use alloy::providers::DynProvider;
 use anyhow::Result;
-use log::{Level, debug, error, info, trace};
+use log::{Level, debug, error, info, trace, warn};
 use std::time::{Duration, Instant};
 
 use crate::chain::{Chain, ChainHead};
@@ -46,7 +46,15 @@ pub struct EpochManager {
     stalled_now: bool,
     /// The unfinished epoch's dispute tree, walked over finalized blocks.
     recovery: Option<RecoveryTree>,
+    /// The epoch whose sentry claim needs no planning while its root is
+    /// undecided: the claim is on chain, or cannot be made. It spares a
+    /// dispute's every tick the reads behind a claim. In memory only: a
+    /// restart reads once more.
+    claim_settled: Option<u64>,
 }
+
+/// The sentry claim's verb, as the lane labels it.
+const CLAIM: &str = "submitSentryClaim";
 
 /// A call's identity across ticks: its verb, target and calldata.
 type CallKey = (String, Option<TxKind>, B256);
@@ -96,6 +104,7 @@ impl EpochManager {
             stall: Persistence::default(),
             stalled_now: false,
             recovery: None,
+            claim_settled: None,
         }
     }
 
@@ -204,57 +213,21 @@ impl EpochManager {
             if let Some(settlement) = self.storage.settlement_info(epoch.epoch_number)? {
                 match self.react_dispute(chain, &epoch, &settlement).await {
                     Ok(tick) => {
-                        let result = tick.result();
-                        let head = tick.head();
-                        wave.extend(tick.into_request());
                         // DaveConsensus is frozen by foreclosure, but tournaments
                         // still pay their winners: finish the dispute first.
-                        if result.is_some() {
+                        if tick.result().is_some() {
                             foreclosed = application
                                 .isForeclosed()
-                                .block(head.block_id())
+                                .block(tick.head().block_id())
                                 .call()
                                 .await?;
                         }
-                        // A sentry votes the state it computed once the root
-                        // has a winner, its own or not: after a loss its claim
-                        // is the dissent a guardian reads. Staging and
-                        // acceptance follow only its own win.
-                        if !foreclosed
-                            && matches!(
-                                result,
-                                Some(HeroTerminal::Won | HeroTerminal::Lost(Loss::Root { .. }))
-                            )
-                        {
-                            let consensus =
-                                DaveConsensus::new(self.consensus, chain.provider().clone());
-                            let step = if result == Some(HeroTerminal::Won) {
-                                self.plan_settlement(
-                                    &consensus,
-                                    epoch.epoch_number,
-                                    &settlement,
-                                    head,
-                                )
-                                .await
-                            } else {
-                                self.plan_sentry_claim(
-                                    &consensus,
-                                    epoch.epoch_number,
-                                    &settlement,
-                                    head,
-                                )
-                                .await
-                            };
-                            match step {
-                                Ok(step) => wave.extend(step),
-                                Err(e) => self.stalled(
-                                    Level::Warn,
-                                    format_args!(
-                                        "settlement planning failed, retrying next tick: {e:#}"
-                                    ),
-                                ),
-                            }
-                        }
+                        let consensus =
+                            DaveConsensus::new(self.consensus, chain.provider().clone());
+                        let dispute = self
+                            .plan_dispute_wave(&consensus, &epoch, &settlement, tick, foreclosed)
+                            .await;
+                        wave.extend(dispute);
                     }
                     Err(e) if Fatal::of(&e).is_some() => return Err(e),
                     Err(e) if self.shutdown.is_requested() => {
@@ -345,6 +318,123 @@ impl EpochManager {
                 self.stall.minutes()
             ),
             _ => log::log!(quiet, "{message}"),
+        }
+    }
+
+    /// The dispute's share of a tick's wave, in nonce order: the Hero's
+    /// request, then the one call the node owes DaveConsensus.
+    /// `foreclosed` is the latest head's answer once the dispute has a
+    /// result, and unread before.
+    ///
+    /// A sentry's claim does not wait for the root's winner: the contract
+    /// takes it from the seal on, and the node has the state it claims as
+    /// soon as the Hero can start. Cast then, it is a sign of life from a
+    /// node whose join is not the one on chain, while a dead one can still
+    /// be repaired. Staging and acceptance follow only the node's own win.
+    ///
+    /// The defense comes first and the claim yields
+    /// (docs/node-architecture.md, the epoch manager's batch). A wave's
+    /// order is the order of its nonces, of the pool's admission and of
+    /// the lane's own work, so the Hero's request depends on nothing
+    /// behind it. What the claim can still cost is one inclusion: left
+    /// pending by an earlier tick, it has the nonce a new move needs
+    /// (`SendVerdict::Outbid`), as a pending refund does.
+    async fn plan_dispute_wave(
+        &mut self,
+        consensus: &Consensus,
+        epoch: &Epoch,
+        settlement: &Settlement,
+        tick: HeroTick,
+        foreclosed: bool,
+    ) -> Vec<LaneRequest> {
+        let (result, head) = (tick.result(), tick.head());
+        let number = epoch.epoch_number;
+        let won = match result {
+            Some(HeroTerminal::Won) => Some(true),
+            Some(HeroTerminal::Lost(Loss::Root { .. })) => Some(false),
+            _ => None,
+        };
+        let step = match won {
+            None => {
+                let foreclosed = result.is_some().then_some(foreclosed);
+                self.plan_early_claim(consensus, number, settlement, head, foreclosed)
+                    .await
+            }
+            Some(_) if foreclosed => None,
+            // The root has its winner. The views are read again whatever
+            // was seen before, so a claim a reorg dropped, or a slot
+            // rotated to this signer, is made now at the latest: after a
+            // loss it is the dissent a guardian reads.
+            Some(won) => {
+                let step = if won {
+                    self.plan_settlement(consensus, number, settlement, head)
+                        .await
+                } else {
+                    self.plan_sentry_claim(consensus, number, settlement, head)
+                        .await
+                };
+                step.unwrap_or_else(|e| {
+                    self.stalled(
+                        Level::Warn,
+                        format_args!("settlement planning failed, retrying next tick: {e:#}"),
+                    );
+                    None
+                })
+            }
+        };
+        tick.into_request().into_iter().chain(step).collect()
+    }
+
+    /// The claim while the root is undecided. Once nothing is left to do
+    /// for the epoch (the claim is on chain, the signer is no sentry, the
+    /// consensus is past this epoch or frozen by foreclosure) the epoch is
+    /// marked and no read repeats until the root has its winner. A slot
+    /// rotated to this signer in between is picked up there, or at the
+    /// next epoch: missing the early vote of one epoch is acceptable.
+    ///
+    /// A failed read skips the claim for the tick and stalls nothing: the
+    /// dispute's own move must still go out.
+    async fn plan_early_claim(
+        &mut self,
+        consensus: &Consensus,
+        epoch_number: u64,
+        settlement: &Settlement,
+        head: ChainHead,
+        foreclosed: Option<bool>,
+    ) -> Option<LaneRequest> {
+        if self.claim_settled == Some(epoch_number) {
+            return None;
+        }
+        let planned = async {
+            let foreclosed = match foreclosed {
+                Some(foreclosed) => foreclosed,
+                None => {
+                    cartesi_rollups_contracts::i_application::IApplication::new(
+                        self.application,
+                        consensus.provider().clone(),
+                    )
+                    .isForeclosed()
+                    .block(head.block_id())
+                    .call()
+                    .await?
+                }
+            };
+            if foreclosed {
+                return Ok(None);
+            }
+            self.plan_sentry_claim(consensus, epoch_number, settlement, head)
+                .await
+        };
+        match planned.await {
+            Ok(Some(claim)) => Some(claim),
+            Ok(None) => {
+                self.claim_settled = Some(epoch_number);
+                None
+            }
+            Err(e) => {
+                warn!("sentry claim planning failed, retrying next tick: {e:#}");
+                None
+            }
         }
     }
 
@@ -443,7 +533,7 @@ impl EpochManager {
         let request = dave_consensus
             .submitSentryClaim(can_accept.epochNumber, claim)
             .into_transaction_request();
-        Ok(Some(("submitSentryClaim".to_string(), request)))
+        Ok(Some((CLAIM.to_string(), request)))
     }
 
     async fn plan_stage_tournament_result(
@@ -1236,6 +1326,255 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        assert!(rpc.read_q().is_empty());
+    }
+    /// A dispute move a Hero tick planned, as the lane takes it.
+    fn dispute_move() -> LaneRequest {
+        (
+            "advanceMatch".to_string(),
+            TransactionRequest::default()
+                .with_to(Address::repeat_byte(1))
+                .with_input(vec![0xAD]),
+        )
+    }
+
+    /// A Hero tick at `won_at()` while the root is undecided, with a move.
+    fn undecided() -> HeroTick {
+        HeroTick::new(None, won_at(), Some(dispute_move()))
+    }
+
+    fn epoch_zero() -> Epoch {
+        Epoch {
+            epoch_number: 0,
+            input_index_boundary: 0,
+            root_tournament: Address::repeat_byte(1),
+            block_created_number: 1,
+        }
+    }
+
+    /// The consensus on epoch 0 with nothing staged.
+    fn nothing_staged() -> DaveConsensus::canAcceptStagedTournamentResultReturn {
+        DaveConsensus::canAcceptStagedTournamentResultReturn {
+            isTournamentResultStaged: false,
+            doAllSentriesAgreeWithStagedTournamentResult: false,
+            isClaimStagingPeriodOver: false,
+            epochNumber: U256::ZERO,
+            stagedPostEpochMachineStateHash: B256::ZERO,
+            stagedPostEpochOutputsMerkleRoot: B256::ZERO,
+        }
+    }
+
+    /// The views behind a claim, in the order they are read while the root
+    /// is undecided: foreclosure, the signer's slot, the current epoch, and
+    /// whether the slot has claimed.
+    fn push_claim_views(rpc: &Asserter, sentry: u64, claimed: bool) {
+        use cartesi_rollups_contracts::i_application::IApplication;
+        push_call::<IApplication::isForeclosedCall>(rpc, &false);
+        push_call::<DaveConsensus::getSentryIdCall>(rpc, &U256::from(sentry));
+        if sentry != 0 {
+            push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(rpc, &nothing_staged());
+            push_call::<DaveConsensus::hasSentryClaimedInEpochCall>(rpc, &claimed);
+        }
+    }
+
+    /// While the root is undecided a sentry's claim rides the wave behind
+    /// the Hero's move, every tick until it is on chain; from then on the
+    /// dispute's ticks read nothing for it.
+    #[tokio::test]
+    async fn the_claim_follows_the_dispute_move_until_it_is_on_chain() {
+        let (dir, mut storage) = rolled_epoch_zero(|_| {});
+        let settlement = storage.settlement_info(0).unwrap().unwrap();
+        let (provider, rpc, requests) = crate::chain::recording::recording_provider();
+        let (mut manager, chain) = manager_on(dir.path(), provider);
+        let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+
+        for _ in 0..2 {
+            push_claim_views(&rpc, 1, false);
+            let wave = manager
+                .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, undecided(), false)
+                .await;
+            assert_eq!(wave.len(), 2);
+            assert_eq!(wave[0], dispute_move(), "the move takes the first nonce");
+            assert_eq!(wave[1].0, CLAIM);
+            // The vote is the state this node computed.
+            let claim =
+                DaveConsensus::submitSentryClaimCall::abi_decode(wave[1].1.input.input().unwrap())
+                    .unwrap();
+            assert_eq!(claim.epochNumber, U256::ZERO);
+            assert_eq!(
+                claim.postEpochMachineStateHash,
+                B256::from(settlement.final_state)
+            );
+        }
+
+        push_claim_views(&rpc, 1, true);
+        for _ in 0..3 {
+            let wave = manager
+                .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, undecided(), false)
+                .await;
+            assert_eq!(wave, vec![dispute_move()]);
+        }
+        assert!(rpc.read_q().is_empty());
+
+        // Twelve views in all, each pinned to the head the Hero observed.
+        let requests = requests.lock().unwrap();
+        let calls: Vec<_> = requests
+            .iter()
+            .filter(|request| request["method"] == "eth_call")
+            .collect();
+        assert_eq!(calls.len(), 12);
+        for call in calls {
+            assert_eq!(
+                call["params"][1],
+                serde_json::json!(format!("{:#x}", won_at().hash))
+            );
+        }
+    }
+
+    /// A signer that is no sentry is asked once while the root is
+    /// undecided. When the root has its winner the views are read again,
+    /// so a slot rotated to it in between still votes.
+    #[tokio::test]
+    async fn a_signer_that_is_no_sentry_is_asked_again_when_the_root_has_its_winner() {
+        let (dir, mut storage) = rolled_epoch_zero(|_| {});
+        let settlement = storage.settlement_info(0).unwrap().unwrap();
+        let (mut manager, chain, rpc) = manager(dir.path());
+        let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+
+        push_claim_views(&rpc, 0, false);
+        for _ in 0..3 {
+            let wave = manager
+                .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, undecided(), false)
+                .await;
+            assert_eq!(wave, vec![dispute_move()]);
+        }
+        assert!(rpc.read_q().is_empty());
+
+        // Lost to another commitment: foreclosure is the tick's own read.
+        let lost = HeroTerminal::Lost(Loss::Root {
+            final_state: Digest::from(settlement.final_state),
+        });
+        push_call::<DaveConsensus::getSentryIdCall>(&rpc, &U256::from(1));
+        push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &nothing_staged());
+        push_call::<DaveConsensus::hasSentryClaimedInEpochCall>(&rpc, &false);
+        let wave = manager
+            .plan_dispute_wave(
+                &consensus,
+                &epoch_zero(),
+                &settlement,
+                HeroTick::new(Some(lost), won_at(), None),
+                false,
+            )
+            .await;
+        assert_eq!(wave.len(), 1);
+        assert_eq!(wave[0].0, CLAIM);
+        assert!(rpc.read_q().is_empty());
+    }
+
+    /// The consensus refuses a claim under foreclosure, so none is planned
+    /// and the epoch's ticks stop asking; the dispute's move still goes.
+    #[tokio::test]
+    async fn foreclosure_plans_no_claim_and_keeps_the_dispute_move() {
+        use cartesi_rollups_contracts::i_application::IApplication;
+        let (dir, mut storage) = rolled_epoch_zero(|_| {});
+        let settlement = storage.settlement_info(0).unwrap().unwrap();
+        let (mut asked, chain, rpc) = manager(dir.path());
+        let consensus = DaveConsensus::new(asked.consensus, chain.provider().clone());
+
+        push_call::<IApplication::isForeclosedCall>(&rpc, &true);
+        for _ in 0..2 {
+            let wave = asked
+                .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, undecided(), false)
+                .await;
+            assert_eq!(wave, vec![dispute_move()]);
+        }
+        assert!(rpc.read_q().is_empty());
+
+        // A result short of the root's winner brings the tick's own
+        // foreclosure read: the claim asks no second one.
+        let (mut told, chain, rpc) = manager(dir.path());
+        let consensus = DaveConsensus::new(told.consensus, chain.provider().clone());
+        let eliminated = HeroTerminal::Lost(Loss::Child {
+            tournament: Address::repeat_byte(2),
+        });
+        let wave = told
+            .plan_dispute_wave(
+                &consensus,
+                &epoch_zero(),
+                &settlement,
+                HeroTick::new(Some(eliminated), won_at(), None),
+                true,
+            )
+            .await;
+        assert!(wave.is_empty());
+        assert!(rpc.read_q().is_empty());
+    }
+
+    /// A read that fails costs the tick its claim and never its dispute
+    /// move; the next tick asks again.
+    #[tokio::test]
+    async fn a_failed_claim_read_keeps_the_dispute_move() {
+        let (dir, mut storage) = rolled_epoch_zero(|_| {});
+        let settlement = storage.settlement_info(0).unwrap().unwrap();
+        let (mut manager, chain, rpc) = manager(dir.path());
+        let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+
+        rpc.push_failure_msg("the endpoint is down");
+        let wave = manager
+            .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, undecided(), false)
+            .await;
+        assert_eq!(wave, vec![dispute_move()]);
+        assert!(!manager.stalled_now, "a claim's read stalls no epoch");
+
+        push_claim_views(&rpc, 1, false);
+        let wave = manager
+            .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, undecided(), false)
+            .await;
+        assert_eq!(wave.len(), 2);
+        assert_eq!(wave[1].0, CLAIM);
+    }
+
+    /// At the root's winner the Hero's request still comes first: a claim
+    /// still due follows it, and once the claim is on chain staging does.
+    #[tokio::test]
+    async fn the_heros_request_leads_at_the_roots_winner_too() {
+        let (dir, mut storage) = rolled_epoch_zero(|_| {});
+        let settlement = storage.settlement_info(0).unwrap().unwrap();
+        let (mut manager, chain, rpc) = manager(dir.path());
+        let consensus = DaveConsensus::new(manager.consensus, chain.provider().clone());
+        let cleanup = || HeroTick::new(Some(HeroTerminal::Won), won_at(), Some(dispute_move()));
+        let sentry = U256::from(1);
+
+        push_call::<DaveConsensus::getSentryIdCall>(&rpc, &sentry);
+        push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &nothing_staged());
+        push_call::<DaveConsensus::hasSentryClaimedInEpochCall>(&rpc, &false);
+        let wave = manager
+            .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, cleanup(), false)
+            .await;
+        assert_eq!(wave.len(), 2);
+        assert_eq!(wave[0], dispute_move());
+        assert_eq!(wave[1].0, CLAIM);
+
+        push_call::<DaveConsensus::getSentryIdCall>(&rpc, &sentry);
+        push_call::<DaveConsensus::canAcceptStagedTournamentResultCall>(&rpc, &nothing_staged());
+        push_call::<DaveConsensus::hasSentryClaimedInEpochCall>(&rpc, &true);
+        push_call::<DaveConsensus::canStageTournamentResultCall>(
+            &rpc,
+            &DaveConsensus::canStageTournamentResultReturn {
+                isFinished: true,
+                isTournamentFailed: false,
+                isTournamentResultStaged: false,
+                epochNumber: U256::ZERO,
+                winnerCommitment: B256::from(settlement.computation_hash.data()),
+                winnerPostEpochMachineStateHash: B256::from(settlement.final_state),
+            },
+        );
+        let wave = manager
+            .plan_dispute_wave(&consensus, &epoch_zero(), &settlement, cleanup(), false)
+            .await;
+        assert_eq!(wave.len(), 2);
+        assert_eq!(wave[0], dispute_move());
+        assert_eq!(wave[1].0, "stageTournamentResult");
         assert!(rpc.read_q().is_empty());
     }
 }
