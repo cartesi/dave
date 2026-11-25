@@ -265,9 +265,9 @@ own witness bytes are pinned on its side by `node_witness_vectors_hold`
 without an input, a second input's opening, a maximum-size input's opening, a
 plain ustep, a closing slot, and a rejected-input closing slot.
 `seam_witness_vectors_hold` (`engine/machine_stf.rs`) adds the node's bytes at
-the input budget's seams, which the release corpus does not cover: accepted
-openings on the budget's last cycle and on a halted machine, and a rejected
-closing on the budget's last cycle. `NodeWitnessesTest` (`cartesi-rollups/contracts`)
+the input budget's seams: accepted openings on the budget's last cycle, on a
+halted machine and at a saturated cycle counter, and a rejected closing on
+the budget's last cycle. `NodeWitnessesTest` (`cartesi-rollups/contracts`)
 replays each through `CartesiStateTransition`, with inputs rooted the way
 `DaveConsensus` roots them, and requires the node's post-state. Likewise
 `node_proof_vectors_hold` pins the node's commitment proofs (root joins under
