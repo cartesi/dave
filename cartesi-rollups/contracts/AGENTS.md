@@ -50,6 +50,24 @@ truth.
   assumed. This contract is the application's
   `IOutputsMerkleRootValidator` and each tournament's `IDataProvider`;
   both interface behaviors are deployed compatibility surface.
+- Of cartesi-rollups-contracts, these contracts and the node assume the
+  behaviors below. Each belongs to the dependency, which tests it, and is
+  listed because something here rests on it: on a dependency bump, read
+  the release for each.
+  - The application factory reserves an address per caller
+    (`newReservedApplication` and its calculator). The prediction rests
+    on it, and so does nobody else occupying the application address.
+  - An application's validator is replaced only by its owner, in its
+    deployment block (`migrateToOutputsMerkleRootValidator`). The factory
+    binds the consensus and renounces ownership in one transaction, and
+    nothing rebinds it later.
+  - The InputBox refuses an application address that has no code. So no
+    input precedes the pair, the consensus seals epoch 0 over none, and
+    the node starts reading at the application's deployment block.
+  - An accepted claim stays under foreclosure (`IConsensus`). The
+    guardian's deadline is therefore acceptance (docs/detection.md).
+  - A deployment on an address that has code reverts with empty data,
+    which is what a second `newDaveApp` for a pair does.
 
 ## Source map
 
