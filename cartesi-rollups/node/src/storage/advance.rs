@@ -542,6 +542,14 @@ impl Storage {
         input: u64,
         hash: Hash,
     ) -> Result<(RollupsMachine, AdvanceBatch)> {
+        // The asserts shared with the runner speak of its boundary: a
+        // crossing's missing floor is named here, for what it is.
+        let floor = snapshot_path(&self.state_dir, &hash);
+        assert!(
+            floor.is_dir(),
+            "dispute crossing floor is not a readable directory: epoch {epoch}, input {input}, path `{}`; database and filesystem disagree",
+            floor.display()
+        );
         self.begin_advances_at(epoch, input, hash)
     }
 
@@ -1136,6 +1144,17 @@ mod tests {
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .filter(|name| name.starts_with(".work-"))
             .collect()
+    }
+
+    /// A crossing that finds no directory at its floor says so in its own
+    /// words, not the runner's.
+    #[test]
+    #[should_panic(
+        expected = "dispute crossing floor is not a readable directory: epoch 0, input 1"
+    )]
+    fn a_crossing_names_its_missing_floor() {
+        let (_handle, s) = setup_storage();
+        let _ = s.begin_crossing(0, 1, [0xA5; 32]);
     }
 
     /// Dispute crossing: accepted, accepted, rejected, then published.
