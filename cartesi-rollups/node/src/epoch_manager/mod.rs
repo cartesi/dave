@@ -608,12 +608,23 @@ fn report_loss(epoch: &Epoch, settlement: &Settlement, loss: Loss) {
     match loss {
         Loss::Root { final_state } => {
             let ours = Digest::from(settlement.final_state);
-            if ours == final_state {
+            if ours == final_state && settlement.machine_validity_proof.settles() {
                 error!(
                     "epoch {e}: root tournament {} went to another commitment with this \
                      node's final state {final_state}: the correct state settles once someone \
                      stages it and then accepts it, and this node does neither for a root \
                      it did not win. This node's commitment was not defended in time",
+                    epoch.root_tournament
+                );
+            } else if ours == final_state {
+                // As on the node's own win: no validity proof accepts a
+                // terminal app's state, so whoever won cannot stage it.
+                error!(
+                    "epoch {e}: root tournament {} went to another commitment with this \
+                     node's final state {final_state}, which this node's commitment was not \
+                     defended in time to win. The epoch ended with the application in a \
+                     terminal state and cannot settle: nobody can stage it, and it is held \
+                     for the application's guardian, notify all users!",
                     epoch.root_tournament
                 );
             } else {

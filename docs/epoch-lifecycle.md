@@ -303,9 +303,11 @@ derives the stageable winner from the same standing the Hero reads, so both
 sides describe one block and a tip reorg cannot fire an assert. A lost root or
 a root without a winner is an error log every tick and is never staged; a
 lost root should page a human. Its error says whether the winner ends in this
-node's final state (the correct state settles, though this node was not
-defended in time) or another (a divergence: the guardian can still foreclose
-during the claim staging period). Either way a sentry claims its own state,
-which is the dissent the guardian reads; once a divergent state settles, the
-node stops with exit 30 when its next epoch starts from it. A won root whose
-final state does not settle is held with an error (the terminal case above).
+node's final state (this node was not defended in time; the correct state
+settles once someone stages and accepts it, unless the epoch ended terminal,
+which nobody can stage) or another (a divergence: the guardian can still
+foreclose during the claim staging period). Either way a sentry claims its
+own state, which is the dissent the guardian reads; once a divergent state
+settles, the node stops with exit 30 when its next epoch starts from it. A
+won root whose final state does not settle is held with an error (the
+terminal case above).
