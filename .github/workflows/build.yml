@@ -277,12 +277,10 @@ jobs:
       # Runs the library this lane built: a uarch cycle and a uarch reset on
       # a machine that needs no image, checked against the pristine uarch
       # hash, one of the generated sources; and the header against the
-      # library.
+      # library. The recipe names the two tests and fails unless both ran.
       - name: Exercise Cartesi Machine source provider
         run: |
-          cargo test --release -p cartesi-machine --target ${{ matrix.target }} -- --exact \
-            machine::tests::uarch_pristine_hash_is_what_a_uarch_reset_restores \
-            config::machine::tests::test_emulator_version_pin
+          just test-machine-provider --release --target ${{ matrix.target }}
 
       - name: Build release
         env:
