@@ -762,6 +762,28 @@ return {
         end)
     end),
 
+    Test.case("an observation contradiction keeps the stack it was raised on", function()
+        local root = address(1)
+        local fold = live_fold(root)
+        local responses = live_responses(root, descriptor(), 0)
+        local ok, failure = pcall(function()
+            Adapter.observe_fold(mock_transport(responses), fold, head())
+        end)
+        Test.truthy(not ok, "expected the observation to fail")
+        -- The traceback follows the context and names the function under
+        -- observe_fold that raised, which a traceback taken at the
+        -- re-raise cannot hold.
+        local _, context_end = failure:find(string.format(
+            "observed at head 12 %s)\nstack traceback:\n",
+            head().hash
+        ), 1, true)
+        Test.truthy(context_end, "no traceback after the context: " .. failure)
+        Test.truthy(
+            failure:find("observe_tournament", context_end, true),
+            "the traceback lost the raising function: " .. failure
+        )
+    end),
+
     Test.case("inner-winner final state must agree with parent side", function()
         local root = address(1)
         local child = address(2)

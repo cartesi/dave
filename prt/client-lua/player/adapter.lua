@@ -936,8 +936,25 @@ function Adapter.observe_fold(transport, fold, head)
         if fold_reachable(fold, tournament_fold, observations) then
             -- A contradiction between the fold and a view says what
             -- disagreed, not where: name the tournament and the head the
-            -- views were pinned to, then fail as before.
-            local ok, observation = pcall(function()
+            -- views were pinned to, then fail as before. The handler runs
+            -- before the stack unwinds, so the traceback it appends is the
+            -- failure's own, which the re-raise below would not show.
+            local function with_context(failure)
+                if type(failure) ~= "string" then
+                    return failure
+                end
+                if type(head) == "table" then
+                    failure = string.format(
+                        "%s (tournament %s, observed at head %s %s)",
+                        failure,
+                        tournament_fold.address,
+                        tostring(head.number),
+                        tostring(head.hash)
+                    )
+                end
+                return debug.traceback(failure, 2)
+            end
+            local ok, observation = xpcall(function()
                 local observation =
                     observe_tournament(transport, fold, tournament_fold, head)
                 validate_parent_topology(
@@ -947,19 +964,9 @@ function Adapter.observe_fold(transport, fold, head)
                     observation
                 )
                 return observation
-            end)
+            end, with_context)
             if not ok then
-                local failure = observation
-                if type(failure) == "string" and type(head) == "table" then
-                    failure = string.format(
-                        "%s (tournament %s, observed at head %s %s)",
-                        failure,
-                        tournament_fold.address,
-                        tostring(head.number),
-                        tostring(head.hash)
-                    )
-                end
-                error(failure, 0)
+                error(observation, 0)
             end
             observations[tournament_fold.address] = observation
         end
