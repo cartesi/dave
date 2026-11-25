@@ -250,7 +250,10 @@ another node's snapshot of a sealed epoch's start settles that epoch and
 never takes an earlier one, an unsettled state seeds nothing, and a restart
 reads no image. A second node, on another key and a fresh directory, settles
 an epoch whose root the first node won and then left: it stages and accepts
-without joining, after the staging period when one is set.
+without joining, after the staging period when one is set
+(`harness/tests.rs`,
+`a_second_node_settles_the_epoch_the_first_won_and_left` and
+`a_second_node_waits_out_the_staging_period_of_the_epoch_the_first_won`).
 
 The foreclosure tests pin continued defense and paid bond recovery before
 terminal exit, including a foreclosure during a live match and a restart.
