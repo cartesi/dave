@@ -141,18 +141,21 @@ fixture to cover capped epoch storage and events, backlog rollover and boundary
 counts. `test/DaveAppFactory.t.sol` exercises construction, stage and accept,
 `wasInputFinalized`, staging reverts on bad proofs, root failure, sentry
 rotation and a winner exhausting the payment callback. The factory tests pin
-the consensus-settings address binding. `test/DaveAppFactorySquatting.t.sol`
-pins the reservation: the predicted application address is the one the
-application factory reserves for the Dave factory under the salt that binds
-the consensus settings; another caller, an account or a second Dave factory
-over the same application factory, cannot occupy it; and the InputBox
-refuses the address until the pair exists, so epoch 0 seals empty. The
-prediction is fuzzed over every argument of the calculators, with none
-assumed valid since neither view validates them. The tests that deploy vary
-the staging period, the sentry manager, one sentry, the salt and the caller,
-not the template or the withdrawal configuration; one holds the empty revert
-of a pair deployed twice. The leaf-proof gas FFI fixture (`test/gas/`), node
-integration tests and e2e smoke add coverage.
+the factory's composition of the rollups contracts. Whoever sends
+`newDaveApp`, the pair lands on the predicted addresses with the
+application's validator migrated and its ownership renounced, and a second
+deployment reverts with empty data (`test/DaveAppFactory.t.sol`). The
+predicted application address is the one the application factory reserves
+for this factory, and each argument of `calculateDaveAppAddress` alone moves
+both predicted addresses (`test/DaveAppFactorySquatting.t.sol`). The tests
+stop there on purpose. What the dependency does with a reserved address, or
+with an input for an address without code, is its own property, which
+cartesi-rollups-contracts tests at the pinned tag: a test here that proved
+it again would hold nothing of this factory's, and would be one more place
+to maintain and to drift. So such a property is cited where it is relied on,
+and the citation is what to read again on a dependency bump. The leaf-proof
+gas FFI fixture (`test/gas/`), node integration tests and e2e smoke add
+coverage.
 `test/NodeProofs.t.sol` and `test/NodeWitnesses.t.sol` check that the contracts'
 verifiers and the step accept the node's proofs and witnesses, without running
 `DaveConsensus`.
