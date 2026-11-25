@@ -46,6 +46,19 @@ contract DaveAppFactorySquattingTest is RollupsTest {
         assertEq(predicted.balance, 1 ether);
     }
 
+    /// @notice A second deployment of the same pair reverts with empty error
+    /// data, whoever sends it: the application factory's revert on an
+    /// address that has code. A copy of a broadcast deployment that lands
+    /// first does this to the original.
+    function testTheSamePairCannotBeDeployedTwice() external {
+        WithdrawalConfig memory config;
+        address[] memory sentries = new address[](0);
+        vm.prank(address(0xbad));
+        factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
+        vm.expectRevert(bytes(""));
+        factory.newDaveApp(TEMPLATE, 10, address(0), sentries, config, 0);
+    }
+
     /// @notice The salt the factory hands the application factory, which
     /// binds the consensus settings.
     function _applicationSalt(uint256 period, address manager, address[] memory sentries, bytes32 salt)
