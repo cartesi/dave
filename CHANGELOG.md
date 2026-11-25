@@ -65,12 +65,13 @@ addresses and every machine hash.
   sentry so leaves a sign of life on chain soon after the seal, and a dead
   node whose join is not the one on chain is noticed while it can still be
   repaired. The claim follows the dispute's move in the batch, so that move
-  never depends on it; a move that comes due while a claim from an earlier
-  tick is still pending waits one inclusion of it, as behind a pending
-  refund. The claim is planned from each tick's reads alone, so one a reorg
-  dropped is cast again and a slot rotated to the signer votes on the next
-  tick. No claim is cast under foreclosure, and the ERROR for a claim that
-  does not land names the missing vote, not a dispute clock.
+  never depends on it. A move that comes due while a claim from an earlier
+  tick is still pending waits for the claim's inclusion, and the claim is
+  sent again behind it, a copy that reverts once the first lands, as with a
+  pending refund. The claim is planned from each tick's reads alone, so one
+  a reorg dropped is cast again and a slot rotated to the signer votes on
+  the next tick. No claim is cast under foreclosure, and the ERROR for a
+  claim that does not land names the missing vote, not a dispute clock.
 
 ### For developers
 
