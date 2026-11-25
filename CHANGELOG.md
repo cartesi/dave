@@ -21,10 +21,11 @@ addresses and every machine hash.
   overflow and refuses a TLB write outside the shadow TLB. Every machine
   state hash moves, so templates must be rebuilt with the v0.23 tools.
 - The rollups contracts are those of cartesi-rollups-contracts
-  3.0.0-alpha.11, where 3.0.0-alpha.10 kept its addresses through the last
-  releases. All of them are new deployments at new addresses, `InputBox`
-  and `ApplicationFactory` included: an application created by this
-  release's `DaveAppFactory` takes its inputs from the new `InputBox`.
+  3.0.0-alpha.11. Dave's last releases stayed on 3.0.0-alpha.10 and its
+  addresses; this one does not. All of them are new deployments at new
+  addresses, `InputBox` and `ApplicationFactory` included: an application
+  created by this release's `DaveAppFactory` takes its inputs from the new
+  `InputBox`.
 - `DaveAppFactory` deploys the application at an address the application
   factory reserves for it (`newReservedApplication`), so nobody else can
   occupy a predicted application address. `newDaveApp` and

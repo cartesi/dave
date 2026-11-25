@@ -62,10 +62,12 @@ carry no backlog (reviews/README.md).
 
 - A lead, not assessed: the rollups contracts an application is deployed
   with (`Application`, `ApplicationFactory`, `InputBox`) are built by their
-  own release at solc 0.8.30, through the IR with the optimizer on, which is
-  the class the Yul optimizer bug fixed in 0.8.38 applies to. Dave's Foundry
-  suites compile the same sources at 0.8.38, so they do not run the deployed
-  bytecode; e2e does. Whether the bug touches those contracts is open.
+  own release at solc 0.8.30, through the IR with the optimizer on. The
+  compiler's bug list has ten entries for 0.8.30, the Yul optimizer one
+  fixed in 0.8.38 among them. The release's own suite runs at that
+  configuration, so the deployed bytecode is what its authors test. Dave's
+  Foundry suites compile the same sources at 0.8.38 and do not run it; e2e
+  does. Whether any of the ten touches those contracts is open.
   (plans/audit-readiness.md)
 - Rehearse the backstop for an undetected node bug: on a throwaway Sepolia
   application, hold the node out past join closure, let a fabricated claim

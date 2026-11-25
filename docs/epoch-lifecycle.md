@@ -52,13 +52,9 @@ DaveAppFactory's application address is a function of the template, withdrawal
 configuration and full consensus settings, and the application factory
 reserves it for DaveAppFactory: only `newDaveApp` with those arguments, from
 any caller, deploys there. Use its calculator to predict addresses. Creation
-is permissionless: anyone who knows the arguments can create the pair, which
-starts epoch 0's dispute, so a validator has to be ready from that block.
-Until one runs, a lone false claim that the guardian does not foreclose in
-the staging window settles. The calculator does not validate its arguments,
-so for a sentry set or withdrawal configuration that `newDaveApp` refuses,
-nothing can be deployed at the addresses it returns
-(cartesi-rollups/contracts/AGENTS.md).
+is permissionless and starts epoch 0's dispute in its block, and the
+calculator does not validate its arguments: what follows from each is among
+the non-claims in cartesi-rollups/contracts/AGENTS.md.
 
 ## Epoch states, from the node's perspective
 
