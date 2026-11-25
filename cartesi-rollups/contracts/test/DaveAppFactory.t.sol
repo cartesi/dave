@@ -110,8 +110,14 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
             templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
         );
 
+        // Creation is permissionless: the pair lands where it was predicted
+        // whoever sends it, and whoever sends it again finds it there.
+        address deployer = vm.randomAddress();
+        address latecomer = _randomAddressNotEq(deployer);
+
         vm.recordLogs();
 
+        vm.prank(deployer);
         try _daveAppFactory.newDaveApp(
             templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
         ) returns (
@@ -164,6 +170,7 @@ contract DaveAppFactoryTest is ConsensusTestUtils {
         }
 
         // Cannot deploy an application with the same salt twice
+        vm.prank(latecomer);
         try _daveAppFactory.newDaveApp(
             templateHash, claimStagingPeriod, sentryManager, sentries, withdrawalConfig, salt
         ) {
