@@ -65,11 +65,21 @@ its deadline.
   the epoch ends terminal (defended, never stageable).
 - B, the honest side is losing time. Fallback: a validator online. Each case
   has its deadline, after which B is A.
-  - No commitment has joined while the join window runs. No clock runs yet:
-    the deadline is the root's closure less the time a validator needs to
-    join, which is computing the epoch and then inclusion. After it, no
-    join is a root without a winner and one adversarial join is a wrong
-    result winning.
+  - No commitment has joined, or with a reference none with the true
+    state. The wait is charged to whoever joins: a commitment starts with
+    the root's allowance less the time since the root's start
+    (`joinTournament`, `Clock.initializePausedAt`). Two thresholds:
+    - The page: none by the root-join target the dispute game assumes, `G`
+      from the root's start
+      ([dispute-game.md](dispute-game.md#security-statement-and-assumptions)).
+      Every delay past it draws on `C`, the one delay ledger
+      ([dimensioning.md](dimensioning.md#one-delay-ledger-one-reference-price)).
+    - The hard cutoff, reported apart: the root's closure, the instant a
+      joining clock would start at nothing, from which every join is
+      refused (`TournamentIsClosed`). Then no join is a root without a
+      winner, and one adversarial join is a wrong result winning. A join
+      just before it still wins an uncontested root, and has almost
+      nothing left for a contested one.
   - A second commitment has joined, so a dispute exists, or a clock runs
     unanswered. The deadline is the clock of the commitment with the true
     state.
