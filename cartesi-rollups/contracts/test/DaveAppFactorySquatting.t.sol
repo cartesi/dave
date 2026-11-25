@@ -61,12 +61,13 @@ contract DaveAppFactorySquattingTest is RollupsTest {
 
     /// @notice The salt the factory hands the application factory, which
     /// binds the consensus settings.
-    function _applicationSalt(uint256 period, address manager, address[] memory sentries, bytes32 salt)
-        private
-        pure
-        returns (bytes32)
-    {
-        return keccak256(abi.encode(period, manager, sentries, salt));
+    function _applicationSalt(
+        uint256 claimStagingPeriod,
+        address sentryManager,
+        address[] memory sentries,
+        bytes32 salt
+    ) private pure returns (bytes32) {
+        return keccak256(abi.encode(claimStagingPeriod, sentryManager, sentries, salt));
     }
 
     /// @notice The predicted application address is the one the application
@@ -104,8 +105,8 @@ contract DaveAppFactorySquattingTest is RollupsTest {
     /// pair created by a second Dave factory over the same application
     /// factory. The pair is still created where it was predicted.
     function testFuzzAnotherCallerCannotOccupyThePredictedApplication(
-        uint64 period,
-        address manager,
+        uint64 claimStagingPeriod,
+        address sentryManager,
         address sentry,
         bytes32 salt,
         address caller
@@ -116,8 +117,8 @@ contract DaveAppFactorySquattingTest is RollupsTest {
         address[] memory sentries = new address[](1);
         sentries[0] = sentry;
         (address predicted, address expectedConsensus) =
-            factory.calculateDaveAppAddress(TEMPLATE, period, manager, sentries, config, salt);
-        bytes32 appSalt = _applicationSalt(period, manager, sentries, salt);
+            factory.calculateDaveAppAddress(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
+        bytes32 appSalt = _applicationSalt(claimStagingPeriod, sentryManager, sentries, salt);
         IApplicationFactory appFactory = _contracts.core.applicationFactory;
         IInputBox inputBox = _contracts.core.inputBox;
 
@@ -132,12 +133,12 @@ contract DaveAppFactorySquattingTest is RollupsTest {
 
         DaveAppFactory other = new DaveAppFactory(inputBox, appFactory, TOURNAMENT_FACTORY);
         vm.prank(caller);
-        (IApplication otherApp,) = other.newDaveApp(TEMPLATE, period, manager, sentries, config, salt);
+        (IApplication otherApp,) = other.newDaveApp(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
         assertNotEq(address(otherApp), predicted);
         assertEq(predicted.code.length, 0);
 
         (IApplication app, IDaveConsensus consensus) =
-            factory.newDaveApp(TEMPLATE, period, manager, sentries, config, salt);
+            factory.newDaveApp(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
         assertEq(address(app), predicted);
         assertEq(address(consensus), expectedConsensus);
         assertEq(address(app.getOutputsMerkleRootValidator()), expectedConsensus);
@@ -180,22 +181,27 @@ contract DaveAppFactorySquattingTest is RollupsTest {
         assertEq(address(consensus), expectedConsensus);
     }
 
-    function testFuzzAllConsensusSettingsAreBoundToTheApplicationAddress(uint64 period, address manager, bytes32 salt)
-        external
-        view
-    {
+    function testFuzzAllConsensusSettingsAreBoundToTheApplicationAddress(
+        uint64 claimStagingPeriod,
+        address sentryManager,
+        bytes32 salt
+    ) external view {
         WithdrawalConfig memory config;
         address[] memory sentries = new address[](0);
-        (address original,) = factory.calculateDaveAppAddress(TEMPLATE, period, manager, sentries, config, salt);
-        (address otherPeriod,) =
-            factory.calculateDaveAppAddress(TEMPLATE, uint256(period) + 1, manager, sentries, config, salt);
-        assertNotEq(original, otherPeriod);
-        (address otherManager,) =
-            factory.calculateDaveAppAddress(TEMPLATE, period, address(uint160(manager) ^ 1), sentries, config, salt);
-        assertNotEq(original, otherManager);
+        (address original,) =
+            factory.calculateDaveAppAddress(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
+        (address otherClaimStagingPeriod,) = factory.calculateDaveAppAddress(
+            TEMPLATE, uint256(claimStagingPeriod) + 1, sentryManager, sentries, config, salt
+        );
+        assertNotEq(original, otherClaimStagingPeriod);
+        (address otherSentryManager,) = factory.calculateDaveAppAddress(
+            TEMPLATE, claimStagingPeriod, address(uint160(sentryManager) ^ 1), sentries, config, salt
+        );
+        assertNotEq(original, otherSentryManager);
         sentries = new address[](1);
         sentries[0] = address(1);
-        (address otherSentries,) = factory.calculateDaveAppAddress(TEMPLATE, period, manager, sentries, config, salt);
+        (address otherSentries,) =
+            factory.calculateDaveAppAddress(TEMPLATE, claimStagingPeriod, sentryManager, sentries, config, salt);
         assertNotEq(original, otherSentries);
     }
 }
