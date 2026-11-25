@@ -1599,8 +1599,11 @@ mod witness_tests {
     /// seal, over input 0 alone, never arrived, so the inputs after it were
     /// numbered on into epoch 1 and split at the cap (taken as 2 for the
     /// stored rows). Epoch 2's seal is refused by its number, before the
-    /// numbering can read the misplaced inputs as a consensus with another
-    /// cap, whether they are all stored or one arrives with the seal.
+    /// numbering, whether the inputs are all stored or one arrives with the
+    /// seal. Over these rows the numbering would name no cap: with all
+    /// stored, its re-check of the stored seal counts back at the
+    /// production cap and underflows, a panic; with one arriving, it
+    /// numbers that input past the gap and storage refuses the row.
     #[tokio::test]
     async fn a_seal_after_a_dropped_one_is_refused_before_the_numbering() {
         seal_after_a_dropped_one(&[(1, 0), (1, 1), (2, 0), (2, 1)], &[]).await;
