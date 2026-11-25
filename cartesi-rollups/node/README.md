@@ -491,7 +491,9 @@ Options:
 - A sentry node casts its claim as soon as it has computed the sealed epoch,
   beside any dispute and without waiting for the root's winner: the vote on
   chain is a sign that the node is up, which a node whose join is not the
-  one on chain gives no other way.
+  one on chain gives no other way. An error that `submitSentryClaim` has
+  been planned for some minutes without landing means the vote is missing,
+  and the epoch then settles only after the claim staging period.
 - Every epoch settles no sooner than its root tournament's allowance, plus
   the application's claim staging period unless every sentry agrees. With the
   canonical table that allowance is about one week and 140 minutes on

@@ -219,7 +219,9 @@ settlement and refund planning, a sealed epoch the runner has not finished,
 and each call the manager plans: planning reads latest and drops a call once
 it lands, so a call planned for G has not landed (it reverts at estimation,
 with the reason in the error; the submit endpoint does not answer; a relay
-holds or dropped it; it is outbid; or it mines without effect). G is
+holds or dropped it; it is outbid; or it mines without effect). A sentry
+claim pages with its own cost, the missing vote: no dispute clock waits on
+it. G is
 hardcoded, since the node knows no block time to convert the table's budgets;
 revisit it if a deployment's G departs from 5 minutes. A read endpoint that
 stops following the chain fails nothing (it answers consistently with its old
