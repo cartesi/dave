@@ -36,6 +36,9 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     /// serves as a fallback if not all sentries agree with the tournament result,
     /// which should give the guardian enough time to foreclose the application
     /// if the disagreement stems from a bug on PRT.
+    /// @dev Reverts with empty error data if the pair already exists, as the
+    /// application factory does on an address that has code, after consuming
+    /// most of the gas left.
     function newDaveApp(
         bytes32 templateHash,
         uint256 claimStagingPeriod,
@@ -57,13 +60,12 @@ interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
     /// @dev The application factory reserves the application address for this
     /// factory, and the consensus address is this factory's own deployment:
     /// only `newDaveApp` with these arguments deploys at either.
-    /// @dev Do not send value to a predicted address. Anyone who knows the
-    /// arguments can call `newDaveApp`, which starts the first epoch's
-    /// dispute: until a validator runs, a lone false claim that is not
-    /// foreclosed in time settles and can move what the application holds.
-    /// A direct transfer also reaches the machine as no input: deposit
-    /// through the portals after deployment. A salt kept private until
-    /// deployment keeps others from deploying the pair first.
+    /// @dev `newDaveApp` is permissionless: anyone who knows the arguments can
+    /// deploy the pair, which starts the first epoch's dispute, so a
+    /// validator has to be ready from that block. A salt kept private
+    /// protects only until the deployment is broadcast: a copy of the call
+    /// that lands first deploys the same pair, and the original call then
+    /// reverts with empty error data.
     /// @dev The arguments are not validated here: where `newDaveApp` would
     /// refuse them, nothing can ever be deployed at the addresses returned.
     function calculateDaveAppAddress(
