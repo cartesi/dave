@@ -70,7 +70,9 @@ The chain does not say two things:
   bound on chain to its final state alone. One that ends in the true state
   can be wrong before its end, anyone can join the correct one and leave it
   undefended, and a validator that was not the first to join leaves no
-  trace until a move is due.
+  trace until a move is due. A sentry's claim is the exception: the
+  contract takes it only from the sentry, so it is a sign that this node is
+  up, and of nothing more.
 
 Judging a dispute in progress takes the correct commitment and the move
 that is due, which is a validator. So a detector reads the root
@@ -92,7 +94,9 @@ learns of the seal at its finality, and still has the epoch's last inputs
 to run and its commitment to build. Its root join lands after finality,
 that remaining work, a polling interval and inclusion, and on Ethereum
 finality alone is past `G` on every epoch
-([dimensioning.md](dimensioning.md#tournament-clock-budgets)). The hard
+([dimensioning.md](dimensioning.md#tournament-clock-budgets)). A sentry
+node claims in the batch of that join, or alone at about that time when
+its join is not the one on chain, so one target serves both. The hard
 thresholds are the chain's own deadlines: the root's closure, the root's
 finish and the end of the staging period.
 
