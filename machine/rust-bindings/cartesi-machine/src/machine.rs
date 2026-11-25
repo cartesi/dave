@@ -40,8 +40,8 @@ use crate::{
 /// `MachineError::message` fields.
 pub struct Machine {
     machine: *mut cartesi_machine_sys::cm_machine,
-    /// The directory a shared load changes in place. Declared after the
-    /// instance and so dropped after `Drop::drop` destroyed it: the
+    /// The directory a shared load changes in place. A field drops only
+    /// after `Drop::drop` has run and destroyed the instance, so the
     /// directory is removed only once nothing maps it.
     home: Option<Volatile>,
 }
@@ -237,8 +237,10 @@ impl Machine {
     /// this host, though not synced. A destroy fails when it cannot save
     /// the pending dirty-page marks, which only an emulator bug causes: the
     /// instance is gone all the same, its files are not to be trusted, and
-    /// the directory is discarded. A failed unmap is not reported; an I/O
-    /// error surfaces at the sync.
+    /// the directory is discarded. A failed unmap is not reported, and
+    /// neither is a failed write of its pages: that can surface only where
+    /// this directory is itself synced ([`Volatile::persist`]), not at the
+    /// sync of a clone taken from it.
     pub fn close(mut self) -> Result<Option<Volatile>> {
         let err_code = unsafe { cartesi_machine_sys::cm_destroy(self.machine) };
         check_err!(err_code)?;
