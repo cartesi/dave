@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v3.0.0-beta.1
 
 A new deployment generation: every contract is recompiled, the state
 transition moves to Cartesi Machine v0.23 and the rollups contracts to
