@@ -25,7 +25,7 @@ Out of scope: everything under `test/`, including `test/devnet/` (a
 devnet-only script behind a `NotADevnet` guard) and the test-only
 `TableTournamentParametersProvider` and `TournamentParameterTableValidator`;
 the off-chain clients; the rollups-contracts dependency (`Application`,
-`InputBox`, 3.0.0-alpha.11), which is upstream.
+`InputBox`, 3.0.0-beta.1), which is upstream.
 
 ## Trust boundaries to hand the auditor
 

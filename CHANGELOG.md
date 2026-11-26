@@ -4,7 +4,7 @@
 
 A new deployment generation: every contract is recompiled, the state
 transition moves to Cartesi Machine v0.23 and the rollups contracts to
-cartesi-rollups-contracts 3.0.0-alpha.11, moving deterministic deployment
+cartesi-rollups-contracts 3.0.0-beta.1, moving deterministic deployment
 addresses and every machine hash.
 
 ### Contracts
@@ -21,7 +21,7 @@ addresses and every machine hash.
   overflow and refuses a TLB write outside the shadow TLB. Every machine
   state hash moves, so templates must be rebuilt with the v0.23 tools.
 - The rollups contracts are those of cartesi-rollups-contracts
-  3.0.0-alpha.11. Dave's last releases stayed on 3.0.0-alpha.10 and its
+  3.0.0-beta.1. Dave's last releases stayed on 3.0.0-alpha.10 and its
   addresses; this one does not. All of them are new deployments at new
   addresses, `InputBox` and `ApplicationFactory` included: an application
   created by this release's `DaveAppFactory` takes its inputs from the new

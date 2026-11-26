@@ -46,7 +46,7 @@ cartesi-prt-contracts = { path = "prt/contracts/bindings-rs" }
 ## Dependencies
 
 # cartesi
-cartesi-rollups-contracts = "=3.0.0-alpha.11"
+cartesi-rollups-contracts = "=3.0.0-beta.1"
 
 # eth
 alloy = { version = "2.0", features = [

@@ -17,7 +17,7 @@ CDPATH= cd -- "$repo_root" || {
     exit 2
 }
 
-readonly base_contracts="cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-alpha.11"
+readonly base_contracts="cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-beta.1"
 readonly input_format="devnet-inputs-v7"
 readonly manifest_format="v5"
 
