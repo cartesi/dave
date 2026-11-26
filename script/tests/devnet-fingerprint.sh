@@ -27,7 +27,7 @@ source_roots=(
 config_roots=(
     prt/contracts
     cartesi-rollups/contracts
-    cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-alpha.11
+    cartesi-rollups/contracts/dependencies/cartesi-rollups-contracts-3.0.0-beta.1
 )
 
 for root in "${source_roots[@]}"; do
