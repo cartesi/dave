@@ -7,13 +7,15 @@ import {WithdrawalConfig} from "cartesi-rollups-contracts-3.0.0/src/common/Withd
 import {IApplication} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplication.sol";
 import {IApplicationFactoryErrors} from "cartesi-rollups-contracts-3.0.0/src/dapp/IApplicationFactoryErrors.sol";
 
+import {IVersionGetter} from "prt-contracts/IVersionGetter.sol";
+
 import {IDaveConsensus} from "./IDaveConsensus.sol";
 import {ISentryErrors} from "./ISentryErrors.sol";
 
 /// @title Dave-App Pair Factory
 /// @notice Allows anyone to reliably deploy an application
 /// validated by a newly-deployed `IDaveConsensus` contract.
-interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors {
+interface IDaveAppFactory is IApplicationFactoryErrors, ISentryErrors, IVersionGetter {
     /// @notice A Dave-App pair was created.
     /// @param appContract The application contract
     /// @param daveConsensus The Dave consensus contract

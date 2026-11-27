@@ -8,6 +8,7 @@ import {Errors} from "@openzeppelin-contracts-5.5.0/utils/Errors.sol";
 import {ERC165} from "@openzeppelin-contracts-5.5.0/utils/introspection/ERC165.sol";
 
 import {IMultiLevelTournamentFactory} from "./IMultiLevelTournamentFactory.sol";
+import {DaveContract} from "prt-contracts/DaveContract.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
@@ -23,7 +24,11 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 
 /// @dev The immutable provider is the sole authority for a parameter table
 /// trusted to remain coherent and stable for this factory's lifetime.
-contract MultiLevelTournamentFactory is IMultiLevelTournamentFactory, ERC165 {
+contract MultiLevelTournamentFactory is
+    IMultiLevelTournamentFactory,
+    DaveContract,
+    ERC165
+{
     using Clones for address;
 
     Tournament immutable IMPL;

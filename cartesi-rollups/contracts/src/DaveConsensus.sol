@@ -16,6 +16,7 @@ import {LibKeccak256} from "cartesi-rollups-contracts-3.0.0/src/library/LibKecca
 import {LibMachineValidityProof} from "cartesi-rollups-contracts-3.0.0/src/library/LibMachineValidityProof.sol";
 import {LibMath} from "cartesi-rollups-contracts-3.0.0/src/library/LibMath.sol";
 
+import {DaveContract} from "prt-contracts/DaveContract.sol";
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {ITournament} from "prt-contracts/ITournament.sol";
 import {ITournamentFactory} from "prt-contracts/ITournamentFactory.sol";
@@ -28,7 +29,7 @@ import {Memory} from "step/src/Memory.sol";
 
 import {IDaveConsensus} from "./IDaveConsensus.sol";
 
-contract DaveConsensus is IDaveConsensus, ERC165, ApplicationChecker {
+contract DaveConsensus is IDaveConsensus, DaveContract, ERC165, ApplicationChecker {
     using LibMath for uint256;
     using BitMaps for BitMaps.BitMap;
     using LibBinaryMerkleTree for bytes;

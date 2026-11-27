@@ -5,6 +5,7 @@ pragma solidity ^0.8.17;
 
 import {IDataProvider} from "prt-contracts/IDataProvider.sol";
 import {IStateTransition} from "prt-contracts/IStateTransition.sol";
+import {IVersionGetter} from "prt-contracts/IVersionGetter.sol";
 import {Commitment} from "prt-contracts/tournament/libs/Commitment.sol";
 import {Match} from "prt-contracts/tournament/libs/Match.sol";
 import {Time} from "prt-contracts/tournament/libs/Time.sol";
@@ -19,7 +20,7 @@ import {Tree} from "prt-contracts/types/Tree.sol";
 /// it, so a changed id proves a new generation but an unchanged id does not
 /// prove compatibility. Pinning bindings to release artifacts remains the
 /// guard for the rest of the wire contract.
-interface ITournament {
+interface ITournament is IVersionGetter {
     //
     // Types
     //
